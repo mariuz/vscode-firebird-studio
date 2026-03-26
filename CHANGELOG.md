@@ -2,6 +2,21 @@
 
 All notable changes to the "vscode-db-explorer-firebird" extension will be documented in this file.
 
+## 0.1.7 - 2026-03-26
+
+### Added
+
+ - Added [ROADMAP.md](ROADMAP.md) with planned features inspired by [Microsoft's IDE for PostgreSQL in VS Code](https://techcommunity.microsoft.com/blog/adforpostgresql/announcing-a-new-ide-for-postgresql-in-vs-code-from-microsoft/4414648)
+ - Planned: Enhanced Object Explorer with views, stored procedures, triggers, generators, domains, and roles
+ - Planned: Intelligent IntelliSense improvements with context-aware schema completion
+ - Planned: AI-powered enhancements with GitHub Copilot integration for Firebird SQL
+ - Planned: Session query history and batch query execution
+ - Planned: Query performance analysis with explain plan integration
+ - Planned: Editable result grids for data manipulation
+ - Planned: Firebird 4.x/5.x wire protocol and authentication support
+ - Planned: Database management features (create/alter/drop objects, backup/restore, monitoring)
+ - Planned: SQL formatting, schema diff, and linting
+
 ## 0.1.4 - 2023-09-20
 
  - Fixed mockaroo integration
