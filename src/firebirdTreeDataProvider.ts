@@ -5,6 +5,7 @@ import { ConnectionOptions, FirebirdTree } from "./interfaces";
 import { connectionWizard } from "./shared/connection-wizard";
 import { Constants } from "./config/constants";
 import { Global } from "./shared/global";
+import { CredentialStore } from "./shared/credential-store";
 import { logger } from "./logger/logger";
 
 export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> {
@@ -49,11 +50,20 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
     await connectionWizard()
       .then(async newOptions => {
         newOptions.id = id;
-        newOptions.port = Number.parseInt(newOptions.port);
-        this.savedConnections[id] = newOptions;
+        if (typeof newOptions.port === "string") {
+          newOptions.port = Number.parseInt(newOptions.port);
+        }
+
+        /* store password securely and remove it from the persisted options */
+        const password = newOptions.password;
+        await CredentialStore.storePassword(id, password || "");
+        const optionsToSave: ConnectionOptions = { ...newOptions, password: undefined };
+
+        this.savedConnections[id] = optionsToSave;
 
         await this.context.globalState.update(Constants.ConectionsKey, this.savedConnections).then(
           () => {
+            /* keep password in the runtime object for immediate use */
             Global.activeConnection = newOptions;
             this.refresh();
             logger.info("Add Connection end...");
@@ -93,7 +103,10 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
         connections[id].id = id;
         return connections[id];
       })
-      .reduce((h, a) => Object.assign(h, { [a.host]: (h[a.host] || []).concat(a) }), {});
+      .reduce((h, a) => {
+        const groupKey = a.embedded ? "(embedded)" : a.host;
+        return Object.assign(h, { [groupKey]: (h[groupKey] || []).concat(a) });
+      }, {});
   }
 
   public refresh(element?: FirebirdTree): void {

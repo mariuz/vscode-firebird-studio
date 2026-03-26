@@ -5,12 +5,14 @@ import {ConnectionOptions} from "../interfaces";
 import {logger} from "../logger/logger";
 import type { Attachment, Client, ResultSet} from 'node-firebird-driver-native';
 import {simpleCallbackToPromise} from './utils';
+import {CredentialStore} from './credential-store';
 import * as fs from 'fs';
 import path = require('path');
 
 export class Driver {
 
   static setClient(useNativeDriver: boolean, context: ExtensionContext) {
+    CredentialStore.setContext(context);
     this.client = useNativeDriver ? new NativeClient(context.extensionUri.fsPath) : new NodeClient();
   }
 
@@ -35,6 +37,15 @@ export class Driver {
       return "Delete";
     }
     return null;
+  }
+
+  /** Resolves the password for a connection, fetching from SecretStorage if not already set. */
+  private static async resolvePassword(connectionOptions: ConnectionOptions): Promise<ConnectionOptions> {
+    if (connectionOptions.password) {
+      return connectionOptions;
+    }
+    const stored = await CredentialStore.getPassword(connectionOptions.id);
+    return { ...connectionOptions, password: stored ?? "" };
   }
 
   public static async runQuery(sql?: string, connectionOptions?: ConnectionOptions): Promise<any> {
@@ -81,6 +92,7 @@ export class Driver {
     }
 
     connectionOptions = connectionOptions ? connectionOptions : Global.activeConnection;
+    connectionOptions = await this.resolvePassword(connectionOptions);
 
     logger.info("Executing Firebird query...");
 
@@ -122,6 +134,30 @@ export interface ClientI<K extends Firebird.Database | Attachment> {
   detach(connection: K): Promise<void>;
 }
 
+/** Maps our ConnectionOptions to a node-firebird Options object, handling embedded and Firebird 4.x/5.x fields. */
+function toNodeFirebirdOptions(connectionOptions: ConnectionOptions): Firebird.Options {
+  const opts: Firebird.Options = {
+    database: connectionOptions.database,
+    user: connectionOptions.user,
+    password: connectionOptions.password ?? "",
+    role: connectionOptions.role
+  };
+
+  if (!connectionOptions.embedded) {
+    opts.host = connectionOptions.host;
+    opts.port = connectionOptions.port ?? 3050;
+  }
+
+  if (connectionOptions.wireCrypt) {
+    (opts as any).wireCrypt = connectionOptions.wireCrypt;
+  }
+  if (connectionOptions.authPlugin) {
+    (opts as any).authPlugin = connectionOptions.authPlugin;
+  }
+
+  return opts;
+}
+
 export class NodeClient implements ClientI<Firebird.Database> {
   public queryPromise<T>(connection: Firebird.Database, sql: string, args: any[] = []): Promise<T[]> {
     return new Promise((resolve, reject) => {
@@ -136,8 +172,9 @@ export class NodeClient implements ClientI<Firebird.Database> {
   }
 
   public async createConnection(connectionOptions: ConnectionOptions): Promise<Firebird.Database> {
+    const opts = toNodeFirebirdOptions(connectionOptions);
     return await new Promise<Firebird.Database>((resolve, reject) => {
-      Firebird.attach(connectionOptions, (err, db) => {
+      Firebird.attach(opts, (err, db) => {
         if (err) {
           logger.error(err.message);
           reject(err);
@@ -187,7 +224,9 @@ export class NativeClient implements ClientI<Attachment> {
   }
 
   public async createConnection(connectionOptions: ConnectionOptions): Promise<Attachment> {
-    const connectionStr = `${connectionOptions.host}/${connectionOptions.port ?? '3050'}:${connectionOptions.database}`;
+    const connectionStr = connectionOptions.embedded
+      ? connectionOptions.database
+      : `${connectionOptions.host}/${connectionOptions.port ?? '3050'}:${connectionOptions.database}`;
 
     let client: Client;
     try {
@@ -198,7 +237,11 @@ export class NativeClient implements ClientI<Attachment> {
       throw new Error("Unable to initialize native driver: " + (e?.message ?? e));
     }
 
-    return await client.connect(connectionStr, {username: connectionOptions.user, password: connectionOptions.password, role: connectionOptions.role});
+    return await client.connect(connectionStr, {
+      username: connectionOptions.user,
+      password: connectionOptions.password ?? "",
+      role: connectionOptions.role
+    });
 
   }
 
