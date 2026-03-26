@@ -5,6 +5,7 @@ import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {getOptions, Constants} from "../config";
 import {Driver} from "../shared/driver";
 import {Global} from "../shared/global";
+import {CredentialStore} from "../shared/credential-store";
 import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
 import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
@@ -34,6 +35,15 @@ export class NodeDatabase implements FirebirdTree {
     };
   }
 
+  /** Returns a copy of dbDetails with password resolved from SecretStorage if needed. */
+  private async resolvedDetails(): Promise<ConnectionOptions> {
+    if (this.dbDetails.password) {
+      return this.dbDetails;
+    }
+    const password = (await CredentialStore.getPassword(this.dbDetails.id)) ?? "";
+    return { ...this.dbDetails, password };
+  }
+
   // list database object categories
   public async getChildren(): Promise<FirebirdTree[]> {
     return [
@@ -48,37 +58,37 @@ export class NodeDatabase implements FirebirdTree {
 
   private async getTableChildren(): Promise<FirebirdTree[]> {
     const tablesQry = getTablesQuery(getOptions().maxTablesCount);
-    const connection = await Driver.client.createConnection(this.dbDetails);
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const tables = await Driver.client.queryPromise<any>(connection, tablesQry);
     return tables.map<NodeTable>(table => new NodeTable(this.dbDetails, table.TABLE_NAME));
   }
 
   private async getViewChildren(): Promise<FirebirdTree[]> {
-    const connection = await Driver.client.createConnection(this.dbDetails);
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const views = await Driver.client.queryPromise<any>(connection, getViewsQuery());
     return views.map<NodeView>(view => new NodeView(this.dbDetails, view.VIEW_NAME));
   }
 
   private async getProcedureChildren(): Promise<FirebirdTree[]> {
-    const connection = await Driver.client.createConnection(this.dbDetails);
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const procs = await Driver.client.queryPromise<any>(connection, getStoredProceduresQuery());
     return procs.map<NodeProcedure>(proc => new NodeProcedure(this.dbDetails, proc.PROCEDURE_NAME));
   }
 
   private async getTriggerChildren(): Promise<FirebirdTree[]> {
-    const connection = await Driver.client.createConnection(this.dbDetails);
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const triggers = await Driver.client.queryPromise<any>(connection, getTriggersQuery());
     return triggers.map<NodeTrigger>(trigger => new NodeTrigger(trigger));
   }
 
   private async getGeneratorChildren(): Promise<FirebirdTree[]> {
-    const connection = await Driver.client.createConnection(this.dbDetails);
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const generators = await Driver.client.queryPromise<any>(connection, getGeneratorsQuery());
     return generators.map<NodeGenerator>(gen => new NodeGenerator(gen.GENERATOR_NAME));
   }
 
   private async getDomainChildren(): Promise<FirebirdTree[]> {
-    const connection = await Driver.client.createConnection(this.dbDetails);
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const domains = await Driver.client.queryPromise<any>(connection, getDomainsQuery());
     return domains.map<NodeDomain>(domain => new NodeDomain(domain));
   }
@@ -88,9 +98,9 @@ export class NodeDatabase implements FirebirdTree {
     logger.info("Custom query: Show Database Info");
 
     const qry = databaseInfoQry;
-    Global.activeConnection = this.dbDetails;
+    Global.activeConnection = await this.resolvedDetails();
 
-    return Driver.runQuery(qry, this.dbDetails)
+    return Driver.runQuery(qry, Global.activeConnection)
       .then(result => {
         return result;
       })
@@ -121,6 +131,7 @@ export class NodeDatabase implements FirebirdTree {
 
     if (connections) {
       delete connections[this.dbDetails.id];
+      await CredentialStore.deletePassword(this.dbDetails.id);
       await context.globalState.update(Constants.ConectionsKey, connections);
       logger.debug(`Removed connection ${this.dbDetails.id}`);
       firebirdTreeDataProvider.refresh();
@@ -131,6 +142,6 @@ export class NodeDatabase implements FirebirdTree {
   // set active database
   public async setActive(): Promise<void> {
     logger.info("Set active connection");
-    Global.activeConnection = this.dbDetails;
+    Global.activeConnection = await this.resolvedDetails();
   }
 }

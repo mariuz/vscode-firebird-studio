@@ -7,6 +7,7 @@ import {connectionPicker} from "./shared/connection-picker";
 import {Driver} from "./shared/driver";
 import * as vscode from 'vscode';
 import {Global} from "./shared/global";
+import {CredentialStore} from "./shared/credential-store";
 import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
 import QueryResultsView from "./result-view";
@@ -17,6 +18,9 @@ import * as cp from 'node:child_process';
 
 export function activate(context: ExtensionContext) {
   logger.info(`Activating extension ...`);
+
+  /* initialise credential store with extension context for SecretStorage access */
+  CredentialStore.setContext(context);
 
   /* load configuration and reload every time it's changed */
   logger.info(`Loading configuration...`);
@@ -108,7 +112,9 @@ export function activate(context: ExtensionContext) {
         .then(pickedConnection => {
           if (pickedConnection) {
             const id: string = pickedConnection.detail.split(": ").pop();
-            Global.setActiveConnectionById(context, id);
+            Global.setActiveConnectionById(context, id).catch(err => {
+              logger.error(err);
+            });
           }
         })
         .catch(err => {
