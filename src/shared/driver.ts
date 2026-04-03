@@ -448,8 +448,9 @@ export class NativeClient implements ClientI<Attachment> {
 /**
  * Extracts unqualified table/view names from a SQL SELECT statement's FROM and JOIN clauses.
  * This is a best-effort heuristic for the node-firebird explain-plan fallback.
+ * Exported for unit testing.
  */
-function extractTableNames(sql: string): string[] {
+export function extractTableNames(sql: string): string[] {
   const names = new Set<string>();
   // Match: FROM <name>, JOIN <name>  — stop at whitespace, comma, or paren
   const re = /\b(?:FROM|JOIN)\s+([A-Z_$][A-Z0-9_$]*)/gi;

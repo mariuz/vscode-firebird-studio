@@ -1,0 +1,86 @@
+name: E2E – Firebird Integration Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  e2e-tests:
+    name: E2E Tests (Firebird ${{ matrix.firebird-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        firebird-version: ["4.0", "5.0"]
+
+    services:
+      firebird:
+        image: jacobalberty/firebird:${{ matrix.firebird-version }}
+        env:
+          ISC_PASSWORD: masterkey
+          FIREBIRD_DATABASE: test.fdb
+          FIREBIRD_USER: sysdba
+          FIREBIRD_PASSWORD: masterkey
+        ports:
+          - 3050:3050
+        options: >-
+          --health-cmd="nc -z localhost 3050"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      FIREBIRD_HOST: localhost
+      FIREBIRD_PORT: 3050
+      FIREBIRD_DATABASE: /firebird/data/test.fdb
+      FIREBIRD_USER: sysdba
+      FIREBIRD_PASSWORD: masterkey
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Firebird to be ready
+        run: |
+          echo "Waiting for Firebird to accept connections..."
+          for i in $(seq 1 30); do
+            if nc -z localhost 3050; then
+              echo "Firebird is ready."
+              break
+            fi
+            echo "Attempt $i: not ready yet, retrying in 3s..."
+            sleep 3
+          done
+          nc -z localhost 3050 || (echo "Firebird did not become ready in time" && exit 1)
+
+      - name: Seed test database
+        run: node scripts/seed-test-db.js
+        env:
+          FIREBIRD_HOST: localhost
+          FIREBIRD_PORT: 3050
+          FIREBIRD_DATABASE: /firebird/data/test.fdb
+          FIREBIRD_USER: sysdba
+          FIREBIRD_PASSWORD: masterkey
+
+      - name: Compile E2E tests
+        run: tsc -p tsconfig.e2e.json --noEmitOnError false
+
+      - name: Run E2E tests
+        run: ./node_modules/.bin/mocha 'out/test/e2e/**/*.test.js' --timeout 30000
+        env:
+          FIREBIRD_HOST: localhost
+          FIREBIRD_PORT: 3050
+          FIREBIRD_DATABASE: /firebird/data/test.fdb
+          FIREBIRD_USER: sysdba
+          FIREBIRD_PASSWORD: masterkey
