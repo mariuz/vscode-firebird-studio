@@ -1,6 +1,8 @@
-import { window, Disposable, QuickInput, QuickInputButtons } from "vscode";
+import { window, Disposable, QuickInput, QuickInputButtons, QuickPickItem } from "vscode";
 import { ConnectionOptions } from "../interfaces";
 import { logger } from "../logger/logger";
+
+type ConnectionType = "network" | "embedded" | "docker";
 
 export async function connectionWizard() {
   const title = "FIREBIRD: Add New Connection";
@@ -9,15 +11,56 @@ export async function connectionWizard() {
     logger.info("Connection wizard start...");
 
     const options = {} as Partial<ConnectionOptions>;
-    await MultiStepInput.run(input => host(input, options));
+    await MultiStepInput.run(input => connectionType(input, options));
     return options as ConnectionOptions;
+  }
+
+  async function connectionType(input: MultiStepInput, options: Partial<ConnectionOptions>) {
+    const items: QuickPickItem[] = [
+      { label: "$(server) Network", description: "Connect to a Firebird server via TCP/IP" },
+      { label: "$(file-directory) Embedded", description: "Connect to a local embedded Firebird database file" },
+      { label: "$(container) Docker", description: "Connect to a Firebird server running in Docker (localhost:3050)" }
+    ];
+
+    const picked = await input.showQuickPick({
+      title,
+      step: 1,
+      totalSteps: 7,
+      items,
+      placeholder: "Select connection type",
+      ignoreFocusOut: true
+    });
+
+    if (!picked) {
+      return Promise.reject("Connection type not selected. Add Connection canceled.");
+    }
+
+    const type: ConnectionType = picked.label.includes("Embedded")
+      ? "embedded"
+      : picked.label.includes("Docker")
+      ? "docker"
+      : "network";
+
+    options.embedded = type === "embedded";
+
+    if (type === "embedded") {
+      options.host = "";
+      options.port = null;
+      return (input: MultiStepInput) => database(input, options, 2, 5);
+    } else if (type === "docker") {
+      options.host = "localhost";
+      options.port = 3050;
+      return (input: MultiStepInput) => database(input, options, 2, 6);
+    } else {
+      return (input: MultiStepInput) => host(input, options);
+    }
   }
 
   async function host(input: MultiStepInput, options: Partial<ConnectionOptions>) {
     options.host = await input.showInputBox({
       title,
-      step: 1,
-      totalSteps: 6,
+      step: 2,
+      totalSteps: 7,
       prompt: "[REQUIRED] The hostname of the database.",
       placeHolder: "e.g. 'localhost'",
       ignoreFocusOut: true
@@ -25,47 +68,70 @@ export async function connectionWizard() {
     if (!options.host) {
       return Promise.reject("Hostname cannot be empty. Add Connection canceled.");
     } else {
-      return (input: MultiStepInput) => database(input, options);
+      return (input: MultiStepInput) => database(input, options, 3, 7);
     }
   }
 
-  async function database(input: MultiStepInput, options: Partial<ConnectionOptions>) {
+  async function database(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
+    const prompt = options.embedded
+      ? "[REQUIRED] Absolute path to the local Firebird database file."
+      : "[REQUIRED] Absolute path to Firebird database on the server.";
+
     options.database = await input.showInputBox({
       title,
-      step: 2,
-      totalSteps: 6,
-      prompt: "[REQUIRED] Absolute path to Firebird database.",
-      placeHolder: "e.g. '/DB/pathtoyour/database.fdb'",
+      step,
+      totalSteps,
+      prompt,
+      placeHolder: "e.g. '/var/db/mydb.fdb'",
       ignoreFocusOut: true
     });
     if (!options.database) {
       return Promise.reject("Database cannot be empty. Add Connection canceled.");
+    } else if (options.embedded) {
+      return (input: MultiStepInput) => user(input, options, step + 1, totalSteps);
     } else {
-      return (input: MultiStepInput) => port(input, options);
+      return (input: MultiStepInput) => port(input, options, step + 1, totalSteps);
     }
   }
 
-  async function port(input: MultiStepInput, options: Partial<ConnectionOptions>) {
-    options.port = await input.showInputBox({
+  async function port(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
+    const portInput = await input.showInputBox({
       title,
-      step: 3,
-      totalSteps: 6,
+      step,
+      totalSteps,
       prompt: "[OPTIONAL] Port number. Leave empty for default.",
       placeHolder: "defaults to 3050",
       ignoreFocusOut: true
     });
-    if (!options.port) {
+    if (!portInput) {
       logger.info("Default port 3050 selected.");
-      options.port = "3050";
+      options.port = 3050;
+    } else {
+      options.port = Number.parseInt(portInput) || 3050;
     }
-    return (input: MultiStepInput) => user(input, options);
+    return (input: MultiStepInput) => user(input, options, step + 1, totalSteps);
   }
 
-  async function user(input: MultiStepInput, options: Partial<ConnectionOptions>) {
+  async function user(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
     options.user = await input.showInputBox({
       title,
-      step: 4,
-      totalSteps: 6,
+      step,
+      totalSteps,
       prompt: "[OPTIONAL] Firebird user to authenticate as. Leave empty for default.",
       placeHolder: "defaults to SYSDBA",
       ignoreFocusOut: true
@@ -74,14 +140,19 @@ export async function connectionWizard() {
       logger.info("Default user sysdba selected.");
       options.user = "sysdba";
     }
-    return (input: MultiStepInput) => password(input, options);
+    return (input: MultiStepInput) => password(input, options, step + 1, totalSteps);
   }
 
-  async function password(input: MultiStepInput, options: Partial<ConnectionOptions>) {
+  async function password(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
     options.password = await input.showInputBox({
       title,
-      step: 5,
-      totalSteps: 6,
+      step,
+      totalSteps,
       prompt: "[OPTIONAL] The password of the Firebird user. Leave empty for default.",
       placeHolder: "defaults to masterkey",
       ignoreFocusOut: true,
@@ -92,14 +163,19 @@ export async function connectionWizard() {
       logger.info("Default password masterkey selected.");
       options.password = "masterkey";
     }
-    return (input: MultiStepInput) => role(input, options);
+    return (input: MultiStepInput) => role(input, options, step + 1, totalSteps);
   }
 
-  async function role(input: MultiStepInput, options: Partial<ConnectionOptions>) {
+  async function role(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
     options.role = await input.showInputBox({
       title,
-      step: 6,
-      totalSteps: 6,
+      step,
+      totalSteps,
       prompt: "[OPTIONAL] User Role. Leave empty for default.",
       placeHolder: "Defaults to null",
       ignoreFocusOut: true
@@ -109,6 +185,37 @@ export async function connectionWizard() {
       logger.info("Default user role selected.");
       options.role = null;
     }
+
+    if (!options.embedded) {
+      return (input: MultiStepInput) => wireCrypt(input, options, step + 1, totalSteps);
+    }
+  }
+
+  async function wireCrypt(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
+    const items: QuickPickItem[] = [
+      { label: "Enabled", description: "Use wire encryption when available (default)" },
+      { label: "Required", description: "Always require wire encryption (Firebird 4.x/5.x)" },
+      { label: "Disabled", description: "Disable wire encryption" }
+    ];
+
+    const picked = await input.showQuickPick({
+      title,
+      step,
+      totalSteps,
+      items,
+      placeholder: "[OPTIONAL] Wire encryption — Firebird 4.x/5.x (leave as Enabled for older versions)",
+      ignoreFocusOut: true
+    });
+
+    if (picked && picked.label !== "Enabled") {
+      options.wireCrypt = picked.label as ConnectionOptions["wireCrypt"];
+    }
+    // Enabled is the default so we don't need to store it explicitly
   }
 
   return await collectInputs();
@@ -129,6 +236,15 @@ interface InputBoxParameters {
   placeHolder: string;
   ignoreFocusOut: boolean;
   password?: boolean;
+}
+
+interface QuickPickParameters {
+  title: string;
+  step: number;
+  totalSteps: number;
+  items: QuickPickItem[];
+  placeholder: string;
+  ignoreFocusOut: boolean;
 }
 
 class MultiStepInput {
@@ -160,6 +276,51 @@ class MultiStepInput {
     }
     if (this.current) {
       this.current.dispose();
+    }
+  }
+
+  async showQuickPick<P extends QuickPickParameters>({
+    title,
+    step,
+    totalSteps,
+    items,
+    placeholder,
+    ignoreFocusOut
+  }: P): Promise<QuickPickItem | undefined> {
+    const disposables: Disposable[] = [];
+    try {
+      return await new Promise<QuickPickItem | undefined>((resolve, reject) => {
+        const pick = window.createQuickPick<QuickPickItem>();
+        pick.title = title;
+        pick.step = step;
+        pick.totalSteps = totalSteps;
+        pick.items = items;
+        pick.placeholder = placeholder;
+        pick.ignoreFocusOut = ignoreFocusOut;
+        pick.buttons = [...(this.steps.length > 1 ? [QuickInputButtons.Back] : [])];
+        disposables.push(
+          pick.onDidTriggerButton(button => {
+            if (button === QuickInputButtons.Back) {
+              reject(InputFlowAction.back);
+            } else {
+              resolve(undefined);
+            }
+          }),
+          pick.onDidAccept(() => {
+            resolve(pick.selectedItems[0]);
+          }),
+          pick.onDidHide(() => {
+            resolve(undefined);
+          })
+        );
+        if (this.current) {
+          this.current.dispose();
+        }
+        this.current = pick;
+        this.current.show();
+      });
+    } finally {
+      disposables.forEach(d => d.dispose());
     }
   }
 

@@ -23,18 +23,15 @@ async function getAvailableConnections(context: ExtensionContext): Promise<Quick
     return Promise.reject(new Error("FIREBIRD: No saved connections found."));
   }
 
-  return Object.keys(savedConnections).map(id => ({
-    label:
-      savedConnections[id].host +
-      ":" +
-      savedConnections[id].database
-        .split("\\")
-        .pop()
-        .split("/")
-        .pop(),
-
-    detail: "connection id: " + id
-  }));
+  return Object.keys(savedConnections).map(id => {
+    const conn = savedConnections[id];
+    const dbName = conn.database.split("\\").pop().split("/").pop();
+    const location = conn.embedded ? "[embedded]" : conn.host;
+    return {
+      label: `${location}:${dbName}`,
+      detail: "connection id: " + id
+    };
+  });
 }
 
 async function showQuickPick(connections: QuickPickItem[]): Promise<QuickPickItem> {

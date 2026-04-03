@@ -7,6 +7,7 @@ import {connectionPicker} from "./shared/connection-picker";
 import {Driver} from "./shared/driver";
 import * as vscode from 'vscode';
 import {Global} from "./shared/global";
+import {CredentialStore} from "./shared/credential-store";
 import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
 import QueryResultsView from "./result-view";
@@ -14,10 +15,19 @@ import {TableDesigner} from "./table-designer";
 import MockData from "./mock-data/mock-data";
 import LanguageServer from "./language-server";
 import * as cp from 'node:child_process';
+import {formatSQL} from "./shared/sql-formatter";
+import {SqlLinter} from "./shared/sql-linter";
+import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
+import {fetchSchemaSnapshot, diffSchemas, renderDiffReport} from "./schema-diff/schema-diff";
+import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
+import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
 
 
 export function activate(context: ExtensionContext) {
   logger.info(`Activating extension ...`);
+
+  /* initialise credential store with extension context for SecretStorage access */
+  CredentialStore.setContext(context);
 
   /* load configuration and reload every time it's changed */
   logger.info(`Loading configuration...`);
@@ -40,12 +50,32 @@ export function activate(context: ExtensionContext) {
   const firebirdQueryResults = new QueryResultsView(context.extensionPath);
   const firebirdTableDesigner = new TableDesigner(context.extensionPath);
 
+  /* SQL linter */
+  const sqlLinter = new SqlLinter();
+  sqlLinter.setSchemaProvider(() => firebirdDatabaseWords.getSchema());
+  sqlLinter.activate(context);
+
+  /* Bookmarks */
+  const bookmarkProvider = new BookmarkProvider(context);
+
+  /* Query history */
+  const queryHistoryProvider = new QueryHistoryProvider(context);
+
+  /* Copilot Chat participant (@firebird) */
+  registerCopilotChatParticipant(context, firebirdDatabaseWords);
+
   context.subscriptions.push(
     window.registerTreeDataProvider(Constants.FirebirdExplorerViewId, firebirdTreeDataProvider),
+    window.registerTreeDataProvider("firebird-bookmarks", bookmarkProvider),
+    window.registerTreeDataProvider("firebird-query-history", queryHistoryProvider),
     firebirdMockData,
     firebirdQueryResults,
     firebirdTableDesigner,
     firebirdLanguageServer
+    firebirdLanguageServer,
+    sqlLinter,
+    bookmarkProvider,
+    queryHistoryProvider
   );
 
   firebirdLanguageServer.setSchemaHandler(_doc => {
@@ -111,7 +141,9 @@ export function activate(context: ExtensionContext) {
         .then(pickedConnection => {
           if (pickedConnection) {
             const id: string = pickedConnection.detail.split(": ").pop();
-            Global.setActiveConnectionById(context, id);
+            Global.setActiveConnectionById(context, id).catch(err => {
+              logger.error(err);
+            });
           }
         })
         .catch(err => {
@@ -141,17 +173,29 @@ export function activate(context: ExtensionContext) {
     })
   );
 
-  /* COMMAND: run document query */
+  /* COMMAND: run document query (batch-aware) */
   context.subscriptions.push(
     commands.registerCommand("firebird.runQuery", () => {
-      Driver.runQuery()
-        .then(res => {
-          if (res[0] && "message" in res[0]) {
-            logger.info(res[0].message);
-            logger.showInfo(res[0].message);
+      Driver.runBatch()
+        .then(batchResults => {
+          // Record in session history (one entry per statement)
+          batchResults.forEach(r => {
+            queryHistoryProvider.add({
+              sql: r.sql,
+              rowCount: r.rows?.length,
+              durationMs: r.durationMs,
+              error: r.error,
+            }).catch(err => logger.error(err));
+          });
+
+          // If every result is a DDL/DML message (no row data), show notification
+          const allMessages = batchResults.every(r => !r.rows && !r.error);
+          if (allMessages && batchResults.length === 1 && batchResults[0].message) {
+            logger.info(batchResults[0].message);
+            logger.showInfo(batchResults[0].message);
             commands.executeCommand("firebird.explorer.refresh");
           } else {
-            firebirdQueryResults.display(res, config.recordsPerPage);
+            firebirdQueryResults.displayBatch(batchResults, config.recordsPerPage);
           }
         })
         .catch(error => {
@@ -415,6 +459,240 @@ export function activate(context: ExtensionContext) {
           }
         });
       }
+    })
+  );
+
+  /* COMMAND: format SQL document */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.formatSql", async () => {
+      const editor = window.activeTextEditor;
+      if (!editor || editor.document.languageId !== 'sql') {
+        logger.showError("No SQL document is active.");
+        return;
+      }
+      const document = editor.document;
+      const text = document.getText();
+      const formatted = formatSQL(text);
+      if (formatted === text) {
+        logger.showInfo("SQL document is already formatted.");
+        return;
+      }
+      const fullRange = new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(text.length)
+      );
+      await editor.edit(editBuilder => {
+        editBuilder.replace(fullRange, formatted);
+      });
+    })
+  );
+
+  /* COMMAND: schema diff — compare two saved connections */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.schemaDiff", async () => {
+      const connections = context.globalState.get<{ [key: string]: import('./interfaces').ConnectionOptions }>(Constants.ConectionsKey);
+      if (!connections || Object.keys(connections).length < 1) {
+        logger.showError("Please add at least one database connection to use Schema Diff.");
+        return;
+      }
+
+      const allConns = Object.values(connections);
+      const items = allConns.map(c => ({
+        label: c.embedded ? `[embedded] ${c.database}` : `${c.host}: ${c.database}`,
+        detail: c.id,
+        conn: c,
+      }));
+
+      const sourcePick = await window.showQuickPick(items, { placeHolder: "Select SOURCE database" });
+      if (!sourcePick) { return; }
+
+      const targetItems = items.filter(i => i.detail !== sourcePick.detail);
+      if (targetItems.length === 0) {
+        logger.showError("You need at least two database connections for Schema Diff.");
+        return;
+      }
+      const targetPick = await window.showQuickPick(targetItems, { placeHolder: "Select TARGET database" });
+      if (!targetPick) { return; }
+
+      const maxTables = config.maxTablesCount;
+
+      try {
+        await window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: "Comparing schemas…", cancellable: false },
+          async () => {
+            const [sourceConn, targetConn] = await Promise.all([
+              import('./shared/credential-store').then(m => m.CredentialStore.getPassword(sourcePick.conn.id)),
+              import('./shared/credential-store').then(m => m.CredentialStore.getPassword(targetPick.conn.id)),
+            ]);
+            const src = { ...sourcePick.conn, password: sourceConn ?? "" };
+            const tgt = { ...targetPick.conn, password: targetConn ?? "" };
+
+            const [sourceSnapshot, targetSnapshot] = await Promise.all([
+              fetchSchemaSnapshot(src, maxTables),
+              fetchSchemaSnapshot(tgt, maxTables),
+            ]);
+
+            const diff = diffSchemas(sourceSnapshot, targetSnapshot);
+            const report = renderDiffReport(diff, sourcePick.label, targetPick.label);
+
+            const doc = await workspace.openTextDocument({ content: report, language: "plaintext" });
+            await window.showTextDocument(doc, vscode.ViewColumn.Beside);
+          }
+        );
+      } catch (err: any) {
+        logger.error(err?.message ?? err);
+        logger.showError("Schema Diff failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      }
+    })
+  );
+
+  /* COMMAND: add bookmark */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.bookmarks.add", async () => {
+      const editor = window.activeTextEditor;
+      let sql = "";
+      if (editor && editor.document.languageId === 'sql') {
+        const sel = editor.selection;
+        sql = sel.isEmpty ? editor.document.getText() : editor.document.getText(sel);
+      }
+      if (!sql.trim()) {
+        logger.showError("No SQL content to bookmark. Open or select a SQL query first.");
+        return;
+      }
+      const name = await window.showInputBox({
+        prompt: "Enter a name for this bookmark",
+        placeHolder: "e.g. List active customers",
+        validateInput: v => (v && v.trim() ? undefined : "Please enter a bookmark name."),
+      });
+      if (!name) { return; }
+      await bookmarkProvider.add(name.trim(), sql);
+      logger.showInfo(`Bookmark '${name.trim()}' saved.`);
+    })
+  );
+
+  /* COMMAND: open bookmark in editor */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.bookmarks.open", async (item: BookmarkItem) => {
+      if (!item?.bookmark?.sql) { return; }
+      await Driver.createSQLTextDocument(item.bookmark.sql);
+    })
+  );
+
+  /* COMMAND: delete bookmark */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.bookmarks.delete", async (item: BookmarkItem) => {
+      if (!item?.bookmark) { return; }
+      const confirm = await window.showWarningMessage(
+        `Delete bookmark '${item.bookmark.name}'?`, { modal: true }, "Delete"
+      );
+      if (confirm === "Delete") {
+        await bookmarkProvider.delete(item.bookmark.id);
+      }
+    })
+  );
+
+  /* COMMAND: rename bookmark */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.bookmarks.rename", async (item: BookmarkItem) => {
+      if (!item?.bookmark) { return; }
+      const newName = await window.showInputBox({
+        prompt: "Enter new bookmark name",
+        value: item.bookmark.name,
+        validateInput: v => (v && v.trim() ? undefined : "Please enter a name."),
+      });
+      if (!newName) { return; }
+      await bookmarkProvider.rename(item.bookmark.id, newName.trim());
+    })
+  );
+
+  /* COMMAND: refresh bookmarks view */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.bookmarks.refresh", () => {
+      bookmarkProvider.refresh();
+    })
+  );
+
+  /* COMMAND: show explain plan for active SQL */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.explainPlan", async () => {
+      try {
+        const plan = await Driver.getQueryPlan();
+        const doc = await workspace.openTextDocument({ content: plan, language: "plaintext" });
+        await window.showTextDocument(doc, vscode.ViewColumn.Beside);
+      } catch (err: any) {
+        logger.error(err?.message ?? err);
+        if (err?.notify) {
+          logger.showError(err.message, err.options || []).then(sel => {
+            if (sel === "New SQL Document") { commands.executeCommand("firebird.explorer.newSqlDocument"); }
+            if (sel === "Set Active Database") { commands.executeCommand("firebird.chooseActive"); }
+          });
+        } else {
+          logger.showError("Could not generate explain plan. Check logs for details.", ["Show Logs"]).then(sel => {
+            if (sel === "Show Logs") { logger.showOutput(); }
+          });
+        }
+      }
+    })
+  );
+
+  /* COMMAND: open a history entry in the editor */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.history.open", async (item: QueryHistoryItem) => {
+      if (!item?.entry?.sql) { return; }
+      await Driver.createSQLTextDocument(item.entry.sql);
+    })
+  );
+
+  /* COMMAND: run a history entry directly */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.history.run", async (item: QueryHistoryItem) => {
+      if (!item?.entry?.sql) { return; }
+      Driver.runBatch(item.entry.sql)
+        .then(batchResults => {
+          batchResults.forEach(r => {
+            queryHistoryProvider.add({ sql: r.sql, rowCount: r.rows?.length, durationMs: r.durationMs, error: r.error }).catch(() => {});
+          });
+          const allMessages = batchResults.every(r => !r.rows && !r.error);
+          if (allMessages && batchResults.length === 1 && batchResults[0].message) {
+            logger.showInfo(batchResults[0].message);
+            commands.executeCommand("firebird.explorer.refresh");
+          } else {
+            firebirdQueryResults.displayBatch(batchResults, config.recordsPerPage);
+          }
+        })
+        .catch(err => {
+          logger.error(err?.message ?? err);
+          logger.showError("Query failed. Check logs for details.", ["Show Logs"]).then(sel => {
+            if (sel === "Show Logs") { logger.showOutput(); }
+          });
+        });
+    })
+  );
+
+  /* COMMAND: delete a single history entry */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.history.delete", async (item: QueryHistoryItem) => {
+      if (!item?.entry) { return; }
+      await queryHistoryProvider.delete(item.entry.id);
+    })
+  );
+
+  /* COMMAND: clear all history */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.history.clear", async () => {
+      const confirm = await window.showWarningMessage("Clear all query history?", { modal: true }, "Clear");
+      if (confirm === "Clear") {
+        await queryHistoryProvider.clear();
+      }
+    })
+  );
+
+  /* COMMAND: refresh history view */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.history.refresh", () => {
+      queryHistoryProvider.refresh();
     })
   );
 }
