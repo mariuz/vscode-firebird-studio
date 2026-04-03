@@ -40,7 +40,8 @@
     "install-native": "npm run --prefix node_modules/node-firebird-native-api/ gyp:configure && npm run --prefix node_modules/node-firebird-native-api/ gyp:build",
     "compile": "npm run -S esbuild-build",
     "watch": "npm run -S esbuild-base -- --sourcemap --watch",
-    "tsc-watch": "tsc -watch -p ./"
+    "tsc-watch": "tsc -watch -p ./",
+    "test": "tsc -p tsconfig.test.json --noEmitOnError false; mocha 'out/test/**/*.test.js'"
   },
   "contributes": {
     "commands": [
