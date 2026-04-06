@@ -75,12 +75,14 @@ suite('E2E – Basic query execution', function () {
 
   let db: Firebird.Database;
 
-  setup(async function () {
+  suiteSetup(async function () {
     db = await attach();
   });
 
-  teardown(async function () {
-    if (db) { await detach(db); }
+  suiteTeardown(async function () {
+    const conn = db;
+    (db as any) = undefined;
+    if (conn) { await detach(conn); }
   });
 
   test('SELECT 1 returns a single row', async function () {
@@ -102,12 +104,14 @@ suite('E2E – PRODUCTS table', function () {
 
   let db: Firebird.Database;
 
-  setup(async function () {
+  suiteSetup(async function () {
     db = await attach();
   });
 
-  teardown(async function () {
-    if (db) { await detach(db); }
+  suiteTeardown(async function () {
+    const conn = db;
+    (db as any) = undefined;
+    if (conn) { await detach(conn); }
   });
 
   test('PRODUCTS table exists and has the expected columns', async function () {
@@ -178,12 +182,14 @@ suite('E2E – Query error handling', function () {
 
   let db: Firebird.Database;
 
-  setup(async function () {
+  suiteSetup(async function () {
     db = await attach();
   });
 
-  teardown(async function () {
-    if (db) { await detach(db); }
+  suiteTeardown(async function () {
+    const conn = db;
+    (db as any) = undefined;
+    if (conn) { await detach(conn); }
   });
 
   test('rejects on invalid SQL', async function () {
