@@ -29,4 +29,4 @@ jobs:
         run: tsc -p tsconfig.test.json --noEmitOnError false
 
       - name: Run unit tests
-        run: ./node_modules/.bin/mocha 'out/test/**/*.test.js' --exclude 'out/test/e2e/**'
+        run: ./node_modules/.bin/mocha --require ./out/test/setup.js 'out/test/**/*.test.js' --exclude 'out/test/e2e/**'
