@@ -1,4 +1,4 @@
-# Contributing to DB Explorer for Firebird Databases
+# Contributing to Firebird Studio for VS Code
 
 Thank you for your interest in contributing! This guide explains how to set up your development environment, coding conventions, and the process for submitting changes.
 
@@ -44,14 +44,14 @@ Please be respectful and considerate in all interactions. We follow the standard
 2. Clone your fork locally:
 
    ```bash
-   git clone https://github.com/<your-username>/vscode-db-explorer-firebird.git
-   cd vscode-db-explorer-firebird
+   git clone https://github.com/<your-username>/vscode-firebird-studio.git
+   cd vscode-firebird-studio
    ```
 
 3. Add the upstream remote so you can pull in future changes:
 
    ```bash
-   git remote add upstream https://github.com/mariuz/vscode-db-explorer-firebird.git
+   git remote add upstream https://github.com/mariuz/vscode-firebird-studio.git
    ```
 
 ### Install Dependencies
@@ -81,7 +81,7 @@ To run the extension inside a VS Code Extension Development Host:
 ## Project Structure
 
 ```
-vscode-db-explorer-firebird/
+vscode-firebird-studio/
 ├── docs/                      # Tutorials and guides
 ├── images/                    # Screenshots and banner images
 ├── resources/                 # Icons and SVG assets
@@ -184,7 +184,7 @@ When adding new features, check whether existing tests cover the affected code p
    git rebase upstream/master
    ```
 
-2. Push to your fork and open a PR against `mariuz/vscode-db-explorer-firebird:master`.
+2. Push to your fork and open a PR against `mariuz/vscode-firebird-studio:master`.
 3. Fill in the PR template (what changed and why).
 4. A maintainer will review your PR. Please respond to feedback promptly.
 
@@ -200,7 +200,7 @@ When adding new features, check whether existing tests cover the affected code p
 
 ## Reporting Bugs
 
-Use the [GitHub Issue Tracker](https://github.com/mariuz/vscode-db-explorer-firebird/issues) and choose the **Bug report** template. Please include:
+Use the [GitHub Issue Tracker](https://github.com/mariuz/vscode-firebird-studio/issues) and choose the **Bug report** template. Please include:
 
 - OS and VS Code version
 - Firebird server version

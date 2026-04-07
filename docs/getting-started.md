@@ -1,4 +1,4 @@
-# Getting Started with DB Explorer for Firebird Databases
+# Getting Started with Firebird Studio for VS Code
 
 This tutorial walks you through installing the extension, connecting to a Firebird database, and running your first query — all without leaving VS Code.
 
@@ -15,7 +15,7 @@ This tutorial walks you through installing the extension, connecting to a Firebi
 
 1. Open VS Code.
 2. Go to the **Extensions** view (`Ctrl+Shift+X`).
-3. Search for **DB Explorer for Firebird Databases**.
+3. Search for **Firebird Studio for VS Code**.
 4. Click **Install** and then **Reload** (or restart VS Code).
 
 After restarting, a **Firebird flame icon** appears in the Activity Bar on the left.

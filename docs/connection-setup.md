@@ -1,6 +1,6 @@
 # Connection Setup
 
-This guide covers every option available in the DB Explorer for Firebird Databases connection wizard, including advanced settings such as the native driver and WireCrypt encryption.
+This guide covers every option available in the Firebird Studio for VS Code connection wizard, including advanced settings such as the native driver and WireCrypt encryption.
 
 ## Opening the Connection Wizard
 
