@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="62" fill="#1a1a2e"/>
+  
+  <!-- Flame body (main) -->
+  <path d="M64 12 C64 12 44 35 44 58 C44 72 52 82 64 88 C76 82 84 72 84 58 C84 35 64 12 64 12Z" 
+        fill="url(#mainFlame)"/>
+  
+  <!-- Left wing -->
+  <path d="M44 58 C44 58 20 50 14 34 C22 42 30 46 38 52 C38 52 30 38 32 22 C36 34 38 44 44 54 
+           C44 54 24 32 26 14 C34 28 40 44 44 58Z"
+        fill="url(#leftWing)"/>
+  
+  <!-- Right wing -->
+  <path d="M84 58 C84 58 108 50 114 34 C106 42 98 46 90 52 C90 52 98 38 96 22 C92 34 90 44 84 54
+           C84 54 104 32 102 14 C94 28 88 44 84 58Z"
+        fill="url(#rightWing)"/>
+
+  <!-- Inner flame highlight -->
+  <path d="M64 28 C64 28 52 46 52 60 C52 68 57 76 64 80 C71 76 76 68 76 60 C76 46 64 28 64 28Z"
+        fill="url(#innerFlame)" opacity="0.85"/>
+
+  <!-- Tail feathers -->
+  <path d="M54 86 C54 86 48 96 42 106 C50 100 58 98 64 100 C70 98 78 100 86 106 C80 96 74 86 74 86
+           C74 86 70 90 64 90 C58 90 54 86 54 86Z"
+        fill="url(#tail)"/>
+
+  <!-- Eye highlight -->
+  <circle cx="64" cy="52" r="5" fill="#fff7e0" opacity="0.9"/>
+  <circle cx="64" cy="52" r="2.5" fill="#ff6600"/>
+  <circle cx="65.5" cy="50.5" r="1" fill="white" opacity="0.8"/>
+
+  <defs>
+    <radialGradient id="mainFlame" cx="50%" cy="70%" r="55%">
+      <stop offset="0%" stop-color="#ff9500"/>
+      <stop offset="50%" stop-color="#ff4500"/>
+      <stop offset="100%" stop-color="#cc1100"/>
+    </radialGradient>
+    <linearGradient id="leftWing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ff4400" stop-opacity="0.7"/>
+    </linearGradient>
+    <linearGradient id="rightWing" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ff4400" stop-opacity="0.7"/>
+    </linearGradient>
+    <radialGradient id="innerFlame" cx="50%" cy="60%" r="45%">
+      <stop offset="0%" stop-color="#fff0a0"/>
+      <stop offset="60%" stop-color="#ffcc00"/>
+      <stop offset="100%" stop-color="#ff8800"/>
+    </radialGradient>
+    <linearGradient id="tail" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ff6600"/>
+      <stop offset="100%" stop-color="#cc2200"/>
+    </linearGradient>
+  </defs>
+</svg>

@@ -1,6 +1,15 @@
 # Change Log
 
-All notable changes to the "vscode-db-explorer-firebird" extension will be documented in this file.
+All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
+
+## 0.1.9 - 2026-04-07
+
+### Changed
+
+- Renamed extension to **Firebird Studio for VS Code** (`vscode-firebird-studio`)
+- Updated publisher to `mariuz`, repository and bug tracker URLs to `github.com/mariuz/vscode-firebird-studio`
+- Updated logo to a new Firebird-inspired flame/phoenix icon
+- Updated README, docs, and all references to remove legacy fork branding
 
 ## 0.1.8 - 2026-03-26
 
@@ -62,7 +71,7 @@ All notable changes to the "vscode-db-explorer-firebird" extension will be docum
 
 ### Added
 
-- [SQL Mock Data Generator](https://github.com/mvitlov/vscode-db-explorer-firebird/wiki/SQL-Mock-Data-Generator)
+- [SQL Mock Data Generator](https://github.com/mariuz/vscode-firebird-studio/wiki/SQL-Mock-Data-Generator)
 
 ## 0.0.1 - 2018-11-14
 

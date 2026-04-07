@@ -1,8 +1,8 @@
 {
-  "name": "vscode-db-explorer-firebird-fork",
-  "displayName": "DB Explorer For Firebird Databases Fork",
-  "version": "0.1.6",
-  "description": "A tool for exploring and querying Firebird Databases directly inside VS Code.",
+  "name": "vscode-firebird-studio",
+  "displayName": "Firebird Studio for VS Code",
+  "version": "0.1.9",
+  "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
     "Other"
@@ -19,18 +19,18 @@
     "AI"
   ],
   "bugs": {
-    "url": "https://github.com/ninoDeme/vscode-db-explorer-firebird/issues"
+    "url": "https://github.com/mariuz/vscode-firebird-studio/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ninoDeme/vscode-db-explorer-firebird"
+    "url": "https://github.com/mariuz/vscode-firebird-studio"
   },
   "license": "MIT",
   "author": {
-    "name": "Ricardo Soares Demeterko",
-    "url": "https://github.com/ninoDeme"
+    "name": "Marius Popa Adrian",
+    "url": "https://github.com/mariuz"
   },
-  "publisher": "ninoDeme",
+  "publisher": "mariuz",
   "main": "./out/extension.js",
   "scripts": {
     "tsc-compile": "tsc -p ./",
