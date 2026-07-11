@@ -296,7 +296,7 @@ export function getIndexesQuery(tableName: string): string {
   return `SELECT TRIM(i.RDB$INDEX_NAME) AS INDEX_NAME,
                  i.RDB$UNIQUE_FLAG AS IS_UNIQUE,
                  CASE WHEN i.RDB$INDEX_INACTIVE = 1 THEN 0 ELSE 1 END AS IS_ACTIVE,
-                 LIST(TRIM(s.RDB$FIELD_NAME), ', ') AS COLUMNS
+                 CAST(LIST(TRIM(s.RDB$FIELD_NAME), ', ') AS VARCHAR(500)) AS COLUMNS
             FROM RDB$INDICES i
             JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = i.RDB$INDEX_NAME
        LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = i.RDB$INDEX_NAME
