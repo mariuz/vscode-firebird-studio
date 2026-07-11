@@ -228,9 +228,19 @@ export function getDomainsQuery(): string {
         ORDER BY 1;`; 
 }
 
+/**
+ * Max characters that fit in a CAST(... AS VARCHAR(n) CHARACTER SET UTF8): Firebird caps a
+ * single VARCHAR at 32767 bytes total (2 of which are the length prefix), and UTF8 can use up
+ * to 4 bytes/char, so 32765 / 4 = 8191. The CHARACTER SET is pinned explicitly rather than left
+ * to inherit the connection's negotiated charset (node-firebird defaults new connections to
+ * UTF8 lc_ctype) — without it, `CAST(... AS VARCHAR(32000))` needs up to 128000 bytes and fails
+ * with "SQL error code = -204, Data type unknown, Implementation limit exceeded, COLUMN".
+ */
+export const MAX_SOURCE_CAST_LENGTH = 8191;
+
 export function getProcedureBodyQuery(procedureName: string): string {
   return `SELECT TRIM(RDB$PROCEDURE_NAME) AS PROCEDURE_NAME,
-                 CAST(RDB$PROCEDURE_SOURCE AS VARCHAR(32000)) AS PROCEDURE_SOURCE
+                 CAST(RDB$PROCEDURE_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS PROCEDURE_SOURCE
             FROM RDB$PROCEDURES
            WHERE TRIM(RDB$PROCEDURE_NAME) = '${procedureName}';`;
 }
@@ -239,14 +249,14 @@ export function getTriggerBodyQuery(triggerName: string): string {
   return `SELECT TRIM(RDB$TRIGGER_NAME) AS TRIGGER_NAME,
                  TRIM(RDB$RELATION_NAME) AS TABLE_NAME,
                  RDB$TRIGGER_TYPE AS TRIGGER_TYPE,
-                 CAST(RDB$TRIGGER_SOURCE AS VARCHAR(32000)) AS TRIGGER_SOURCE
+                 CAST(RDB$TRIGGER_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS TRIGGER_SOURCE
             FROM RDB$TRIGGERS
            WHERE TRIM(RDB$TRIGGER_NAME) = '${triggerName}';`;
 }
 
 export function getViewDefinitionQuery(viewName: string): string {
   return `SELECT TRIM(RDB$RELATION_NAME) AS VIEW_NAME,
-                 CAST(RDB$VIEW_SOURCE AS VARCHAR(32000)) AS VIEW_SOURCE
+                 CAST(RDB$VIEW_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS VIEW_SOURCE
             FROM RDB$RELATIONS
            WHERE TRIM(RDB$RELATION_NAME) = '${viewName}';`;
 }

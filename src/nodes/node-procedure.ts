@@ -5,6 +5,7 @@ import {procedureParametersQuery, getProcedureBodyQuery, dropProcedureQuery} fro
 import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
+import {withTruncationWarning} from "../shared/utils";
 
 export class NodeProcedure implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly procedureName: string) {}
@@ -41,7 +42,7 @@ export class NodeProcedure implements FirebirdTree {
       const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery(this.procedureName.trim()));
       const source = rows[0]?.PROCEDURE_SOURCE ?? "";
       const scaffold = source
-        ? `ALTER PROCEDURE ${this.procedureName.trim()}\n${source.trim()}`
+        ? withTruncationWarning(source, `ALTER PROCEDURE ${this.procedureName.trim()}\n${source.trim()}`)
         : `ALTER PROCEDURE ${this.procedureName.trim()}\nAS\nBEGIN\n  /* procedure body */\nEND`;
       Driver.createSQLTextDocument(scaffold);
     } catch (err) {

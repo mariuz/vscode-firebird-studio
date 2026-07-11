@@ -4,6 +4,7 @@ import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {getTriggerBodyQuery, dropTriggerQuery} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
+import {withTruncationWarning} from "../shared/utils";
 
 export class NodeTrigger implements FirebirdTree {
   constructor(private readonly trigger: any, private readonly dbDetails?: ConnectionOptions) {}
@@ -38,7 +39,7 @@ export class NodeTrigger implements FirebirdTree {
       const rows = await Driver.client.queryPromise<any>(connection, getTriggerBodyQuery(name));
       const source = rows[0]?.TRIGGER_SOURCE ?? "";
       const scaffold = source
-        ? `ALTER TRIGGER ${name}\n${source.trim()}`
+        ? withTruncationWarning(source, `ALTER TRIGGER ${name}\n${source.trim()}`)
         : `ALTER TRIGGER ${name}\nACTIVE BEFORE INSERT ON /* table_name */\nAS\nBEGIN\n  /* trigger body */\nEND`;
       Driver.createSQLTextDocument(scaffold);
     } catch (err) {

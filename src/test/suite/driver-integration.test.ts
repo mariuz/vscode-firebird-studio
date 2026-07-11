@@ -16,6 +16,7 @@
 
 import * as assert from 'assert';
 import { Driver, NodeClient } from '../../shared/driver';
+import { getProcedureBodyQuery, getTriggerBodyQuery, getViewDefinitionQuery } from '../../shared/queries';
 import { getTestConnectionOptions } from './firebird-test-env';
 
 suite('Driver – real Firebird integration (extension host)', function () {
@@ -142,6 +143,64 @@ suite('Driver – real Firebird integration (extension host)', function () {
       assert.strictEqual(Number(results[1].rows![0].OUT1), 42);
     } finally {
       await Driver.runQuery('DROP PROCEDURE DRIVER_IT_DOUBLE', getTestConnectionOptions()).catch(() => { /* best-effort cleanup */ });
+    }
+  });
+
+  // ── Fetching DDL source for editing (procedure/trigger/view) ───────────────
+  //
+  // Regression coverage for "SQL error code = -204, Data type unknown,
+  // Implementation limit exceeded, COLUMN": NodeProcedure/NodeTrigger/NodeView's
+  // "edit source" actions fetch RDB$*_SOURCE via CAST(... AS VARCHAR(n)) —
+  // these tests run those exact queries against a real Firebird server, whose
+  // default connection charset (UTF8) is what caused the CAST to overflow
+  // Firebird's 32767-byte column limit before the fix pinned CHARACTER SET
+  // UTF8 explicitly with a charset-safe length.
+
+  test('fetches a stored procedure\'s source without a -204 "Implementation limit exceeded" error', async function () {
+    const conn = getTestConnectionOptions();
+    await Driver.runQuery(
+      'CREATE PROCEDURE DRIVER_IT_SRC_PROC AS BEGIN\n  SUSPEND;\nEND',
+      conn
+    );
+    try {
+      const connection = await Driver.client.createConnection(conn);
+      const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery('DRIVER_IT_SRC_PROC'));
+      await Driver.client.detach(connection);
+      assert.strictEqual(rows.length, 1);
+      assert.ok(rows[0].PROCEDURE_SOURCE.includes('SUSPEND'), rows[0].PROCEDURE_SOURCE);
+    } finally {
+      await Driver.runQuery('DROP PROCEDURE DRIVER_IT_SRC_PROC', conn).catch(() => { /* best-effort cleanup */ });
+    }
+  });
+
+  test('fetches a trigger\'s source without a -204 error', async function () {
+    const conn = getTestConnectionOptions();
+    await Driver.runQuery(
+      'CREATE TRIGGER DRIVER_IT_SRC_TRIG FOR PRODUCTS ACTIVE BEFORE INSERT POSITION 0 AS BEGIN\n  IF (NEW.ID IS NULL) THEN NEW.ID = 0;\nEND',
+      conn
+    );
+    try {
+      const connection = await Driver.client.createConnection(conn);
+      const rows = await Driver.client.queryPromise<any>(connection, getTriggerBodyQuery('DRIVER_IT_SRC_TRIG'));
+      await Driver.client.detach(connection);
+      assert.strictEqual(rows.length, 1);
+      assert.ok(rows[0].TRIGGER_SOURCE.includes('NEW.ID'), rows[0].TRIGGER_SOURCE);
+    } finally {
+      await Driver.runQuery('DROP TRIGGER DRIVER_IT_SRC_TRIG', conn).catch(() => { /* best-effort cleanup */ });
+    }
+  });
+
+  test('fetches a view\'s source without a -204 error', async function () {
+    const conn = getTestConnectionOptions();
+    await Driver.runQuery('CREATE VIEW DRIVER_IT_SRC_VIEW AS SELECT ID, NAME FROM PRODUCTS', conn);
+    try {
+      const connection = await Driver.client.createConnection(conn);
+      const rows = await Driver.client.queryPromise<any>(connection, getViewDefinitionQuery('DRIVER_IT_SRC_VIEW'));
+      await Driver.client.detach(connection);
+      assert.strictEqual(rows.length, 1);
+      assert.ok(rows[0].VIEW_SOURCE.includes('PRODUCTS'), rows[0].VIEW_SOURCE);
+    } finally {
+      await Driver.runQuery('DROP VIEW DRIVER_IT_SRC_VIEW', conn).catch(() => { /* best-effort cleanup */ });
     }
   });
 });

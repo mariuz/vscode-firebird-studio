@@ -6,6 +6,7 @@ import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
+import {withTruncationWarning} from "../shared/utils";
 
 export class NodeView implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly viewName: string) {}
@@ -53,7 +54,7 @@ export class NodeView implements FirebirdTree {
       const rows = await Driver.client.queryPromise<any>(connection, getViewDefinitionQuery(this.viewName.trim()));
       const source = rows[0]?.VIEW_SOURCE ?? "";
       const scaffold = source
-        ? `ALTER VIEW ${this.viewName.trim()} AS\n${source.trim()}`
+        ? withTruncationWarning(source, `ALTER VIEW ${this.viewName.trim()} AS\n${source.trim()}`)
         : `ALTER VIEW ${this.viewName.trim()} AS\nSELECT /* column_list */ FROM /* table_name */`;
       Driver.createSQLTextDocument(scaffold);
     } catch (err) {
