@@ -1,0 +1,80 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project overview
+
+Firebird Studio is a VS Code extension (publisher `AdrianMariusPopa`) for exploring, querying, and managing Firebird&reg; databases from inside VS Code: a connection tree explorer, SQL editing (completion, snippets, linting, formatting), a query results webview, mock data generation, schema diffing, and an optional `@firebird` Copilot Chat participant.
+
+## Commands
+
+```bash
+npm install                          # install dependencies
+npm run compile                      # bundle extension with esbuild -> out/extension.js
+npm run watch                        # esbuild in watch mode
+npm run tsc-compile                  # tsc type-check only (reference — has known pre-existing errors, doesn't gate builds)
+
+npx eslint src --ext .ts             # lint
+
+npm run test                         # unit tests (mocked vscode module, no VS Code needed)
+npm run test:e2e                     # e2e tests against a real Firebird server
+npm run test:vscode-host             # suite tests inside a real VS Code Extension Development Host
+```
+
+To run a single unit test file directly (faster iteration than the full `npm run test`):
+
+```bash
+tsc -p tsconfig.test.json --noEmitOnError false
+./node_modules/.bin/mocha --require ./out/test/setup.js out/test/sql-formatter.test.js
+```
+
+Press `F5` in VS Code to launch an Extension Development Host with the extension loaded for manual testing.
+
+## Three-tier test setup
+
+There are three independent test configs/suites — don't mix them up:
+
+1. **Unit tests** (`src/test/*.test.ts`, excludes `e2e/` and `suite/`) — compiled via `tsconfig.test.json`, run with plain Mocha. They run outside VS Code entirely: `src/test/setup.ts` patches `Module._load` so that `require('vscode')` resolves to the hand-written stub at `src/test/mocks/vscode.ts` instead of the real API. When code under test calls a `vscode` API that isn't stubbed yet, add it to that mock rather than pulling in the real module. `tsconfig.test.json`'s `include` list enumerates exactly which `src/` files are compiled for this suite — new files under test must be added there.
+2. **E2E tests** (`src/test/e2e/*.test.ts`, `tsconfig.e2e.json`) — connect to a real Firebird server via `node-firebird` directly (no VS Code, no extension code). Configured entirely through env vars: `FIREBIRD_HOST`, `FIREBIRD_PORT`, `FIREBIRD_DATABASE`, `FIREBIRD_USER`, `FIREBIRD_PASSWORD` (see `src/test/e2e/firebird-connection.test.ts` for defaults). `scripts/seed-test-db.js` creates and seeds the schema these tests expect; the GitHub Actions e2e workflow runs it before the suite.
+3. **VS Code host suite** (`src/test/suite/*.test.ts`, `tsconfig.suite.json`) — runs inside a real Extension Development Host via `@vscode/test-cli` (`.vscode-test.mjs`). Verifies actual activation and command registration (`extension.test.ts` looks up the extension by id `AdrianMariusPopa.vscode-firebird-studio` — keep this in sync with `package.json`'s `publisher.name`). The Copilot Chat participant is registered conditionally (`typeof vscode.chat !== 'undefined'`) specifically so this suite's activation test doesn't depend on `github.copilot-chat` being installed.
+
+CI (`.github/workflows/ci.yml`) only runs the unit-test tier; e2e and vscode-host each have their own workflow.
+
+## Architecture
+
+**Entry point**: `src/extension.ts#activate()` wires everything together — it builds each provider/service, pushes it onto `context.subscriptions`, and registers every `firebird.*` command. This is the map to read first when tracing how a UI action reaches the database.
+
+**Driver abstraction** (`src/shared/driver.ts`): all SQL execution goes through the static `Driver` class, which delegates to one of two interchangeable `ClientI` implementations selected by the `firebird.useNativeDriver` setting:
+- `NodeClient` wraps the pure-JS `node-firebird` package (default; no native compilation needed).
+- `NativeClient` wraps `node-firebird-driver-native` / `node-firebird-native-api` (required for WireCrypt support). If its native binary isn't built yet, it triggers the `firebird.buildNative` command, which shells out to `npm run install-native` (a node-gyp build).
+
+`Driver.runBatch()` splits multi-statement SQL via `sql-splitter.ts` and executes each statement independently, returning one `BatchResult` per statement (used by both `firebird.runQuery` and bookmark/history re-run commands). `Driver.getQueryPlan()` uses the native driver's real `EXPLAIN PLAN` API when available, and falls back to a heuristic index-metadata query built from `extractTableNames()` when using the pure-JS driver.
+
+**Connection/credential state**:
+- `Global` (`src/shared/global.ts`) holds the single in-memory `activeConnection` and drives the status bar item.
+- Saved connections (host/port/db/user, *not* password) live in `context.globalState` keyed by `Constants.ConectionsKey`.
+- Passwords never touch `globalState` — they're stored/retrieved through `CredentialStore` (`src/shared/credential-store.ts`), a thin wrapper over VS Code's `SecretStorage`, keyed by `firebird.password.<connectionId>`. Anywhere a `ConnectionOptions` is read back from `globalState`, its password must be re-resolved via `CredentialStore.getPassword()`/`Driver`'s internal `resolvePassword()` before use.
+
+**Tree explorer** (`src/firebirdTreeDataProvider.ts` + `src/nodes/`): implements VS Code's `TreeDataProvider<FirebirdTree>`. `FirebirdTree` (in `src/interfaces`) is the common node interface — each node type (`NodeHost` → `NodeDatabase` → category folders → `NodeTable`/`NodeView`/`NodeProcedure`/`NodeTrigger`/`NodeGenerator`/`NodeDomain` → `NodeField`) implements `getTreeItem()`/`getChildren()` and lazily queries Firebird system tables (via `Driver.client` directly) to populate its children on expand. Node classes also own the SQL-building logic for their own actions (e.g. `NodeTable.dropTable()`, `.selectAllRecords()`), sourced from canned queries in `src/shared/queries.ts`.
+
+**Other feature modules**, each self-contained and wired up in `extension.ts`:
+- `src/language-server/` — completion provider for reserved words, table/field names (`completionProvider.ts`, `db-words.provider.ts`, `firebird-reserved.ts`).
+- `src/shared/sql-linter.ts`, `sql-formatter.ts`, `sql-splitter.ts` — SQL diagnostics, formatting, and statement splitting; pure functions, easiest place to add SQL-parsing logic and unit-test it in isolation.
+- `src/result-view/` — webview that renders query results (pagination, sort/filter, export to JSON/CSV/XLSX/PDF).
+- `src/table-designer/` — visual DDL table designer webview.
+- `src/mock-data/` — Mockaroo API integration for generating mock rows.
+- `src/schema-diff/` — fetches schema snapshots from two saved connections and renders a text diff report.
+- `src/bookmarks/`, `src/query-history/` — separate `TreeDataProvider`s persisted in `context.globalState`, for saved queries and session run history respectively.
+- `src/copilot/` — the `@firebird` Copilot Chat participant (`/query`, `/optimize`, `/explain` slash commands); `schema-context.ts` serializes the current DB schema into the system prompt. Only registered when `vscode.chat` exists at runtime (see test-tier note above) — the extension has no hard `extensionDependencies` on Copilot Chat.
+- `src/config/` — typed wrapper (`getOptions()`) over VS Code settings under the `firebird.*` namespace, with per-setting validation/fallback to `package.json`'s declared defaults. Re-read on every `onDidChangeConfiguration`.
+- `src/logger/logger.ts` — central logger (output channel + optional user-facing notifications); respects the `firebird.logLevel` setting.
+
+**Build**: esbuild bundles `src/extension.ts` to a single `out/extension.js` (CJS, Node platform), externalizing `vscode` and `node-firebird-native-api` (the latter has a native `.node` binary that can't be bundled). `npm run tsc-compile` is a separate, non-blocking type-check pass — it is *not* part of `compile`/`vscode:prepublish` and is known to have pre-existing errors.
+
+## Coding conventions
+
+- TypeScript throughout; prefer explicit types over `any` where practical (ESLint doesn't enforce this — `no-explicit-any` and `no-unused-vars` are disabled project-wide).
+- `const` over `let`; no `var`.
+- `async/await` over raw `Promise` chains.
+- Conventional commits: `<type>(<scope>): <summary>` with types `feat|fix|docs|refactor|test|chore`.
+- User-facing changes need a `CHANGELOG.md` entry.
