@@ -8,18 +8,27 @@ on:
 
 jobs:
   e2e-tests:
-    name: E2E Tests (Firebird 5)
+    name: E2E Tests (Node ${{ matrix.node }}, Firebird ${{ matrix.firebird }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24, 25, 26]
+        firebird: [3, 4, 5, '6-snapshot']
+
     services:
       firebird:
-        image: firebirdsql/firebird:5
+        image: firebirdsql/firebird:${{ matrix.firebird }}
         env:
           FIREBIRD_ROOT_PASSWORD: masterkey
           FIREBIRD_DATABASE: test.fdb
           FIREBIRD_CONF_WireCrypt: Disabled
+          # Firebird 3 defaults to Legacy_Auth only, 4+ defaults to Srp; accept both so the
+          # same client config works unmodified across the whole version matrix.
+          FIREBIRD_CONF_AuthServer: "Legacy_Auth;Srp;Win_Sspi"
         ports:
           - 3050:3050
         options: >-
@@ -39,10 +48,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 22
+      - name: Set up Node.js ${{ matrix.node }}
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node }}
 
       - name: Install dependencies
         run: npm install
@@ -80,3 +89,13 @@ jobs:
           FIREBIRD_DATABASE: /var/lib/firebird/data/test.fdb
           FIREBIRD_USER: sysdba
           FIREBIRD_PASSWORD: masterkey
+
+      - name: Show Firebird container log on failure
+        if: failure()
+        run: |
+          container="$(docker ps -aq --filter ancestor=firebirdsql/firebird:${{ matrix.firebird }} | head -n1)"
+          if [ -n "$container" ]; then
+            docker logs "$container" --tail 100
+          else
+            echo "Could not find the Firebird service container."
+          fi
