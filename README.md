@@ -33,6 +33,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - Export results to **JSON**, **CSV**, **XSLX** or **PDF** file
 - **Session query history** — every query you run is logged automatically (with the database it ran against, row count/duration, and any error), and can be reopened or re-run from the **History** view
 - **Editable result grids** — enable editing on any result set to update cells, add rows, or mark rows for deletion, then apply the changes directly to the database (primary-key aware, with a confirmation before anything is written)
+- **Schema visualizer** — an interactive entity-relationship diagram of a database's tables, columns, and foreign key relationships, with pan/zoom, auto-layout, and a minimap
 
 ## Getting Started
 
@@ -58,6 +59,17 @@ For advanced options (native driver, WireCrypt) see **[docs/connection-setup.md]
 Expand the database node to see category folders: **Tables**, **Views**, **Stored Procedures**, **Triggers**, **Generators**, and **Domains**. Expand any table to see its columns with data types.
 
 > **Tip:** Right-clicking a tree node shows available actions such as **Select All Records**, **Show Table Info**, or **New Query**.
+
+### Visualizing the Schema
+
+Right-click a database node → **Visualize Schema** to open an entity-relationship diagram of every table, its columns, and its foreign key relationships (primary key columns are marked).
+
+- **Pan**: drag an empty area of the canvas. **Zoom**: scroll wheel, or the **+**/**−** buttons.
+- **Fit to View** zooms and centers so every table is visible; the **minimap** in the corner shows your position in a large schema, and is clickable to jump around.
+- Drag a table to reposition it; **Auto Layout** recalculates positions for the whole diagram.
+- The diagram doesn't update automatically after schema changes — use **Refresh** to reload it.
+
+Firebird doesn't have PostgreSQL-style schemas/namespaces, so unlike similar tools this always shows the whole database rather than one schema at a time.
 
 ### Set an Active Database
 

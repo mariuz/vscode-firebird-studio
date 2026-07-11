@@ -298,6 +298,69 @@ export function getPrimaryKeyColumnsQuery(tableName: string): string {
         ORDER BY s.RDB$FIELD_POSITION;`;
 }
 
+/**
+ * Returns every column of every table in the database, one row per column, with a primary-key
+ * flag — used by the schema visualizer to build all its table nodes in a single round trip
+ * instead of one tableInfoQuery() per table.
+ */
+export function getSchemaColumnsQuery(): string {
+  return `SELECT TRIM(r.RDB$RELATION_NAME) AS TABLE_NAME,
+                 TRIM(r.RDB$FIELD_NAME) AS FIELD_NAME,
+                 CASE f.RDB$FIELD_TYPE
+                   WHEN 261 THEN 'BLOB'
+                   WHEN 14  THEN 'CHAR'
+                   WHEN 40  THEN 'CSTRING'
+                   WHEN 11  THEN 'D_FLOAT'
+                   WHEN 27  THEN 'DOUBLE'
+                   WHEN 10  THEN 'FLOAT'
+                   WHEN 16  THEN 'INT64'
+                   WHEN 8   THEN 'INTEGER'
+                   WHEN 9   THEN 'QUAD'
+                   WHEN 7   THEN 'SMALLINT'
+                   WHEN 12  THEN 'DATE'
+                   WHEN 13  THEN 'TIME'
+                   WHEN 35  THEN 'TIMESTAMP'
+                   WHEN 37  THEN 'VARCHAR'
+                   ELSE 'UNKNOWN'
+                 END AS FIELD_TYPE,
+                 f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+                 CASE WHEN r.RDB$NULL_FLAG = 1 THEN 1 ELSE 0 END AS NOT_NULL,
+                 r.RDB$FIELD_POSITION AS FIELD_POSITION,
+                 CASE WHEN pk.RDB$FIELD_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PRIMARY_KEY
+            FROM RDB$RELATION_FIELDS r
+            JOIN RDB$RELATIONS rel ON rel.RDB$RELATION_NAME = r.RDB$RELATION_NAME
+       LEFT JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = r.RDB$FIELD_SOURCE
+       LEFT JOIN (
+                 SELECT s.RDB$FIELD_NAME, rc.RDB$RELATION_NAME
+                   FROM RDB$RELATION_CONSTRAINTS rc
+                   JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = rc.RDB$INDEX_NAME
+                  WHERE rc.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'
+               ) pk ON pk.RDB$RELATION_NAME = r.RDB$RELATION_NAME AND pk.RDB$FIELD_NAME = r.RDB$FIELD_NAME
+           WHERE rel.RDB$VIEW_BLR IS NULL
+             AND (rel.RDB$SYSTEM_FLAG IS NULL OR rel.RDB$SYSTEM_FLAG = 0)
+        ORDER BY TABLE_NAME, r.RDB$FIELD_POSITION;`;
+}
+
+/**
+ * Returns every foreign key relationship in the database (FK column(s) -> referenced table and
+ * column(s)), pairing up composite-key columns by their position within the key — used to draw
+ * relationship lines in the schema visualizer.
+ */
+export function getForeignKeysQuery(): string {
+  return `SELECT TRIM(rc.RDB$RELATION_NAME) AS TABLE_NAME,
+                 TRIM(seg.RDB$FIELD_NAME) AS COLUMN_NAME,
+                 TRIM(rc.RDB$CONSTRAINT_NAME) AS CONSTRAINT_NAME,
+                 TRIM(rc2.RDB$RELATION_NAME) AS REF_TABLE_NAME,
+                 TRIM(seg2.RDB$FIELD_NAME) AS REF_COLUMN_NAME
+            FROM RDB$REF_CONSTRAINTS refc
+            JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$CONSTRAINT_NAME = refc.RDB$CONSTRAINT_NAME
+            JOIN RDB$INDEX_SEGMENTS seg ON seg.RDB$INDEX_NAME = rc.RDB$INDEX_NAME
+            JOIN RDB$RELATION_CONSTRAINTS rc2 ON rc2.RDB$CONSTRAINT_NAME = refc.RDB$CONST_NAME_UQ
+            JOIN RDB$INDEX_SEGMENTS seg2 ON seg2.RDB$INDEX_NAME = rc2.RDB$INDEX_NAME
+                                         AND seg2.RDB$FIELD_POSITION = seg.RDB$FIELD_POSITION
+        ORDER BY TABLE_NAME, CONSTRAINT_NAME, seg.RDB$FIELD_POSITION;`;
+}
+
 export const monitorConnectionsQuery: string = `
   SELECT mon.MON$ATTACHMENT_ID AS ATTACHMENT_ID,
          mon.MON$USER AS USER_NAME,

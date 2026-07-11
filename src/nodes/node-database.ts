@@ -10,6 +10,7 @@ import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
 import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, monitorConnectionsQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
+import {SchemaVisualizer} from "../schema-visualizer";
 import * as cp from 'node:child_process';
 
 
@@ -115,6 +116,11 @@ export class NodeDatabase implements FirebirdTree {
       .catch(err => {
         logger.error(err);
       });
+  }
+
+  // open the entity-relationship diagram (tables, columns, foreign keys) for this database
+  public visualizeSchema(schemaVisualizer: SchemaVisualizer): void {
+    schemaVisualizer.open(this.dbDetails);
   }
 
   // delete database connection details and remove it from explorer view

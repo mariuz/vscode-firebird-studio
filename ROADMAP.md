@@ -5,7 +5,7 @@ This document outlines the planned features and improvements for the **Firebird 
 ## Enhanced Object Explorer
 
 - [ ] Expand tree view to include views, stored procedures, triggers, generators/sequences, domains, exceptions, and roles
-- [ ] Add schema visualization — right-click a database to see a visual diagram of tables, relationships, and objects
+- [x] Add schema visualization — right-click a database to see a visual diagram of tables, relationships, and objects
 - [ ] Show column types, constraints (primary key, foreign key, not null, unique) inline in the tree view
 - [ ] Display system tables and metadata tables with a toggle option
 

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebird Schema Visualizer</title>
+  <link type="text/css" rel="stylesheet" href="/css/app.css" media="screen,projection" />
+</head>
+<body>
+  <div id="toolbar">
+    <button id="btn-refresh" title="Reload the schema from the database">Refresh</button>
+    <button id="btn-auto-layout" title="Recalculate table positions">Auto Layout</button>
+    <button id="btn-fit" title="Zoom and center so every table is visible">Fit to View</button>
+    <span class="zoom-controls">
+      <button id="btn-zoom-out" title="Zoom out">−</button>
+      <button id="btn-zoom-in" title="Zoom in">+</button>
+    </span>
+    <span id="status"></span>
+  </div>
+
+  <div id="canvas-wrapper">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="fb-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L8,4 L0,8 Z" class="fb-arrow-head"></path>
+        </marker>
+      </defs>
+      <g id="viewport">
+        <g id="edges"></g>
+        <g id="nodes"></g>
+      </g>
+    </svg>
+    <svg id="minimap" xmlns="http://www.w3.org/2000/svg">
+      <g id="minimap-nodes"></g>
+      <rect id="minimap-viewport"></rect>
+    </svg>
+    <div id="loading">Loading schema…</div>
+    <div id="error-banner" style="display:none;"></div>
+    <div id="empty-banner" style="display:none;">No tables found in this database.</div>
+  </div>
+
+  <script type="text/javascript" src="/js/app.js"></script>
+</body>
+</html>

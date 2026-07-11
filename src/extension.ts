@@ -12,6 +12,7 @@ import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
 import QueryResultsView from "./result-view";
 import {TableDesigner} from "./table-designer";
+import {SchemaVisualizer} from "./schema-visualizer";
 import MockData from "./mock-data/mock-data";
 import LanguageServer from "./language-server";
 import * as cp from 'node:child_process';
@@ -49,6 +50,7 @@ export function activate(context: ExtensionContext) {
   const firebirdMockData = new MockData(context.extensionPath);
   const firebirdQueryResults = new QueryResultsView(context.extensionPath);
   const firebirdTableDesigner = new TableDesigner(context.extensionPath);
+  const firebirdSchemaVisualizer = new SchemaVisualizer(context.extensionPath);
 
   /* SQL linter */
   const sqlLinter = new SqlLinter();
@@ -78,6 +80,7 @@ export function activate(context: ExtensionContext) {
     firebirdMockData,
     firebirdQueryResults,
     firebirdTableDesigner,
+    firebirdSchemaVisualizer,
     firebirdLanguageServer,
     sqlLinter,
     bookmarkProvider,
@@ -484,6 +487,13 @@ export function activate(context: ExtensionContext) {
       await editor.edit(editBuilder => {
         editBuilder.replace(fullRange, formatted);
       });
+    })
+  );
+
+  /* DB ITEM: visualize schema — entity-relationship diagram for a database */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.schemaVisualizer.open", (databaseNode: NodeDatabase) => {
+      databaseNode.visualizeSchema(firebirdSchemaVisualizer);
     })
   );
 
