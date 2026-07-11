@@ -13,7 +13,7 @@
 
 import * as assert from 'assert';
 import * as Firebird from 'node-firebird';
-import { Driver, ClientI, extractTableNames, toNodeFirebirdOptions } from '../shared/driver';
+import { Driver, ClientI, HistoryLogEntry, extractTableNames, toNodeFirebirdOptions } from '../shared/driver';
 import { ConnectionOptions } from '../interfaces';
 
 // ── Driver.constructResponse ──────────────────────────────────────────────────
@@ -205,7 +205,7 @@ class FakeClient implements ClientI<any> {
   }
 }
 
-function baseConnectionOptions(): ConnectionOptions {
+function baseConnectionOptions(overrides: Partial<ConnectionOptions> = {}): ConnectionOptions {
   return {
     id: 'test',
     host: 'localhost',
@@ -214,6 +214,7 @@ function baseConnectionOptions(): ConnectionOptions {
     user: 'sysdba',
     password: 'masterkey',
     role: null,
+    ...overrides,
   };
 }
 
@@ -347,5 +348,143 @@ suite('Driver.runBatch() (fake client, no live database)', function () {
     assert.ok(results[0].sql.startsWith('CREATE PROCEDURE MY_PROC'));
     assert.ok(results[0].message?.includes('Create'));
     assert.deepStrictEqual(results[1].rows, [{ RESULT: 42 }]);
+  });
+});
+
+// ── Driver.runQuery() (fake client, no live database) ───────────────────────
+
+suite('Driver.runQuery() (fake client, no live database)', function () {
+  const originalClient = Driver.client;
+
+  teardown(function () {
+    Driver.client = originalClient;
+  });
+
+  test('rejects when neither sql nor an active editor is available', async function () {
+    Driver.client = new FakeClient(() => []);
+    await assert.rejects(
+      Driver.runQuery(undefined, baseConnectionOptions()),
+      (err: any) => {
+        assert.strictEqual(err.notify, true);
+        assert.match(err.message, /No SQL document opened/);
+        return true;
+      }
+    );
+  });
+
+  test('returns rows for a SELECT', async function () {
+    Driver.client = new FakeClient(() => [{ ONE: 1 }]);
+    const rows = await Driver.runQuery('SELECT 1 AS ONE FROM RDB$DATABASE', baseConnectionOptions());
+    assert.deepStrictEqual(rows, [{ ONE: 1 }]);
+  });
+
+  test('returns a success message for a DDL/DML statement (undefined rows)', async function () {
+    Driver.client = new FakeClient(() => undefined);
+    const result = await Driver.runQuery('DROP TABLE T', baseConnectionOptions());
+    assert.ok(Array.isArray(result));
+    assert.ok(result[0].message.includes('Drop'));
+  });
+
+  test('rejects and propagates the underlying error', async function () {
+    Driver.client = new FakeClient(() => { throw new Error('connection refused'); });
+    await assert.rejects(
+      Driver.runQuery('SELECT 1', baseConnectionOptions()),
+      /connection refused/
+    );
+  });
+
+  test('detaches the connection even when the query throws', async function () {
+    const fake = new FakeClient(() => { throw new Error('boom'); });
+    Driver.client = fake;
+    await Driver.runQuery('SELECT 1', baseConnectionOptions()).catch(() => { /* expected */ });
+    assert.strictEqual(fake.detachCalls, 1);
+  });
+});
+
+// ── Automatic session history logging ────────────────────────────────────────
+//
+// Driver.setHistoryLogger() is how extension.ts wires Driver's execution
+// paths (runQuery/runBatch) up to QueryHistoryProvider — every query
+// executed through Driver, whether typed by hand or triggered from a
+// tree-node context-menu action (Select All Records, Drop Table, etc.),
+// should be recorded automatically, including its connection context and
+// whether it failed.
+
+suite('Driver – automatic history logging', function () {
+  const originalClient = Driver.client;
+  const originalLogger = Driver.historyLogger;
+
+  teardown(function () {
+    Driver.client = originalClient;
+    Driver.historyLogger = originalLogger;
+  });
+
+  test('runQuery logs a successful SELECT with row count and connection context', async function () {
+    Driver.client = new FakeClient(() => [{ A: 1 }, { A: 2 }]);
+    const logged: HistoryLogEntry[] = [];
+    Driver.setHistoryLogger(e => logged.push(e));
+
+    await Driver.runQuery('SELECT A FROM T', baseConnectionOptions({ id: 'conn-1', host: 'db1', database: '/data/one.fdb' }));
+
+    assert.strictEqual(logged.length, 1);
+    assert.strictEqual(logged[0].sql, 'SELECT A FROM T');
+    assert.strictEqual(logged[0].rowCount, 2);
+    assert.strictEqual(logged[0].error, undefined);
+    assert.strictEqual(logged[0].connectionId, 'conn-1');
+    assert.strictEqual(logged[0].connectionLabel, 'db1:one.fdb');
+    assert.ok(logged[0].durationMs >= 0);
+  });
+
+  test('runQuery logs a DDL/DML statement with no rowCount', async function () {
+    Driver.client = new FakeClient(() => undefined);
+    const logged: HistoryLogEntry[] = [];
+    Driver.setHistoryLogger(e => logged.push(e));
+
+    await Driver.runQuery('DROP TABLE T', baseConnectionOptions());
+
+    assert.strictEqual(logged.length, 1);
+    assert.strictEqual(logged[0].rowCount, undefined);
+    assert.strictEqual(logged[0].error, undefined);
+  });
+
+  test('runQuery logs a failed statement with the error message', async function () {
+    Driver.client = new FakeClient(() => { throw new Error('table NOPE does not exist'); });
+    const logged: HistoryLogEntry[] = [];
+    Driver.setHistoryLogger(e => logged.push(e));
+
+    await Driver.runQuery('SELECT * FROM NOPE', baseConnectionOptions()).catch(() => { /* expected */ });
+
+    assert.strictEqual(logged.length, 1);
+    assert.strictEqual(logged[0].error, 'table NOPE does not exist');
+    assert.strictEqual(logged[0].rowCount, undefined);
+  });
+
+  test('runBatch logs one history entry per statement', async function () {
+    const fake = new FakeClient(sql => (sql.includes('NOPE') ? Promise.reject(new Error('nope')) : [{ OK: 1 }]));
+    Driver.client = fake;
+    const logged: HistoryLogEntry[] = [];
+    Driver.setHistoryLogger(e => logged.push(e));
+
+    await Driver.runBatch('SELECT 1 FROM T; SELECT * FROM NOPE;', baseConnectionOptions());
+
+    assert.strictEqual(logged.length, 2);
+    assert.strictEqual(logged[0].error, undefined);
+    assert.strictEqual(logged[1].error, 'nope');
+  });
+
+  test('does not throw when no history logger is registered', async function () {
+    Driver.client = new FakeClient(() => [{ A: 1 }]);
+    Driver.historyLogger = undefined;
+    await assert.doesNotReject(Driver.runQuery('SELECT 1', baseConnectionOptions()));
+  });
+
+  test('validation failures (no active connection/editor) are not logged', async function () {
+    Driver.client = new FakeClient(() => []);
+    const logged: HistoryLogEntry[] = [];
+    Driver.setHistoryLogger(e => logged.push(e));
+
+    await Driver.runQuery(undefined, undefined).catch(() => { /* expected */ });
+
+    assert.strictEqual(logged.length, 0, 'nothing was actually executed, so nothing should be logged');
   });
 });

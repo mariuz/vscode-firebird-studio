@@ -9,6 +9,7 @@ import {CredentialStore} from "../shared/credential-store";
 import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
 import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, monitorConnectionsQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
+import {getDatabaseFileName} from "../shared/utils";
 import * as cp from 'node:child_process';
 
 
@@ -19,9 +20,7 @@ export class NodeDatabase implements FirebirdTree {
   // list databases grouped by host names
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
-      label: (this.dbDetails.database.split("\\").pop() ?? this.dbDetails.database)
-        .split("/")
-        .pop(),
+      label: getDatabaseFileName(this.dbDetails.database),
       collapsibleState: TreeItemCollapsibleState.Collapsed,
       contextValue: "database",
       tooltip: `[DATABASE] ${this.dbDetails.database}`,

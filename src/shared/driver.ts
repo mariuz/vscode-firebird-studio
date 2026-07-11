@@ -4,7 +4,7 @@ import {Global} from "./global";
 import {ConnectionOptions} from "../interfaces";
 import {logger} from "../logger/logger";
 import type { Attachment, Client, ResultSet} from 'node-firebird-driver-native';
-import {simpleCallbackToPromise} from './utils';
+import {simpleCallbackToPromise, getConnectionLabel} from './utils';
 import {CredentialStore} from './credential-store';
 import {splitStatements} from './sql-splitter';
 import * as fs from 'fs';
@@ -24,6 +24,16 @@ export interface BatchResult {
   durationMs: number;
 }
 
+/** A single query execution recorded for the session query history. */
+export interface HistoryLogEntry {
+  sql: string;
+  connectionId?: string;
+  connectionLabel?: string;
+  rowCount?: number;
+  durationMs: number;
+  error?: string;
+}
+
 export class Driver {
 
   static setClient(useNativeDriver: boolean, context: ExtensionContext) {
@@ -32,6 +42,40 @@ export class Driver {
   }
 
   static client: ClientI<any>;
+
+  /** Optional sink for automatic query history logging; wired up once in extension.ts#activate(). */
+  static historyLogger?: (entry: HistoryLogEntry) => void;
+
+  public static setHistoryLogger(historyLogger: (entry: HistoryLogEntry) => void): void {
+    this.historyLogger = historyLogger;
+  }
+
+  /**
+   * Records a single executed statement to the session query history (if a logger is
+   * registered). Every query run through runQuery()/runBatch() — i.e. every query the user
+   * explicitly executes, whether typed or triggered from a tree context-menu action — passes
+   * through here. Internal schema-introspection queries (tree population, autocomplete) go
+   * through Driver.client directly and are intentionally not logged.
+   */
+  private static logHistory(
+    sql: string,
+    connectionOptions: ConnectionOptions | undefined,
+    durationMs: number,
+    rowCount?: number,
+    error?: string
+  ): void {
+    if (!this.historyLogger) {
+      return;
+    }
+    this.historyLogger({
+      sql,
+      connectionId: connectionOptions?.id,
+      connectionLabel: connectionOptions ? getConnectionLabel(connectionOptions) : undefined,
+      rowCount,
+      durationMs,
+      error,
+    });
+  }
 
   public static async createSQLTextDocument(sql?: string): Promise<TextEditor> {
     const textDocument = await workspace.openTextDocument({content: sql, language: "sql"});
@@ -111,9 +155,11 @@ export class Driver {
 
     logger.info("Executing Firebird query...");
 
+    const start = Date.now();
     const connection = await this.client.createConnection(connectionOptions);
     try {
       const result = await this.client.queryPromise(connection, sql);
+      const durationMs = Date.now() - start;
 
       if (result !== undefined) {
         //convert blob
@@ -130,13 +176,18 @@ export class Driver {
           });
         });
         logger.info("Finished Firebird query, displaying results... ");
+        this.logHistory(sql, connectionOptions, durationMs, result.length);
         return result;
       } else {
         // because node-firebird plugin doesn't have callback on successfull ddl statements (test further)
         logger.info("Finished Firebird query.");
         const ddl = this.constructResponse(sql);
+        this.logHistory(sql, connectionOptions, durationMs);
         return ([{message: `${ddl} command executed successfully!`}]);
       }
+    } catch (err: any) {
+      this.logHistory(sql, connectionOptions, Date.now() - start, undefined, err?.message ?? String(err));
+      throw err;
     } finally {
       this.client.detach(connection);
     }
@@ -214,6 +265,7 @@ export class Driver {
               });
             });
             results.push({ sql: stmt, rows, durationMs });
+            this.logHistory(stmt, resolved.connectionOptions, durationMs, rows.length);
           } else {
             const ddl = this.constructResponse(stmt);
             results.push({
@@ -221,11 +273,13 @@ export class Driver {
               message: `${ddl ?? "Statement"} executed successfully.`,
               durationMs,
             });
+            this.logHistory(stmt, resolved.connectionOptions, durationMs);
           }
         } catch (err: any) {
           const durationMs = Date.now() - start;
           results.push({ sql: stmt, error: err?.message ?? String(err), durationMs });
           logger.error(`Batch statement failed: ${err?.message ?? err}`);
+          this.logHistory(stmt, resolved.connectionOptions, durationMs, undefined, err?.message ?? String(err));
         }
       }
     } finally {

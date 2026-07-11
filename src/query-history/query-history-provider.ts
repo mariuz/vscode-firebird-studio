@@ -10,12 +10,16 @@ export interface HistoryEntry {
   rowCount?: number;
   durationMs?: number;
   error?: string;
+  /** id of the saved connection the query ran against, if any (used to replay against the same database). */
+  connectionId?: string;
+  /** human-readable label for the connection at the time the query ran, e.g. "localhost:test.fdb". */
+  connectionLabel?: string;
 }
 
 export class QueryHistoryItem extends vscode.TreeItem {
   constructor(public readonly entry: HistoryEntry) {
     super(QueryHistoryItem.label(entry), vscode.TreeItemCollapsibleState.None);
-    this.tooltip = entry.sql;
+    this.tooltip = entry.connectionLabel ? `${entry.connectionLabel}\n${entry.sql}` : entry.sql;
     this.description = QueryHistoryItem.description(entry);
     this.contextValue = "historyEntry";
     this.command = {
@@ -33,11 +37,12 @@ export class QueryHistoryItem extends vscode.TreeItem {
   private static description(entry: HistoryEntry): string {
     const date = new Date(entry.executedAt);
     const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const conn = entry.connectionLabel ? `${entry.connectionLabel} · ` : "";
     if (entry.error) {
-      return `${time} — error`;
+      return `${conn}${time} — error`;
     }
     const rows = entry.rowCount !== undefined ? ` — ${entry.rowCount} row(s)` : "";
-    return `${time}${rows}`;
+    return `${conn}${time}${rows}`;
   }
 }
 

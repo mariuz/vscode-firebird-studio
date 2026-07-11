@@ -85,6 +85,22 @@ suite('QueryHistoryProvider – add', function () {
     assert.strictEqual(provider.getEntries()[0].error, 'Table not found');
   });
 
+  test('optional connectionId and connectionLabel are persisted', async function () {
+    const { provider } = makeProvider();
+    await provider.add(entry('SELECT 1 FROM RDB$DATABASE', { connectionId: 'conn-1', connectionLabel: 'localhost:test.fdb' }));
+    const e = provider.getEntries()[0];
+    assert.strictEqual(e.connectionId, 'conn-1');
+    assert.strictEqual(e.connectionLabel, 'localhost:test.fdb');
+  });
+
+  test('connectionId/connectionLabel are undefined when not provided', async function () {
+    const { provider } = makeProvider();
+    await provider.add(entry('SELECT 1 FROM RDB$DATABASE'));
+    const e = provider.getEntries()[0];
+    assert.strictEqual(e.connectionId, undefined);
+    assert.strictEqual(e.connectionLabel, undefined);
+  });
+
   test('history is capped at 50 entries', async function () {
     const { provider } = makeProvider();
     for (let i = 0; i < 55; i++) {
@@ -221,11 +237,18 @@ suite('QueryHistoryItem – label', function () {
     assert.ok(!(item.label as string).includes('\n'), 'Label should not contain newlines');
   });
 
-  test('tooltip is the full raw SQL', function () {
+  test('tooltip is the full raw SQL when there is no connection label', function () {
     const sql = 'SELECT\n  1\n  FROM\n  RDB$DATABASE';
     const e = makeEntry(sql);
     const item = new QueryHistoryItem(e);
     assert.strictEqual(item.tooltip, sql);
+  });
+
+  test('tooltip is prefixed with the connection label when present', function () {
+    const sql = 'SELECT 1 FROM RDB$DATABASE';
+    const e = makeEntry(sql, { connectionLabel: 'localhost:test.fdb' });
+    const item = new QueryHistoryItem(e);
+    assert.strictEqual(item.tooltip, 'localhost:test.fdb\nSELECT 1 FROM RDB$DATABASE');
   });
 
   test('description shows error when entry has an error', function () {
@@ -238,6 +261,18 @@ suite('QueryHistoryItem – label', function () {
     const e = makeEntry('SELECT 1 FROM RDB$DATABASE', { rowCount: 5 });
     const item = new QueryHistoryItem(e);
     assert.ok((item.description as string).includes('5'), `Description should include row count: ${item.description}`);
+  });
+
+  test('description includes the connection label when present', function () {
+    const e = makeEntry('SELECT 1 FROM RDB$DATABASE', { connectionLabel: 'localhost:test.fdb', rowCount: 5 });
+    const item = new QueryHistoryItem(e);
+    assert.ok((item.description as string).includes('localhost:test.fdb'), `Description should include connection label: ${item.description}`);
+  });
+
+  test('description omits the connection label when absent', function () {
+    const e = makeEntry('SELECT 1 FROM RDB$DATABASE');
+    const item = new QueryHistoryItem(e);
+    assert.ok(!(item.description as string).includes('·'), `Description should not have a stray separator: ${item.description}`);
   });
 
   test('contextValue is "historyEntry"', function () {

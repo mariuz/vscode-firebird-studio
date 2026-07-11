@@ -3,6 +3,7 @@ import { ConnectionOptions } from "../interfaces";
 import { Constants } from "../config/constants";
 import { CredentialStore } from "./credential-store";
 import { logger } from "../logger/logger";
+import { getDatabaseFileName } from "./utils";
 
 export class Global {
   private static _activeConnection: ConnectionOptions;
@@ -60,7 +61,7 @@ export class Global {
   }
 
   private static getStatusBarItemText(activeConnection: ConnectionOptions): string {
-    const dbName = (activeConnection.database.split("\\").pop() ?? activeConnection.database).split("/").pop() ?? activeConnection.database;
+    const dbName = getDatabaseFileName(activeConnection.database);
     if (activeConnection.embedded) {
       return `FIREBIRD: $(file-directory) [embedded] $(database) ${dbName}`;
     }
@@ -68,7 +69,7 @@ export class Global {
   }
 
   private static getStatusBarTooltipText(activeConnection: ConnectionOptions): string {
-    const dbName = (activeConnection.database.split("\\").pop() ?? activeConnection.database).split("/").pop() ?? activeConnection.database;
+    const dbName = getDatabaseFileName(activeConnection.database);
     if (activeConnection.embedded) {
       return `FIREBIRD: Using embedded database ${dbName}`;
     }
@@ -76,7 +77,7 @@ export class Global {
   }
 
   private static getActiveDbNotifText(newActiveConnection: ConnectionOptions): string {
-    const dbName = (newActiveConnection.database.split("\\").pop() ?? newActiveConnection.database).split("/").pop() ?? newActiveConnection.database;
+    const dbName = getDatabaseFileName(newActiveConnection.database);
     if (newActiveConnection.embedded) {
       return `Active connection: [embedded] ${dbName}`;
     }

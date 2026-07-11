@@ -2,7 +2,7 @@ import {ExtensionContext, window, commands, workspace} from "vscode";
 import {Constants, getOptions} from "./config";
 import {FirebirdTreeDataProvider} from "./firebirdTreeDataProvider";
 import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain} from "./nodes";
-import {Options, FirebirdTree} from "./interfaces";
+import {Options, FirebirdTree, ConnectionOptions} from "./interfaces";
 import {connectionPicker} from "./shared/connection-picker";
 import {Driver} from "./shared/driver";
 import * as vscode from 'vscode';
@@ -58,8 +58,13 @@ export function activate(context: ExtensionContext) {
   /* Bookmarks */
   const bookmarkProvider = new BookmarkProvider(context);
 
-  /* Query history */
+  /* Query history — automatically logs every query executed through Driver
+     (predefined queries, drops, table designer DDL, batch runs), not just
+     the main "Run Query" flow */
   const queryHistoryProvider = new QueryHistoryProvider(context);
+  Driver.setHistoryLogger(entry => {
+    queryHistoryProvider.add(entry).catch(err => logger.error(err));
+  });
 
   /* Copilot Chat participant (@firebird) – only when the Chat API is available */
   if (typeof vscode.chat !== 'undefined') {
@@ -180,15 +185,8 @@ export function activate(context: ExtensionContext) {
     commands.registerCommand("firebird.runQuery", () => {
       Driver.runBatch()
         .then(batchResults => {
-          // Record in session history (one entry per statement)
-          batchResults.forEach(r => {
-            queryHistoryProvider.add({
-              sql: r.sql,
-              rowCount: r.rows?.length,
-              durationMs: r.durationMs,
-              error: r.error,
-            }).catch(err => logger.error(err));
-          });
+          // Driver.runBatch() already logged each statement to session history
+          // via the historyLogger registered above.
 
           // If every result is a DDL/DML message (no row data), show notification
           const allMessages = batchResults.every(r => !r.rows && !r.error);
@@ -647,15 +645,25 @@ export function activate(context: ExtensionContext) {
     })
   );
 
-  /* COMMAND: run a history entry directly */
+  /* COMMAND: run a history entry directly, against the connection it originally ran on */
   context.subscriptions.push(
     commands.registerCommand("firebird.history.run", async (item: QueryHistoryItem) => {
       if (!item?.entry?.sql) { return; }
-      Driver.runBatch(item.entry.sql)
+
+      let connectionOptions: ConnectionOptions | undefined;
+      if (item.entry.connectionId) {
+        const connections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);
+        const saved = connections?.[item.entry.connectionId];
+        if (saved) {
+          connectionOptions = { ...saved, password: (await CredentialStore.getPassword(saved.id)) ?? "" };
+        } else {
+          logger.showInfo("The connection this query originally ran on no longer exists. Running against the active database instead.");
+        }
+      }
+
+      Driver.runBatch(item.entry.sql, connectionOptions)
         .then(batchResults => {
-          batchResults.forEach(r => {
-            queryHistoryProvider.add({ sql: r.sql, rowCount: r.rows?.length, durationMs: r.durationMs, error: r.error }).catch(() => {});
-          });
+          // Driver.runBatch() already logged each statement to session history.
           const allMessages = batchResults.every(r => !r.rows && !r.error);
           if (allMessages && batchResults.length === 1 && batchResults[0].message) {
             logger.showInfo(batchResults[0].message);

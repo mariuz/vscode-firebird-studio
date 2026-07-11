@@ -31,6 +31,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - View results in a **table**
 - **Realtime** results filtering and sorting
 - Export results to **JSON**, **CSV**, **XSLX** or **PDF** file
+- **Session query history** — every query you run is logged automatically (with the database it ran against, row count/duration, and any error), and can be reopened or re-run from the **History** view
 
 ## Getting Started
 

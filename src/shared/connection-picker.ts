@@ -2,6 +2,7 @@ import { QuickPickItem, window, ExtensionContext } from "vscode";
 import { logger } from "../logger/logger";
 import { ConnectionOptions } from "../interfaces";
 import { Constants } from "../config/constants";
+import { getConnectionLabel } from "./utils";
 
 export async function connectionPicker(context: ExtensionContext): Promise<QuickPickItem | undefined> {
   logger.info("Choose Active Connection start...");
@@ -25,10 +26,8 @@ async function getAvailableConnections(context: ExtensionContext): Promise<Quick
 
   return Object.keys(savedConnections).map(id => {
     const conn = savedConnections[id];
-    const dbName = (conn.database.split("\\").pop() ?? conn.database).split("/").pop();
-    const location = conn.embedded ? "[embedded]" : conn.host;
     return {
-      label: `${location}:${dbName}`,
+      label: getConnectionLabel(conn),
       detail: "connection id: " + id
     };
   });
