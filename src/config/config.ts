@@ -14,7 +14,8 @@ export function getOptions() {
     logLevel: _logLevel(),
     recordsPerPage: _recordsPerPage(),
     useNativeDriver: _useNativeDriver(),
-    isqlPath: _isqlPath()
+    isqlPath: _isqlPath(),
+    showSystemObjects: _showSystemObjects()
   } as Options;
 }
 
@@ -95,6 +96,16 @@ function _logLevel(): string {
 function _isqlPath(): string {
   const isqlPathConf: any = getConfig().get("isqlPath");
   return typeof isqlPathConf === "string" ? isqlPathConf : "";
+}
+
+function _showSystemObjects(): boolean {
+  const showSystemObjectsConf: any = getConfig().get("showSystemObjects");
+  const showSystemObjects: boolean = properties["firebird.showSystemObjects"]["default"];
+
+  if (typeof showSystemObjectsConf !== "boolean") {
+    return showSystemObjects;
+  }
+  return showSystemObjectsConf;
 }
 
 function _recordsPerPage(): string {

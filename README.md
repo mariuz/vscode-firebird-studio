@@ -23,7 +23,8 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - 45 Firebird SQL **code snippets** (type `fb` in any `.sql` file)
 - [SQL Mock Data Generator](https://github.com/mariuz/vscode-firebird-studio/wiki/SQL-Mock-Data-Generator)
 - Manage multiple database connections
-- List hosts, databases, tables, views, stored procedures, triggers, generators, and domains inside **Explorer View**
+- List hosts, databases, tables, views, stored procedures, triggers, generators, domains, roles, and exceptions inside **Explorer View**, with an optional System Tables folder for browsing Firebird's own `RDB$` metadata
+- Firebird-specific syntax highlighting for PSQL blocks (`EXECUTE BLOCK`, `SET TERM`, `SUSPEND`, `RDB$`/`MON$` identifiers, and more)
 - [Firebird Reserved Words](https://firebirdsql.org/refdocs/langrefupd25-reskeywords-full-reswords.html) **Code Completion**
 - Table and field names **Code Completion**
 - Run Firebird **SQL** queries
@@ -57,9 +58,11 @@ For advanced options (native driver, WireCrypt) see **[docs/connection-setup.md]
 
 ### Explore Database Contents
 
-Expand the database node to see category folders: **Tables**, **Views**, **Stored Procedures**, **Triggers**, **Generators**, and **Domains**. Expand any table to see its columns with data types.
+Expand the database node to see category folders: **Tables**, **Views**, **Stored Procedures**, **Triggers**, **Generators**, **Domains**, **Roles**, and **Exceptions**. Expand any table to see its columns, with type/length and primary/foreign/unique/not-null markers shown inline.
 
 > **Tip:** Right-clicking a tree node shows available actions such as **Select All Records**, **Show Table Info**, or **New Query**.
+
+Enable **firebird.showSystemObjects** to also show a **System Tables** folder, listing Firebird's own `RDB$` metadata tables (read-only — browsing and querying only, no drop).
 
 ### Visualizing the Schema
 
@@ -129,6 +132,7 @@ Right-click a table → **Generate Mock Data**. Requires a [Mockaroo API key](ht
 | `firebird.mockarooApiKey` | string | *(blank)* | API key for the Mock Data Generator |
 | `firebird.useNativeDriver` | boolean | `false` | Use the experimental native Firebird client driver |
 | `firebird.isqlPath` | string | *(blank)* | Path to the `isql`/`isql-fb` executable; leave blank to search `PATH` automatically |
+| `firebird.showSystemObjects` | boolean | `false` | Show a **System Tables** folder listing Firebird's built-in `RDB$` system/metadata tables under each database |
 
 ## Documentation
 

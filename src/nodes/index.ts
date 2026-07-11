@@ -9,3 +9,6 @@ export * from "./node-procedure";
 export * from "./node-trigger";
 export * from "./node-generator";
 export * from "./node-domain";
+export * from "./node-role";
+export * from "./node-exception";
+export * from "./node-system-table";

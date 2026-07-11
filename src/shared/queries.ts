@@ -225,7 +225,34 @@ export function getDomainsQuery(): string {
             FROM RDB$FIELDS
            WHERE RDB$FIELD_NAME NOT STARTING WITH 'RDB$'
              AND (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
-        ORDER BY 1;`; 
+        ORDER BY 1;`;
+}
+
+export function getRolesQuery(): string {
+  return `SELECT TRIM(RDB$ROLE_NAME) AS ROLE_NAME
+            FROM RDB$ROLES
+           WHERE (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
+        ORDER BY 1;`;
+}
+
+export function getExceptionsQuery(): string {
+  return `SELECT TRIM(RDB$EXCEPTION_NAME) AS EXCEPTION_NAME,
+                 RDB$MESSAGE AS MESSAGE
+            FROM RDB$EXCEPTIONS
+           WHERE (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
+        ORDER BY 1;`;
+}
+
+/**
+ * Firebird's own metadata tables (RDB$RELATIONS, RDB$FIELDS, MON$ATTACHMENTS, etc.), hidden from
+ * the regular Tables list by RDB$SYSTEM_FLAG = 1. Only queried when the user opts in via the
+ * firebird.showSystemObjects setting — most users never need to browse these directly.
+ */
+export function getSystemTablesQuery(): string {
+  return `SELECT TRIM(RDB$RELATION_NAME) AS TABLE_NAME
+            FROM RDB$RELATIONS
+           WHERE RDB$SYSTEM_FLAG = 1
+        ORDER BY 1;`;
 }
 
 /**
@@ -279,6 +306,14 @@ export function dropGeneratorQuery(generatorName: string): string {
 
 export function dropDomainQuery(domainName: string): string {
   return `DROP DOMAIN ${domainName};`;
+}
+
+export function dropRoleQuery(roleName: string): string {
+  return `DROP ROLE ${roleName};`;
+}
+
+export function dropExceptionQuery(exceptionName: string): string {
+  return `DROP EXCEPTION ${exceptionName};`;
 }
 
 export function setGeneratorValueQuery(generatorName: string, value: number): string {

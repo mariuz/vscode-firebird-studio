@@ -1,7 +1,7 @@
 import {ExtensionContext, window, commands, workspace} from "vscode";
 import {Constants, getOptions} from "./config";
 import {FirebirdTreeDataProvider} from "./firebirdTreeDataProvider";
-import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain} from "./nodes";
+import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException} from "./nodes";
 import {Options, FirebirdTree, ConnectionOptions} from "./interfaces";
 import {connectionPicker} from "./shared/connection-picker";
 import {Driver} from "./shared/driver";
@@ -390,6 +390,26 @@ export function activate(context: ExtensionContext) {
       const answer = await vscode.window.showInformationMessage("Do you really want to drop this domain?", "Yes", "No");
       if (answer === "Yes") {
         domainNode.dropDomain();
+      }
+    })
+  );
+
+  /* DDL: drop role */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.role.dropRole", async (roleNode: NodeRole) => {
+      const answer = await vscode.window.showInformationMessage("Do you really want to drop this role?", "Yes", "No");
+      if (answer === "Yes") {
+        roleNode.dropRole();
+      }
+    })
+  );
+
+  /* DDL: drop exception */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.exception.dropException", async (exceptionNode: NodeException) => {
+      const answer = await vscode.window.showInformationMessage("Do you really want to drop this exception?", "Yes", "No");
+      if (answer === "Yes") {
+        exceptionNode.dropException();
       }
     })
   );

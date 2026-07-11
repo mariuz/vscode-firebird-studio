@@ -8,4 +8,6 @@ export interface Options {
   useNativeDriver: boolean;
   /** Explicit path to the isql/isql-fb executable; empty string means "search PATH". */
   isqlPath: string;
+  /** Show a "System Tables" folder listing Firebird's built-in RDB$ system/metadata tables. */
+  showSystemObjects: boolean;
 }

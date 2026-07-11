@@ -1,13 +1,13 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri} from "vscode";
 import {join} from "path";
-import {NodeTable, NodeCategoryFolder, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain} from "./";
+import {NodeTable, NodeCategoryFolder, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeSystemTable} from "./";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {getOptions, Constants} from "../config";
 import {Driver} from "../shared/driver";
 import {Global} from "../shared/global";
 import {CredentialStore} from "../shared/credential-store";
 import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
-import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, monitorConnectionsQuery} from "../shared/queries";
+import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getSystemTablesQuery, monitorConnectionsQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
 import {SchemaVisualizer} from "../schema-visualizer";
@@ -41,14 +41,20 @@ export class NodeDatabase implements FirebirdTree {
 
   // list database object categories
   public async getChildren(): Promise<FirebirdTree[]> {
-    return [
+    const children: FirebirdTree[] = [
       new NodeCategoryFolder("Tables", "tables", this.dbDetails, this.getTableChildren.bind(this)),
       new NodeCategoryFolder("Views", "views", this.dbDetails, this.getViewChildren.bind(this)),
       new NodeCategoryFolder("Stored Procedures", "procedures", this.dbDetails, this.getProcedureChildren.bind(this)),
       new NodeCategoryFolder("Triggers", "triggers", this.dbDetails, this.getTriggerChildren.bind(this)),
       new NodeCategoryFolder("Generators", "generators", this.dbDetails, this.getGeneratorChildren.bind(this)),
       new NodeCategoryFolder("Domains", "domains", this.dbDetails, this.getDomainChildren.bind(this)),
+      new NodeCategoryFolder("Roles", "roles", this.dbDetails, this.getRoleChildren.bind(this)),
+      new NodeCategoryFolder("Exceptions", "exceptions", this.dbDetails, this.getExceptionChildren.bind(this)),
     ];
+    if (getOptions().showSystemObjects) {
+      children.push(new NodeCategoryFolder("System Tables", "systemTables", this.dbDetails, this.getSystemTableChildren.bind(this)));
+    }
+    return children;
   }
 
   private async getTableChildren(): Promise<FirebirdTree[]> {
@@ -86,6 +92,24 @@ export class NodeDatabase implements FirebirdTree {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const domains = await Driver.client.queryPromise<any>(connection, getDomainsQuery());
     return domains.map<NodeDomain>(domain => new NodeDomain(domain, this.dbDetails));
+  }
+
+  private async getRoleChildren(): Promise<FirebirdTree[]> {
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
+    const roles = await Driver.client.queryPromise<any>(connection, getRolesQuery());
+    return roles.map<NodeRole>(role => new NodeRole(role.ROLE_NAME, this.dbDetails));
+  }
+
+  private async getExceptionChildren(): Promise<FirebirdTree[]> {
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
+    const exceptions = await Driver.client.queryPromise<any>(connection, getExceptionsQuery());
+    return exceptions.map<NodeException>(exception => new NodeException(exception, this.dbDetails));
+  }
+
+  private async getSystemTableChildren(): Promise<FirebirdTree[]> {
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
+    const tables = await Driver.client.queryPromise<any>(connection, getSystemTablesQuery());
+    return tables.map<NodeSystemTable>(table => new NodeSystemTable(this.dbDetails, table.TABLE_NAME));
   }
 
   //  run predefined sql query

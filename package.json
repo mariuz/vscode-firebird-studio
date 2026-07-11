@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -205,6 +205,16 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.role.dropRole",
+        "title": "Drop Role",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.exception.dropException",
+        "title": "Drop Exception",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.database.monitorDatabase",
         "title": "Monitor Database",
         "category": "Firebird"
@@ -339,6 +349,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path to the `isql` or `isql-fb` executable used by **Connect with ISQL** / **Run File with ISQL**. Leave empty to search `PATH` automatically."
+        },
+        "firebird.showSystemObjects": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a 'System Tables' folder listing Firebird's built-in RDB$ system/metadata tables under each database."
         },
         "firebird.logLevel": {
           "type": "string",
@@ -595,6 +610,26 @@
           "group": "other@0"
         },
         {
+          "command": "firebird.role.dropRole",
+          "when": "view == firebird-explorer && viewItem == role",
+          "group": "other@0"
+        },
+        {
+          "command": "firebird.exception.dropException",
+          "when": "view == firebird-explorer && viewItem == exception",
+          "group": "other@0"
+        },
+        {
+          "command": "firebird.showTableInfo",
+          "when": "view == firebird-explorer && viewItem == systemTable",
+          "group": "firebird@0"
+        },
+        {
+          "command": "firebird.selectAllRecords",
+          "when": "view == firebird-explorer && viewItem == systemTable",
+          "group": "firebird@1"
+        },
+        {
           "command": "firebird.database.monitorDatabase",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "first@3"
@@ -675,6 +710,15 @@
       {
         "language": "sql",
         "path": "./snippets/firebird.code-snippets"
+      }
+    ],
+    "grammars": [
+      {
+        "scopeName": "source.sql.firebird.injection",
+        "path": "./syntaxes/firebird-psql.injection.json",
+        "injectTo": [
+          "source.sql"
+        ]
       }
     ],
     "chatParticipants": [

@@ -4,16 +4,16 @@ This document outlines the planned features and improvements for the **Firebird 
 
 ## Enhanced Object Explorer
 
-- [ ] Expand tree view to include views, stored procedures, triggers, generators/sequences, domains, exceptions, and roles
+- [x] Expand tree view to include views, stored procedures, triggers, generators/sequences, domains, exceptions, and roles
 - [x] Add schema visualization — right-click a database to see a visual diagram of tables, relationships, and objects
 - [x] Show column types, constraints (primary key, foreign key, not null, unique) inline in the tree view
-- [ ] Display system tables and metadata tables with a toggle option
+- [x] Display system tables and metadata tables with a toggle option
 
 ## Intelligent IntelliSense Improvements
 
 - [x] Context-aware code completion that understands the current database schema in real time
 - [x] Auto-complete for stored procedure and trigger names and parameters
-- [ ] Syntax highlighting improvements for Firebird-specific SQL dialect (PSQL blocks, `EXECUTE BLOCK`, etc.)
+- [x] Syntax highlighting improvements for Firebird-specific SQL dialect (PSQL blocks, `EXECUTE BLOCK`, etc.)
 - [x] Snippet support for common Firebird DDL/DML patterns (e.g., `CREATE TABLE`, `CREATE PROCEDURE`, `CREATE TRIGGER`)
 
 ## AI-Powered Enhancements
@@ -46,8 +46,8 @@ This document outlines the planned features and improvements for the **Firebird 
 - [ ] Visual table designer for creating and modifying tables
 - [ ] Index management — view, create, and drop indexes
 - [ ] User and role management — create and manage database users and roles
-- [ ] Database backup and restore integration (gbak/nbackup)
-- [ ] Database statistics and monitoring (gstat integration)
+- [x] Database backup and restore integration (gbak/nbackup)
+- [x] Database statistics and monitoring (connection/I-O monitoring via `MON$` tables)
 
 ## Collaboration and Productivity
 

@@ -1,0 +1,33 @@
+{
+  "scopeName": "source.sql.firebird.injection",
+  "injectionSelector": "L:source.sql",
+  "patterns": [
+    { "include": "#firebird-ddl" },
+    { "include": "#firebird-psql-keywords" },
+    { "include": "#firebird-functions" },
+    { "include": "#firebird-system-identifiers" },
+    { "include": "#firebird-terminator" }
+  ],
+  "repository": {
+    "firebird-ddl": {
+      "match": "(?i)\\b(CREATE\\s+OR\\s+ALTER|RECREATE(\\s+TABLE|\\s+VIEW|\\s+PROCEDURE|\\s+TRIGGER|\\s+PACKAGE|\\s+SEQUENCE)?|EXECUTE\\s+BLOCK|ALTER\\s+SEQUENCE|SET\\s+GENERATOR|CREATE\\s+SEQUENCE|CREATE\\s+GENERATOR|CREATE\\s+DOMAIN|ALTER\\s+DOMAIN|DROP\\s+DOMAIN|CREATE\\s+EXCEPTION|ALTER\\s+EXCEPTION|DROP\\s+EXCEPTION|CREATE\\s+ROLE|DROP\\s+ROLE|CREATE\\s+PACKAGE(\\s+BODY)?|DROP\\s+PACKAGE(\\s+BODY)?)\\b",
+      "name": "keyword.control.ddl.firebird.sql"
+    },
+    "firebird-psql-keywords": {
+      "match": "(?i)\\b(SUSPEND|RETURNING_VALUES|POST_EVENT|AUTONOMOUS\\s+TRANSACTION|EXTERNAL\\s+NAME|ENGINE|COLLATE|CHARACTER\\s+SET|WHEN|GDSCODE|SQLCODE|SQLSTATE|EXCEPTION|ROW_COUNT|SKIP|FIRST|SINGULAR|PLAN|NATURAL|MERGE|WITH\\s+LOCK|AS\\s+CURSOR|SCROLL)\\b",
+      "name": "keyword.control.firebird.sql"
+    },
+    "firebird-functions": {
+      "match": "(?i)\\b(GEN_ID|RDB\\$GET_CONTEXT|RDB\\$SET_CONTEXT)\\b",
+      "name": "support.function.firebird.sql"
+    },
+    "firebird-system-identifiers": {
+      "match": "(?i)\\b(RDB\\$DB_KEY|NEW|OLD|CURRENT_CONNECTION|CURRENT_TRANSACTION|CURRENT_ROLE|RDB\\$[A-Z_]+|MON\\$[A-Z_]+|SEC\\$[A-Z_]+)\\b",
+      "name": "constant.language.firebird.sql"
+    },
+    "firebird-terminator": {
+      "match": "(?i)(?<=SET TERM )[^\\s;]+",
+      "name": "keyword.operator.terminator.firebird.sql"
+    }
+  }
+}
