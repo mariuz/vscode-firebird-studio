@@ -6,7 +6,7 @@ This document outlines the planned features and improvements for the **Firebird 
 
 - [ ] Expand tree view to include views, stored procedures, triggers, generators/sequences, domains, exceptions, and roles
 - [x] Add schema visualization — right-click a database to see a visual diagram of tables, relationships, and objects
-- [ ] Show column types, constraints (primary key, foreign key, not null, unique) inline in the tree view
+- [x] Show column types, constraints (primary key, foreign key, not null, unique) inline in the tree view
 - [ ] Display system tables and metadata tables with a toggle option
 
 ## Intelligent IntelliSense Improvements
@@ -27,15 +27,15 @@ This document outlines the planned features and improvements for the **Firebird 
 
 - [x] Support for executing multiple queries in a single document (batch execution)
 - [x] Session query history — automatically log and recall previously executed queries
-- [ ] Explain and analyze query performance with `SET PLANONLY ON` / `SET PLAN ON` integration
+- [x] Explain and analyze query performance with `SET PLANONLY ON` / `SET PLAN ON` integration
 - [x] Editable result grids — update, insert, and delete rows directly from query results
 - [x] Use isql/isql-fb in an integrated terminal, connected to the active database, and run `.sql` files through it directly
-- [ ] Enhanced export options — export results to CSV, JSON, Excel (XLSX), and PDF
+- [x] Enhanced export options — export results to CSV, JSON, Excel (XLSX), and PDF
 
 ## Connection Management
 
 - [ ] Support for Firebird embedded databases
-- [ ] Connection profiles with saved credentials (securely stored via VS Code Secret Storage API)
+- [x] Connection profiles with saved credentials (securely stored via VS Code Secret Storage API)
 - [ ] Connection pooling for improved performance on repeated queries
 - [ ] Support for Firebird 4.x and 5.x wire protocol and authentication (SRP, ChaCha encryption)
 - [ ] Docker container support — connect to Firebird instances running in Docker
@@ -51,10 +51,10 @@ This document outlines the planned features and improvements for the **Firebird 
 
 ## Collaboration and Productivity
 
-- [ ] SQL formatting and beautification
-- [ ] Diff support for comparing database schemas
-- [ ] SQL linting and error detection before execution
-- [ ] Bookmarks for frequently used queries
+- [x] SQL formatting and beautification
+- [x] Diff support for comparing database schemas
+- [x] SQL linting and error detection before execution
+- [x] Bookmarks for frequently used queries
 - [ ] Workspace-level database configuration (`.vscode/firebird.json`)
 
 ## Documentation and Community
