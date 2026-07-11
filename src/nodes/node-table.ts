@@ -1,6 +1,6 @@
 import {TreeItem, TreeItemCollapsibleState, commands, Uri, ExtensionContext} from "vscode";
 import {join} from "path";
-import {NodeField, NodeInfo} from ".";
+import {NodeField, NodeInfo, NodeIndexFolder} from ".";
 import {ConnectionOptions, FirebirdTree, Options} from "../interfaces";
 import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery} from "../shared/queries";
 import {Global} from "../shared/global";
@@ -34,9 +34,10 @@ export class NodeTable implements FirebirdTree {
     try {
       const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const fields = await Driver.client.queryPromise<any[]>(connection, qry);
-      return fields.map<NodeField>(field => {
+      const fieldNodes = fields.map<NodeField>(field => {
         return new NodeField(field, this.table, this.dbDetails);
       });
+      return [...fieldNodes, new NodeIndexFolder(this.dbDetails, this.table)];
     } catch (err) {
       logger.error(err);
       logger.showError(err);
@@ -141,13 +142,15 @@ export class NodeTable implements FirebirdTree {
     }
 
     await this.getChildren().then(children => {
-      children.filter((data: any) => {
-        fields.push({
-          name: data.field.FIELD_NAME.trim(),
-          type: data.field.FIELD_TYPE.trim() + " (" + data.field.FIELD_LENGTH + ")",
-          notnull: data.field.NOT_NULL
+      children
+        .filter((child: any) => child instanceof NodeField)
+        .forEach((data: any) => {
+          fields.push({
+            name: data.field.FIELD_NAME.trim(),
+            type: data.field.FIELD_TYPE.trim() + " (" + data.field.FIELD_LENGTH + ")",
+            notnull: data.field.NOT_NULL
+          });
         });
-      });
     });
 
     firebirdMockData.display(this.table, fields, apiKey);

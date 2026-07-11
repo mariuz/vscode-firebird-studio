@@ -18,6 +18,7 @@ import { Driver, ClientI } from '../shared/driver';
 import { NodeTable } from '../nodes/node-table';
 import { NodeField } from '../nodes/node-field';
 import { NodeInfo } from '../nodes/node-info';
+import { NodeIndexFolder } from '../nodes/node-index';
 import { ConnectionOptions } from '../interfaces';
 import { CredentialStore } from '../shared/credential-store';
 import { createMockContext } from './mocks/vscode';
@@ -85,8 +86,10 @@ suite('NodeTable password resolution (expanding a table in the tree)', function 
     const table = new NodeTable(unresolvedConnection(), 'EMPLOYEE');
     const children = await table.getChildren();
 
-    assert.strictEqual(children.length, 1);
+    // One NodeField per column returned by the query, plus a trailing "Indexes" folder.
+    assert.strictEqual(children.length, 2);
     assert.ok(children[0] instanceof NodeField, `expected table fields, got: ${children[0]}`);
+    assert.ok(children[1] instanceof NodeIndexFolder, `expected a trailing Indexes folder, got: ${children[1]}`);
   });
 
   test('getChildren() connects with the resolved password, not the empty one from dbDetails', async function () {

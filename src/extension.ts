@@ -1,7 +1,7 @@
 import {ExtensionContext, window, commands, workspace} from "vscode";
 import {Constants, getOptions} from "./config";
 import {FirebirdTreeDataProvider} from "./firebirdTreeDataProvider";
-import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeUser} from "./nodes";
+import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeUser, NodeIndex, NodeIndexFolder} from "./nodes";
 import {Options, FirebirdTree, ConnectionOptions} from "./interfaces";
 import {connectionPicker} from "./shared/connection-picker";
 import {Driver} from "./shared/driver";
@@ -480,6 +480,53 @@ export function activate(context: ExtensionContext) {
       });
       if (!password) { return; }
       userNode.changePassword(password);
+    })
+  );
+
+  /* DDL: create index */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.index.createIndex", async (folderNode: NodeIndexFolder) => {
+      if (!Global.activeConnection) {
+        logger.showError("Set a database active first.");
+        return;
+      }
+      const indexName = await vscode.window.showInputBox({
+        prompt: "Name of the new index",
+        placeHolder: "e.g. IDX_CUSTOMERS_EMAIL",
+        ignoreFocusOut: true,
+        validateInput: v => IDENTIFIER_RE.test(v) ? undefined : "Enter a valid identifier (letters, digits, _, $ — must not start with a digit)"
+      });
+      if (!indexName) { return; }
+
+      const columnsInput = await vscode.window.showInputBox({
+        prompt: `Column(s) to index on ${folderNode.getTableName()} (comma-separated)`,
+        placeHolder: "e.g. LAST_NAME, FIRST_NAME",
+        ignoreFocusOut: true,
+        validateInput: v => v.trim() ? undefined : "At least one column is required"
+      });
+      if (!columnsInput) { return; }
+      const columns = columnsInput.split(",").map(c => c.trim()).filter(c => c.length > 0);
+
+      const uniquePick = await vscode.window.showQuickPick(
+        [
+          { label: "Regular Index", description: "Allows duplicate values" },
+          { label: "Unique Index", description: "Rejects duplicate values" }
+        ],
+        { placeHolder: "Index type", ignoreFocusOut: true }
+      );
+      if (!uniquePick) { return; }
+
+      NodeIndex.createIndex(Global.activeConnection, folderNode.getTableName(), indexName, columns, uniquePick.label === "Unique Index");
+    })
+  );
+
+  /* DDL: drop index */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.index.dropIndex", async (indexNode: NodeIndex) => {
+      const answer = await vscode.window.showInformationMessage("Do you really want to drop this index?", "Yes", "No");
+      if (answer === "Yes") {
+        indexNode.dropIndex();
+      }
     })
   );
 

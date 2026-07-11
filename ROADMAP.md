@@ -44,7 +44,7 @@ This document outlines the planned features and improvements for the **Firebird 
 
 - [ ] Create, alter, and drop database objects directly from the UI (tables, views, stored procedures, triggers, generators, domains)
 - [ ] Visual table designer for creating and modifying tables
-- [ ] Index management — view, create, and drop indexes
+- [x] Index management — view, create, and drop indexes
 - [x] User and role management — create and manage database users and roles
 - [x] Database backup and restore integration (gbak/nbackup)
 - [x] Database statistics and monitoring (connection/I-O monitoring via `MON$` tables)

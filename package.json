@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -232,6 +232,16 @@
       {
         "command": "firebird.user.changePassword",
         "title": "Change Password",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.index.createIndex",
+        "title": "Create Index",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.index.dropIndex",
+        "title": "Drop Index",
         "category": "Firebird"
       },
       {
@@ -662,6 +672,16 @@
         {
           "command": "firebird.user.dropUser",
           "when": "view == firebird-explorer && viewItem == user",
+          "group": "other@0"
+        },
+        {
+          "command": "firebird.index.createIndex",
+          "when": "view == firebird-explorer && viewItem == folder.indexes",
+          "group": "firebird@0"
+        },
+        {
+          "command": "firebird.index.dropIndex",
+          "when": "view == firebird-explorer && viewItem == index",
           "group": "other@0"
         },
         {

@@ -287,6 +287,42 @@ export function createRoleQuery(roleName: string): string {
 }
 
 /**
+ * Lists standalone, user-created indexes on a table — explicitly excludes indexes Firebird
+ * auto-creates to back a PRIMARY KEY/UNIQUE/FOREIGN KEY constraint (already shown per-column via
+ * the primary/foreign/unique icons tableInfoQuery() drives) and system-generated indexes, so this
+ * doesn't just duplicate what the column list already shows.
+ */
+export function getIndexesQuery(tableName: string): string {
+  return `SELECT TRIM(i.RDB$INDEX_NAME) AS INDEX_NAME,
+                 i.RDB$UNIQUE_FLAG AS IS_UNIQUE,
+                 CASE WHEN i.RDB$INDEX_INACTIVE = 1 THEN 0 ELSE 1 END AS IS_ACTIVE,
+                 LIST(TRIM(s.RDB$FIELD_NAME), ', ') AS COLUMNS
+            FROM RDB$INDICES i
+            JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = i.RDB$INDEX_NAME
+       LEFT JOIN RDB$RELATION_CONSTRAINTS rc ON rc.RDB$INDEX_NAME = i.RDB$INDEX_NAME
+           WHERE TRIM(i.RDB$RELATION_NAME) = '${tableName}'
+             AND rc.RDB$CONSTRAINT_NAME IS NULL
+             AND (i.RDB$SYSTEM_FLAG IS NULL OR i.RDB$SYSTEM_FLAG = 0)
+        GROUP BY i.RDB$INDEX_NAME, i.RDB$UNIQUE_FLAG, i.RDB$INDEX_INACTIVE
+        ORDER BY 1;`;
+}
+
+export function createIndexQuery(indexName: string, tableName: string, columns: string[], unique: boolean): string {
+  assertValidIdentifier(indexName, "index name");
+  assertValidIdentifier(tableName, "table name");
+  if (columns.length === 0) {
+    throw new Error("At least one column is required to create an index.");
+  }
+  columns.forEach(column => assertValidIdentifier(column, "column name"));
+  return `CREATE ${unique ? "UNIQUE " : ""}INDEX ${indexName} ON ${tableName} (${columns.join(", ")});`;
+}
+
+export function dropIndexQuery(indexName: string): string {
+  assertValidIdentifier(indexName, "index name");
+  return `DROP INDEX ${indexName};`;
+}
+
+/**
  * Firebird's own metadata tables (RDB$RELATIONS, RDB$FIELDS, MON$ATTACHMENTS, etc.), hidden from
  * the regular Tables list by RDB$SYSTEM_FLAG = 1. Only queried when the user opts in via the
  * firebird.showSystemObjects setting — most users never need to browse these directly.

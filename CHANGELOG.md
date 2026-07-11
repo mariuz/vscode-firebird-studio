@@ -2,6 +2,17 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.20 - 2026-07-12
+
+### Added
+
+- Every table now shows an **Indexes** folder alongside its columns, listing standalone user-created indexes (constraint-backed indexes for primary/foreign/unique keys are already shown via the column icons, so they're deliberately excluded here to avoid duplication)
+- **Create Index** (regular or unique, any number of columns) and **Drop Index** actions
+
+### Fixed
+
+- `Generate Mock Data` no longer errors when a table's tree children include the new Indexes folder — it was previously assuming every child was a column
+
 ## 0.1.19 - 2026-07-12
 
 ### Added
