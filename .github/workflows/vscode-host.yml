@@ -67,7 +67,7 @@ jobs:
         run: npm run compile
 
       - name: Compile extension host test suite
-        run: tsc -p tsconfig.suite.json --noEmitOnError false
+        run: ./node_modules/.bin/tsc -p tsconfig.suite.json --noEmitOnError false
 
       - name: Run extension host tests (headless)
         run: xvfb-run -a npx vscode-test
