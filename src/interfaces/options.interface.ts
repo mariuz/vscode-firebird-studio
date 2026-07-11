@@ -6,4 +6,6 @@ export interface Options {
   logLevel: string;
   recordsPerPage: string;
   useNativeDriver: boolean;
+  /** Explicit path to the isql/isql-fb executable; empty string means "search PATH". */
+  isqlPath: string;
 }

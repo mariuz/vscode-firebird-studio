@@ -13,7 +13,8 @@ export function getOptions() {
     codeCompletionDatabase: _codeCompletionDatabase(),
     logLevel: _logLevel(),
     recordsPerPage: _recordsPerPage(),
-    useNativeDriver: _useNativeDriver()
+    useNativeDriver: _useNativeDriver(),
+    isqlPath: _isqlPath()
   } as Options;
 }
 
@@ -89,6 +90,11 @@ function _logLevel(): string {
     logger.error("Invalid value detected in Log Level settings. Fallback to default value.");
     return logLevel;
   }
+}
+
+function _isqlPath(): string {
+  const isqlPathConf: any = getConfig().get("isqlPath");
+  return typeof isqlPathConf === "string" ? isqlPathConf : "";
 }
 
 function _recordsPerPage(): string {

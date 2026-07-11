@@ -22,6 +22,8 @@ import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
 import {fetchSchemaSnapshot, diffSchemas, renderDiffReport} from "./schema-diff/schema-diff";
 import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
 import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
+import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
+import {getConnectionLabel} from "./shared/utils";
 
 
 export function activate(context: ExtensionContext) {
@@ -494,6 +496,113 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.schemaVisualizer.open", (databaseNode: NodeDatabase) => {
       databaseNode.visualizeSchema(firebirdSchemaVisualizer);
+    })
+  );
+
+  /* isql/isql-fb terminal integration (similar to "psql in the terminal" in Microsoft's
+     PostgreSQL extension for VS Code) */
+
+  function checkIsqlExecutable(candidate: string): Promise<boolean> {
+    return new Promise(resolve => {
+      try {
+        const child = cp.execFile(candidate, ["-z"], {timeout: 3000}, err => resolve(!err));
+        child.on("error", () => resolve(false));
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+
+  async function launchIsqlTask(connectionOptions: ConnectionOptions, taskName: string, extraArgs: string[] = []): Promise<void> {
+    if (!workspace.workspaceFolders || workspace.workspaceFolders.length === 0) {
+      logger.showError("Open a workspace folder to use isql in the integrated terminal.");
+      return;
+    }
+
+    const executable = await resolveIsqlExecutable(getOptions().isqlPath || undefined, checkIsqlExecutable);
+    if (!executable) {
+      logger.showError(
+        "Could not find the isql (or isql-fb) executable. Install the Firebird client tools, or set the firebird.isqlPath setting.",
+        ["Learn More"]
+      ).then(selected => {
+        if (selected === "Learn More") {
+          vscode.env.openExternal(vscode.Uri.parse("https://firebirdsql.org/en/firebird-clients/"));
+        }
+      });
+      return;
+    }
+
+    const task = new vscode.Task(
+      {type: "firebird-isql"},
+      workspace.workspaceFolders[0],
+      taskName,
+      "Firebird",
+      new vscode.ShellExecution(executable, buildIsqlArgs(connectionOptions, extraArgs), {env: buildIsqlEnv(connectionOptions)})
+    );
+    task.presentationOptions = {reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: false};
+    await vscode.tasks.executeTask(task);
+  }
+
+  /* DB ITEM: connect with isql in an integrated terminal */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.terminal.connectIsql", async (databaseNode?: NodeDatabase) => {
+      try {
+        let dbDetails: ConnectionOptions | undefined;
+        if (databaseNode) {
+          dbDetails = await databaseNode.getResolvedConnectionDetails();
+        } else if (Global.activeConnection) {
+          dbDetails = await Driver.resolvePassword(Global.activeConnection);
+        }
+        if (!dbDetails) {
+          logger.showError("No Firebird database selected!", ["Cancel", "Set Active Database"]).then(selected => {
+            if (selected === "Set Active Database") {
+              commands.executeCommand("firebird.chooseActive");
+            }
+          });
+          return;
+        }
+        await launchIsqlTask(dbDetails, `ISQL: ${getConnectionLabel(dbDetails)}`);
+      } catch (err: any) {
+        logger.error(err);
+        logger.showError(`Failed to launch isql: ${err?.message ?? err}`);
+      }
+    })
+  );
+
+  /* EDITOR: run the active .sql file through isql */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.terminal.runFileIsql", async () => {
+      const editor = window.activeTextEditor;
+      if (!editor || editor.document.languageId !== "sql") {
+        logger.showError("Open a SQL document to run it with isql.");
+        return;
+      }
+      if (!Global.activeConnection) {
+        logger.showError("No Firebird database selected!", ["Cancel", "Set Active Database"]).then(selected => {
+          if (selected === "Set Active Database") {
+            commands.executeCommand("firebird.chooseActive");
+          }
+        });
+        return;
+      }
+      if (editor.document.isUntitled) {
+        logger.showError("Save the file before running it with isql.");
+        return;
+      }
+      await editor.document.save();
+      if (editor.document.isDirty) {
+        logger.showError("The file must be saved before running it with isql.");
+        return;
+      }
+
+      try {
+        const dbDetails = await Driver.resolvePassword(Global.activeConnection);
+        const fileName = editor.document.fileName.split(/[\\/]/).pop() ?? editor.document.fileName;
+        await launchIsqlTask(dbDetails, `ISQL: ${fileName}`, ["-i", editor.document.fileName]);
+      } catch (err: any) {
+        logger.error(err);
+        logger.showError(`Failed to launch isql: ${err?.message ?? err}`);
+      }
     })
   );
 

@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -235,6 +235,16 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.terminal.connectIsql",
+        "title": "Connect with ISQL",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.terminal.runFileIsql",
+        "title": "Run File with ISQL",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.bookmarks.add",
         "title": "Add Bookmark",
         "category": "Firebird",
@@ -325,6 +335,11 @@
           "default": false,
           "markdownDescription": "[Experimental] Use native driver instead of the node based driver *Needs to have FireBird installed* (required for WireCrypt support)"
         },
+        "firebird.isqlPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `isql` or `isql-fb` executable used by **Connect with ISQL** / **Run File with ISQL**. Leave empty to search `PATH` automatically."
+        },
         "firebird.logLevel": {
           "type": "string",
           "enum": [
@@ -414,6 +429,11 @@
           "command": "firebird.bookmarks.add",
           "when": "editorLangId == sql",
           "group": "navigation"
+        },
+        {
+          "command": "firebird.terminal.runFileIsql",
+          "when": "editorLangId == sql",
+          "group": "navigation"
         }
       ],
       "view/title": [
@@ -478,6 +498,11 @@
           "command": "firebird.schemaVisualizer.open",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "first@4"
+        },
+        {
+          "command": "firebird.terminal.connectIsql",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "first@5"
         },
         {
           "command": "firebird.removeDatabase",

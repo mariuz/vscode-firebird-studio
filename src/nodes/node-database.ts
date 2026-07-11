@@ -123,6 +123,12 @@ export class NodeDatabase implements FirebirdTree {
     schemaVisualizer.open(this.dbDetails);
   }
 
+  /** Connection details with the password resolved from SecretStorage, for callers (e.g. the
+   * isql terminal) that need the real value directly rather than going through Driver. */
+  public async getResolvedConnectionDetails(): Promise<ConnectionOptions> {
+    return this.resolvedDetails();
+  }
+
   // delete database connection details and remove it from explorer view
   public async removeDatabase(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider) {
     logger.info("Remove database start...");

@@ -34,6 +34,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Session query history** — every query you run is logged automatically (with the database it ran against, row count/duration, and any error), and can be reopened or re-run from the **History** view
 - **Editable result grids** — enable editing on any result set to update cells, add rows, or mark rows for deletion, then apply the changes directly to the database (primary-key aware, with a confirmation before anything is written)
 - **Schema visualizer** — an interactive entity-relationship diagram of a database's tables, columns, and foreign key relationships, with pan/zoom, auto-layout, and a minimap
+- **isql in the integrated terminal** — connect with `isql`/`isql-fb` for backslash-command-style administration, or run a `.sql` file through it directly, without leaving VS Code
 
 ## Getting Started
 
@@ -87,6 +88,15 @@ If you select text first, only the selection runs; otherwise the whole document 
 
 Each `;`-separated statement in the document gets its own tab in the results view, showing its row count (or error) at a glance. `CREATE`/`ALTER PROCEDURE`, `TRIGGER`, `FUNCTION`, and `EXECUTE BLOCK` bodies are treated as a single statement — including the isql `SET TERM ^ ;` convention used by this extension's own snippets — so the semicolons inside a procedure body don't get split into separate statements.
 
+### Using isql in the Terminal
+
+For backslash commands, `.sql` script testing, or anything the graphical query editor doesn't cover:
+
+- Right-click a database → **Connect with ISQL** opens an integrated terminal running `isql`/`isql-fb`, already connected — no need to type `-user`/`-password` yourself.
+- With a `.sql` file open, right-click in the editor → **Run File with ISQL** saves the file and runs it through `isql -i` against the active database.
+
+Requires the Firebird client tools (`isql` or `isql-fb`) to be installed and on your `PATH`; if the extension can't find them, set the **firebird.isqlPath** setting to the executable's full path. Credentials are passed via the `ISC_USER`/`ISC_PASSWORD` environment variables rather than the visible command line.
+
 ### Editing Query Results Directly
 
 Any result grid (single query or a batch panel) can be edited in place:
@@ -118,6 +128,7 @@ Right-click a table → **Generate Mock Data**. Requires a [Mockaroo API key](ht
 | `firebird.recordsPerPage` | string | `10` | Records per page in results view (`10`, `25`, `50`, `100`, `All records`) |
 | `firebird.mockarooApiKey` | string | *(blank)* | API key for the Mock Data Generator |
 | `firebird.useNativeDriver` | boolean | `false` | Use the experimental native Firebird client driver |
+| `firebird.isqlPath` | string | *(blank)* | Path to the `isql`/`isql-fb` executable; leave blank to search `PATH` automatically |
 
 ## Documentation
 

@@ -29,6 +29,7 @@ This document outlines the planned features and improvements for the **Firebird 
 - [x] Session query history — automatically log and recall previously executed queries
 - [ ] Explain and analyze query performance with `SET PLANONLY ON` / `SET PLAN ON` integration
 - [x] Editable result grids — update, insert, and delete rows directly from query results
+- [x] Use isql/isql-fb in an integrated terminal, connected to the active database, and run `.sql` files through it directly
 - [ ] Enhanced export options — export results to CSV, JSON, Excel (XLSX), and PDF
 
 ## Connection Management
