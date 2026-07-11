@@ -159,7 +159,8 @@ suite('Driver – real Firebird integration (extension host)', function () {
   test('fetches a stored procedure\'s source without a -204 "Implementation limit exceeded" error', async function () {
     const conn = getTestConnectionOptions();
     await Driver.runQuery(
-      'CREATE PROCEDURE DRIVER_IT_SRC_PROC AS BEGIN\n  SUSPEND;\nEND',
+      // EXIT (not SUSPEND) since this procedure has no RETURNS clause.
+      'CREATE PROCEDURE DRIVER_IT_SRC_PROC AS BEGIN\n  EXIT;\nEND',
       conn
     );
     try {
@@ -167,7 +168,7 @@ suite('Driver – real Firebird integration (extension host)', function () {
       const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery('DRIVER_IT_SRC_PROC'));
       await Driver.client.detach(connection);
       assert.strictEqual(rows.length, 1);
-      assert.ok(rows[0].PROCEDURE_SOURCE.includes('SUSPEND'), rows[0].PROCEDURE_SOURCE);
+      assert.ok(rows[0].PROCEDURE_SOURCE.includes('EXIT'), rows[0].PROCEDURE_SOURCE);
     } finally {
       await Driver.runQuery('DROP PROCEDURE DRIVER_IT_SRC_PROC', conn).catch(() => { /* best-effort cleanup */ });
     }
