@@ -672,10 +672,10 @@
   "dependencies": {
     "bindings": "^1.5.0",
     "node-addon-api": "^5.0.0",
-    "node-firebird": "^2.0.2",
-    "node-firebird-driver": "^3.1.0",
-    "node-firebird-driver-native": "^3.1.0",
-    "node-firebird-native-api": "^3.0.0",
+    "node-firebird": "^2.3.4",
+    "node-firebird-driver": "^3.6.0",
+    "node-firebird-driver-native": "^3.6.0",
+    "node-firebird-native-api": "^3.2.0",
     "node-gyp": "^9.3.0",
     "uuid": "^8.3.2"
   },
