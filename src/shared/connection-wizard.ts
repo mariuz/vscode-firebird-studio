@@ -1,8 +1,56 @@
 import { window, Disposable, QuickInput, QuickInputButtons, QuickPickItem } from "vscode";
+import * as cp from "node:child_process";
 import { ConnectionOptions } from "../interfaces";
 import { logger } from "../logger/logger";
+import { getOptions } from "../config";
+import {
+  DiscoveredFirebirdContainer,
+  dockerPsArgs,
+  dockerInspectEnvArgs,
+  parseDockerPsOutput,
+  parseDockerInspectEnv,
+  discoverFirebirdContainers,
+  suggestDatabasePath,
+  resolveDockerExecutable,
+} from "./docker-discovery";
 
 type ConnectionType = "network" | "embedded" | "docker";
+
+function checkDockerExecutable(candidate: string): Promise<boolean> {
+  return new Promise(resolve => {
+    try {
+      const child = cp.execFile(candidate, ["--version"], { timeout: 3000 }, err => resolve(!err));
+      child.on("error", () => resolve(false));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+function execDocker(dockerExe: string, args: string[]): Promise<string | undefined> {
+  return new Promise(resolve => {
+    cp.execFile(dockerExe, args, { timeout: 5000 }, (err, stdout) => {
+      resolve(err ? undefined : stdout);
+    });
+  });
+}
+
+async function discoverRunningFirebirdContainers(): Promise<DiscoveredFirebirdContainer[]> {
+  const dockerExe = await resolveDockerExecutable(getOptions().dockerPath || undefined, checkDockerExecutable);
+  if (!dockerExe) {
+    logger.info("Docker executable not found; skipping container discovery.");
+    return [];
+  }
+  const stdout = await execDocker(dockerExe, dockerPsArgs());
+  if (!stdout) { return []; }
+  return discoverFirebirdContainers(parseDockerPsOutput(stdout));
+}
+
+async function suggestDatabasePathFor(dockerExe: string, containerId: string): Promise<string | undefined> {
+  const stdout = await execDocker(dockerExe, dockerInspectEnvArgs(containerId));
+  if (!stdout) { return undefined; }
+  return suggestDatabasePath(parseDockerInspectEnv(stdout)["FIREBIRD_DATABASE"]);
+}
 
 export async function connectionWizard() {
   const title = "FIREBIRD: Add New Connection";
@@ -19,7 +67,7 @@ export async function connectionWizard() {
     const items: QuickPickItem[] = [
       { label: "$(server) Network", description: "Connect to a Firebird server via TCP/IP" },
       { label: "$(file-directory) Embedded", description: "Connect to a local embedded Firebird database file" },
-      { label: "$(container) Docker", description: "Connect to a Firebird server running in Docker (localhost:3050)" }
+      { label: "$(container) Docker", description: "Connect to a Firebird server running in Docker — auto-detects running containers" }
     ];
 
     const picked = await input.showQuickPick({
@@ -48,12 +96,69 @@ export async function connectionWizard() {
       options.port = null;
       return (input: MultiStepInput) => database(input, options, 2, 5);
     } else if (type === "docker") {
-      options.host = "localhost";
-      options.port = 3050;
-      return (input: MultiStepInput) => database(input, options, 2, 6);
+      return (input: MultiStepInput) => dockerContainer(input, options, 2, 7);
     } else {
       return (input: MultiStepInput) => host(input, options);
     }
+  }
+
+  async function dockerContainer(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
+    const discovered = await discoverRunningFirebirdContainers();
+
+    if (discovered.length === 0) {
+      logger.info("No running Firebird Docker containers detected; defaulting to localhost:3050.");
+      options.host = "localhost";
+      options.port = 3050;
+      return (input: MultiStepInput) => database(input, options, step + 1, totalSteps);
+    }
+
+    const manualEntry: QuickPickItem = { label: "$(edit) Enter manually", description: "localhost:3050 (default)" };
+    const items: QuickPickItem[] = [
+      ...discovered.map(d => ({
+        label: `$(container) ${d.container.name}`,
+        description: `${d.container.image} — localhost:${d.hostPort}`,
+        detail: d.container.status
+      })),
+      manualEntry
+    ];
+
+    const picked = await input.showQuickPick({
+      title,
+      step,
+      totalSteps,
+      items,
+      placeholder: "Select a running Firebird Docker container",
+      ignoreFocusOut: true
+    });
+
+    if (!picked) {
+      return Promise.reject("No container selected. Add Connection canceled.");
+    }
+
+    options.host = "localhost";
+
+    if (picked === manualEntry) {
+      options.port = 3050;
+      return (input: MultiStepInput) => database(input, options, step + 1, totalSteps);
+    }
+
+    const match = discovered.find(d => picked.label === `$(container) ${d.container.name}`);
+    options.port = match ? match.hostPort : 3050;
+
+    let suggestedPath: string | undefined;
+    if (match) {
+      const dockerExe = await resolveDockerExecutable(getOptions().dockerPath || undefined, checkDockerExecutable);
+      if (dockerExe) {
+        suggestedPath = await suggestDatabasePathFor(dockerExe, match.container.id);
+      }
+    }
+
+    return (input: MultiStepInput) => database(input, options, step + 1, totalSteps, suggestedPath);
   }
 
   async function host(input: MultiStepInput, options: Partial<ConnectionOptions>) {
@@ -76,7 +181,8 @@ export async function connectionWizard() {
     input: MultiStepInput,
     options: Partial<ConnectionOptions>,
     step: number,
-    totalSteps: number
+    totalSteps: number,
+    suggestedPath?: string
   ) {
     const prompt = options.embedded
       ? "[REQUIRED] Absolute path to the local Firebird database file."
@@ -88,7 +194,8 @@ export async function connectionWizard() {
       totalSteps,
       prompt,
       placeHolder: "e.g. '/var/db/mydb.fdb'",
-      ignoreFocusOut: true
+      ignoreFocusOut: true,
+      value: suggestedPath
     });
     if (!options.database) {
       return Promise.reject("Database cannot be empty. Add Connection canceled.");
@@ -237,6 +344,8 @@ interface InputBoxParameters {
   placeHolder: string;
   ignoreFocusOut: boolean;
   password?: boolean;
+  /** Pre-fills the input box (e.g. a database path suggested from Docker container discovery); still freely editable. */
+  value?: string;
 }
 
 interface QuickPickParameters {
@@ -332,7 +441,8 @@ class MultiStepInput {
     prompt,
     placeHolder,
     ignoreFocusOut,
-    password
+    password,
+    value
   }: P) {
     const disposables: Disposable[] = [];
     try {
@@ -345,6 +455,7 @@ class MultiStepInput {
         input.placeholder = placeHolder;
         input.ignoreFocusOut = ignoreFocusOut;
         input.password = password || false;
+        input.value = value || "";
         input.buttons = [...(this.steps.length > 1 ? [QuickInputButtons.Back] : [])];
         disposables.push(
           input.onDidTriggerButton(button => {

@@ -10,4 +10,6 @@ export interface Options {
   isqlPath: string;
   /** Show a "System Tables" folder listing Firebird's built-in RDB$ system/metadata tables. */
   showSystemObjects: boolean;
+  /** Explicit path to the docker executable; empty string means "search PATH". */
+  dockerPath: string;
 }

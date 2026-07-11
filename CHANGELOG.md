@@ -2,6 +2,14 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.18 - 2026-07-12
+
+### Added
+
+- **Add New Connection**'s Docker option now auto-detects Firebird servers running in local Docker containers instead of just assuming `localhost:3050`: it lists every running container that publishes Firebird's port (3050), pre-fills the host/port from whichever one you pick, and — when the container's `FIREBIRD_DATABASE` env var is set (the official `firebirdsql/firebird` image's convention) — suggests the database path too, still editable before you continue
+- New `firebird.dockerPath` setting for when the `docker` executable isn't on `PATH`
+- Falls back to the previous static `localhost:3050` behavior when Docker isn't installed or no matching containers are running, so nothing changes for setups without Docker
+
 ## 0.1.17 - 2026-07-11
 
 ### Added

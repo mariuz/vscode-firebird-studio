@@ -54,6 +54,8 @@ Quick start:
 
 Click the **+** (Add New Connection) icon in the DB Explorer title bar. The Connection Wizard guides you through host, port, database path, username, password, and optional role. Your connection appears in the tree when the wizard completes.
 
+Choosing **Docker** as the connection type auto-detects Firebird containers currently running on your machine — pick one from the list and its published port (and, when available, its database path) are filled in for you. Falls back to the previous `localhost:3050` default if Docker isn't installed or no matching container is running.
+
 For advanced options (native driver, WireCrypt) see **[docs/connection-setup.md](docs/connection-setup.md)**.
 
 ### Explore Database Contents
@@ -133,6 +135,7 @@ Right-click a table → **Generate Mock Data**. Requires a [Mockaroo API key](ht
 | `firebird.useNativeDriver` | boolean | `false` | Use the experimental native Firebird client driver |
 | `firebird.isqlPath` | string | *(blank)* | Path to the `isql`/`isql-fb` executable; leave blank to search `PATH` automatically |
 | `firebird.showSystemObjects` | boolean | `false` | Show a **System Tables** folder listing Firebird's built-in `RDB$` system/metadata tables under each database |
+| `firebird.dockerPath` | string | *(blank)* | Path to the `docker` executable, used to auto-detect running Firebird containers in **Add New Connection**; leave blank to search `PATH` automatically |
 
 ## Documentation
 

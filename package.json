@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -354,6 +354,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show a 'System Tables' folder listing Firebird's built-in RDB$ system/metadata tables under each database."
+        },
+        "firebird.dockerPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `docker` executable, used by **Add New Connection**'s Docker option to auto-detect running Firebird containers. Leave empty to search `PATH` automatically."
         },
         "firebird.logLevel": {
           "type": "string",

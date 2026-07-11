@@ -15,7 +15,8 @@ export function getOptions() {
     recordsPerPage: _recordsPerPage(),
     useNativeDriver: _useNativeDriver(),
     isqlPath: _isqlPath(),
-    showSystemObjects: _showSystemObjects()
+    showSystemObjects: _showSystemObjects(),
+    dockerPath: _dockerPath()
   } as Options;
 }
 
@@ -96,6 +97,11 @@ function _logLevel(): string {
 function _isqlPath(): string {
   const isqlPathConf: any = getConfig().get("isqlPath");
   return typeof isqlPathConf === "string" ? isqlPathConf : "";
+}
+
+function _dockerPath(): string {
+  const dockerPathConf: any = getConfig().get("dockerPath");
+  return typeof dockerPathConf === "string" ? dockerPathConf : "";
 }
 
 function _showSystemObjects(): boolean {

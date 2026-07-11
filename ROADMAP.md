@@ -38,7 +38,7 @@ This document outlines the planned features and improvements for the **Firebird 
 - [x] Connection profiles with saved credentials (securely stored via VS Code Secret Storage API)
 - [ ] Connection pooling for improved performance on repeated queries
 - [ ] Support for Firebird 4.x and 5.x wire protocol and authentication (SRP, ChaCha encryption)
-- [ ] Docker container support — connect to Firebird instances running in Docker
+- [x] Docker container support — connect to Firebird instances running in Docker
 
 ## Database Management
 
