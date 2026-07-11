@@ -25,7 +25,7 @@ export class NodeProcedure implements FirebirdTree {
   public async getChildren(): Promise<FirebirdTree[]> {
     const qry = procedureParametersQuery(this.procedureName.trim());
     try {
-      const connection = await Driver.client.createConnection(this.dbDetails);
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const params = await Driver.client.queryPromise<any[]>(connection, qry);
       return params.map(param => new NodeProcedureParam(param));
     } catch (err) {
@@ -37,7 +37,7 @@ export class NodeProcedure implements FirebirdTree {
   public async editProcedure() {
     logger.info("Edit Procedure: open source for editing");
     try {
-      const connection = await Driver.client.createConnection(this.dbDetails);
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery(this.procedureName.trim()));
       const source = rows[0]?.PROCEDURE_SOURCE ?? "";
       const scaffold = source

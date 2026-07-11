@@ -29,7 +29,7 @@ export class KeywordsDb {
         } as Schema.Database;
         const tableNames: string[] = [];
 
-        const connection = await Driver.client.createConnection(conOptions);
+        const connection = await Driver.client.createConnection(await Driver.resolvePassword(conOptions));
         const resultSet: ResultSet = await Driver.client.queryPromise(connection, getTablesQuery(maxTablesCount));
         if (!resultSet || resultSet.length === 0) {
             return undefined;

@@ -15,6 +15,8 @@ import * as assert from 'assert';
 import * as Firebird from 'node-firebird';
 import { Driver, ClientI, HistoryLogEntry, extractTableNames, toNodeFirebirdOptions } from '../shared/driver';
 import { ConnectionOptions } from '../interfaces';
+import { CredentialStore } from '../shared/credential-store';
+import { createMockContext } from './mocks/vscode';
 
 // ── Driver.constructResponse ──────────────────────────────────────────────────
 
@@ -167,6 +169,64 @@ suite('Driver – toNodeFirebirdOptions()', function () {
     const opts = toNodeFirebirdOptions(baseConnection({ embedded: true }));
     assert.strictEqual(opts.host, undefined);
     assert.strictEqual(opts.port, undefined);
+  });
+});
+
+// ── Driver.resolvePassword() ─────────────────────────────────────────────────
+//
+// Regression coverage for "Your user name and password are not defined":
+// saved connections never carry a password (FirebirdTreeDataProvider strips
+// it before persisting to globalState — passwords only live in
+// SecretStorage), so any code that connects directly via
+// Driver.client.createConnection() must resolve it first. This was missing
+// from NodeTable/NodeView/NodeProcedure/NodeTrigger's direct-connect methods
+// (e.g. expanding a table to list its columns), which failed whenever the
+// in-memory ConnectionOptions hadn't already been resolved by something else
+// first — see the "NodeTable password resolution" suite below for the
+// end-to-end reproduction.
+
+suite('Driver.resolvePassword()', function () {
+  function baseConnection(overrides: Partial<ConnectionOptions> = {}): ConnectionOptions {
+    return {
+      id: 'test',
+      host: 'localhost',
+      port: 3050,
+      database: '/data/test.fdb',
+      user: 'sysdba',
+      password: undefined,
+      role: null,
+      ...overrides,
+    };
+  }
+
+  test('returns the connection unchanged when it already has a password', async function () {
+    const conn = baseConnection({ password: 'already-set' });
+    const resolved = await Driver.resolvePassword(conn);
+    assert.strictEqual(resolved.password, 'already-set');
+  });
+
+  test('fetches the password from CredentialStore when missing', async function () {
+    CredentialStore.setContext(createMockContext() as any);
+    await CredentialStore.storePassword('conn-x', 'secret123');
+
+    const resolved = await Driver.resolvePassword(baseConnection({ id: 'conn-x' }));
+    assert.strictEqual(resolved.password, 'secret123');
+  });
+
+  test('resolves to an empty string when no password is stored for that id', async function () {
+    CredentialStore.setContext(createMockContext() as any);
+
+    const resolved = await Driver.resolvePassword(baseConnection({ id: 'conn-with-no-stored-password' }));
+    assert.strictEqual(resolved.password, '');
+  });
+
+  test('does not mutate the original ConnectionOptions object', async function () {
+    CredentialStore.setContext(createMockContext() as any);
+    await CredentialStore.storePassword('conn-y', 'secret456');
+
+    const conn = baseConnection({ id: 'conn-y' });
+    await Driver.resolvePassword(conn);
+    assert.strictEqual(conn.password, undefined, 'the input object itself should be untouched');
   });
 });
 

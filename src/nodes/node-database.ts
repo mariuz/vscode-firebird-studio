@@ -35,11 +35,7 @@ export class NodeDatabase implements FirebirdTree {
 
   /** Returns a copy of dbDetails with password resolved from SecretStorage if needed. */
   private async resolvedDetails(): Promise<ConnectionOptions> {
-    if (this.dbDetails.password) {
-      return this.dbDetails;
-    }
-    const password = (await CredentialStore.getPassword(this.dbDetails.id)) ?? "";
-    return { ...this.dbDetails, password };
+    return Driver.resolvePassword(this.dbDetails);
   }
 
   // list database object categories
@@ -146,8 +142,9 @@ export class NodeDatabase implements FirebirdTree {
   // monitor active connections and I/O stats
   public async monitorDatabase() {
     logger.info("Monitor Database: active connections");
-    Global.activeConnection = this.dbDetails;
-    return Driver.runQuery(monitorConnectionsQuery, this.dbDetails)
+    const resolved = await this.resolvedDetails();
+    Global.activeConnection = resolved;
+    return Driver.runQuery(monitorConnectionsQuery, resolved)
       .then(result => result)
       .catch(err => {
         logger.error(err);

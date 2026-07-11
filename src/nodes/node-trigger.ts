@@ -34,7 +34,7 @@ export class NodeTrigger implements FirebirdTree {
     const name = this.trigger.TRIGGER_NAME ? this.trigger.TRIGGER_NAME.trim() : "";
     logger.info("Edit Trigger: open source for editing");
     try {
-      const connection = await Driver.client.createConnection(this.dbDetails);
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const rows = await Driver.client.queryPromise<any>(connection, getTriggerBodyQuery(name));
       const source = rows[0]?.TRIGGER_SOURCE ?? "";
       const scaffold = source

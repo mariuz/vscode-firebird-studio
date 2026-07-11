@@ -98,8 +98,14 @@ export class Driver {
     return null;
   }
 
-  /** Resolves the password for a connection, fetching from SecretStorage if not already set. */
-  private static async resolvePassword(connectionOptions: ConnectionOptions): Promise<ConnectionOptions> {
+  /**
+   * Resolves the password for a connection, fetching from SecretStorage if not already set.
+   * Public because runQuery()/runBatch() call it automatically, but any code that connects via
+   * Driver.client.createConnection() directly (bypassing those) must call it explicitly first —
+   * saved connections never carry a password (see FirebirdTreeDataProvider#addConnection), so
+   * skipping this fails with "Your user name and password are not defined".
+   */
+  public static async resolvePassword(connectionOptions: ConnectionOptions): Promise<ConnectionOptions> {
     if (connectionOptions.password) {
       return connectionOptions;
     }

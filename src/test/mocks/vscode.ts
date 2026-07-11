@@ -270,9 +270,10 @@ export enum CompletionTriggerKind {
   TriggerForIncompleteCompletions = 2,
 }
 
-/** Creates a minimal ExtensionContext mock with an in-memory globalState. */
+/** Creates a minimal ExtensionContext mock with an in-memory globalState and SecretStorage. */
 export function createMockContext() {
   const store = new Map<string, any>();
+  const secretsStore = new Map<string, string>();
   const subscriptions: any[] = [];
   return {
     subscriptions,
@@ -289,9 +290,9 @@ export function createMockContext() {
       setKeysForSync: (_keys: string[]) => { /* no-op */ },
     },
     secrets: {
-      get: (_key: string) => Promise.resolve(undefined as string | undefined),
-      store: (_key: string, _value: string) => Promise.resolve(),
-      delete: (_key: string) => Promise.resolve(),
+      get: (key: string) => Promise.resolve(secretsStore.get(key)),
+      store: (key: string, value: string) => { secretsStore.set(key, value); return Promise.resolve(); },
+      delete: (key: string) => { secretsStore.delete(key); return Promise.resolve(); },
       onDidChange: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
     },
   };

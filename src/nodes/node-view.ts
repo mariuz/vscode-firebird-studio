@@ -26,7 +26,7 @@ export class NodeView implements FirebirdTree {
   public async getChildren(): Promise<FirebirdTree[]> {
     const qry = viewColumnsQuery(this.viewName.trim());
     try {
-      const connection = await Driver.client.createConnection(this.dbDetails);
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const columns = await Driver.client.queryPromise<any[]>(connection, qry);
       return columns.map(col => new NodeViewColumn(col));
     } catch (err) {
@@ -49,7 +49,7 @@ export class NodeView implements FirebirdTree {
   public async editView() {
     logger.info("Edit View: open definition for editing");
     try {
-      const connection = await Driver.client.createConnection(this.dbDetails);
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const rows = await Driver.client.queryPromise<any>(connection, getViewDefinitionQuery(this.viewName.trim()));
       const source = rows[0]?.VIEW_SOURCE ?? "";
       const scaffold = source

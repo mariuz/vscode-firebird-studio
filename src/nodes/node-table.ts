@@ -28,7 +28,7 @@ export class NodeTable implements FirebirdTree {
     const qry = tableInfoQuery(this.table);
 
     try {
-      const connection = await Driver.client.createConnection(this.dbDetails);
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const fields = await Driver.client.queryPromise<any[]>(connection, qry);
       return fields.map<NodeField>(field => {
         return new NodeField(field, this.table, this.dbDetails);
@@ -93,7 +93,7 @@ export class NodeTable implements FirebirdTree {
   public async alterTable() {
     logger.info("Scaffold: Alter Table");
 
-    const connection = await Driver.client.createConnection(this.dbDetails);
+    const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
     const fields = await Driver.client.queryPromise<any>(connection, tableInfoQuery(this.table.trim()));
     const lines: string[] = fields.map(f => {
       const name = f.FIELD_NAME ? f.FIELD_NAME.trim() : "column_name";
