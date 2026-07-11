@@ -38,9 +38,16 @@ suite('Row editing (update/insert/delete) – real Firebird integration', functi
   });
 
   setup(async function () {
-    await Driver.runQuery('DELETE FROM ROW_EDIT_IT', conn);
-    await Driver.runQuery("INSERT INTO ROW_EDIT_IT (ID, NAME, PRICE) VALUES (1, 'Widget A', 9.99)", conn);
-    await Driver.runQuery("INSERT INTO ROW_EDIT_IT (ID, NAME, PRICE) VALUES (2, 'Widget B', 19.99)", conn);
+    // One connection (via runBatch) instead of three separate ones per test —
+    // this suite already opens a lot of short-lived connections back to back.
+    await Driver.runBatch(
+      [
+        'DELETE FROM ROW_EDIT_IT;',
+        "INSERT INTO ROW_EDIT_IT (ID, NAME, PRICE) VALUES (1, 'Widget A', 9.99);",
+        "INSERT INTO ROW_EDIT_IT (ID, NAME, PRICE) VALUES (2, 'Widget B', 19.99);",
+      ].join('\n'),
+      conn
+    );
   });
 
   test('getPrimaryKeyColumnsQuery finds the real primary key', async function () {
@@ -57,12 +64,13 @@ suite('Row editing (update/insert/delete) – real Firebird integration', functi
     const sql = buildStatementForChange(TABLE, COLUMNS, ['ID'], change);
     await Driver.runQuery(sql, conn);
 
-    const rows = await Driver.runQuery('SELECT NAME FROM ROW_EDIT_IT WHERE ID = 1', conn);
-    assert.strictEqual(rows[0].NAME.trim(), 'Widget A (renamed)');
-
-    // The other row must be untouched.
-    const other = await Driver.runQuery('SELECT NAME FROM ROW_EDIT_IT WHERE ID = 2', conn);
-    assert.strictEqual(other[0].NAME.trim(), 'Widget B');
+    // Verify both rows in one connection: the edited one, and that the other is untouched.
+    const results = await Driver.runBatch(
+      'SELECT NAME FROM ROW_EDIT_IT WHERE ID = 1;\nSELECT NAME FROM ROW_EDIT_IT WHERE ID = 2;',
+      conn
+    );
+    assert.strictEqual(results[0].rows![0].NAME.trim(), 'Widget A (renamed)');
+    assert.strictEqual(results[1].rows![0].NAME.trim(), 'Widget B');
   });
 
   test('an update change with no known primary key falls back to matching every column', async function () {
