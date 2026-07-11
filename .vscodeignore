@@ -10,6 +10,13 @@ tsconfig.e2e.json
 .vscode-test.mjs
 images
 out/test
+.claude
+.github
+docs
+scripts
+CLAUDE.md
+CONTRIBUTING.md
+.gitattributes
 !node_modules/node-firebird-native-api
 !node_modules/node-gyp
 !node_modules/node-addon-api
