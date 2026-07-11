@@ -140,8 +140,9 @@ export function activate(context: ExtensionContext) {
     commands.registerCommand("firebird.chooseActive", () => {
       connectionPicker(context)
         .then(pickedConnection => {
-          if (pickedConnection) {
-            const id: string = pickedConnection.detail.split(": ").pop();
+          if (pickedConnection?.detail) {
+            const id = pickedConnection.detail.split(": ").pop();
+            if (!id) { return; }
             Global.setActiveConnectionById(context, id).catch(err => {
               logger.error(err);
             });
@@ -440,7 +441,7 @@ export function activate(context: ExtensionContext) {
         statusIndicator.show();
 
         // Capture and display the output of the npm script
-        child.stdout.on('data', (data) => {
+        child.stdout?.on('data', (data) => {
           logger.output(`[node-gyp driver compilation] ${data}`);
         });
 

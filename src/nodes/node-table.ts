@@ -6,7 +6,7 @@ import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery} from "../shared/q
 import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
-import MockData from "../mock-data/mock-data";
+import MockData, {MockField} from "../mock-data/mock-data";
 
 export class NodeTable implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly table: string) {}
@@ -36,7 +36,7 @@ export class NodeTable implements FirebirdTree {
     } catch (err) {
       logger.error(err);
       logger.showError(err);
-      return [new NodeInfo(err)];
+      return [new NodeInfo(String(err))];
     }
   }
 
@@ -119,7 +119,7 @@ export class NodeTable implements FirebirdTree {
   }
 
   public async generateMockData(firebirdMockData: MockData, config: Options) {
-    const fields = [];
+    const fields: MockField[] = [];
     const apiKey = config.mockarooApiKey;
 
     if (!apiKey) {
@@ -137,7 +137,7 @@ export class NodeTable implements FirebirdTree {
     }
 
     await this.getChildren().then(children => {
-      children.filter(data => {
+      children.filter((data: any) => {
         fields.push({
           name: data.field.FIELD_NAME.trim(),
           type: data.field.FIELD_TYPE.trim() + " (" + data.field.FIELD_LENGTH + ")",

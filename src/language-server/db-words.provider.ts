@@ -8,16 +8,16 @@ import { Driver } from '../shared/driver';
 type ResultSet = Array<any>;
 
 export class KeywordsDb {
-    public getSchema(): Promise<Schema.Database> {
+    public async getSchema(): Promise<Schema.Database> {
         try {
             if (!Global.activeConnection && !getOptions().codeCompletionDatabase) {
-                return Promise.resolve({ reservedKeywords: getOptions().codeCompletionKeywords, tables: [] } as Schema.Database);
-            } else {
-                return this.build(Global.activeConnection, getOptions().codeCompletionKeywords, getOptions().maxTablesCount);
+                return { reservedKeywords: getOptions().codeCompletionKeywords, path: "", tables: [] };
             }
+            const schema = await this.build(Global.activeConnection, getOptions().codeCompletionKeywords, getOptions().maxTablesCount);
+            return schema ?? { reservedKeywords: getOptions().codeCompletionKeywords, path: "", tables: [] };
         } catch (err) {
             logger.error(err);
-            return Promise.resolve<Schema.Database>(undefined);
+            return { reservedKeywords: getOptions().codeCompletionKeywords, path: "", tables: [] };
         }
     }
 

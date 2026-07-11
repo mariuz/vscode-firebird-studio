@@ -189,6 +189,7 @@ export async function connectionWizard() {
     if (!options.embedded) {
       return (input: MultiStepInput) => wireCrypt(input, options, step + 1, totalSteps);
     }
+    return undefined;
   }
 
   async function wireCrypt(
@@ -269,7 +270,7 @@ class MultiStepInput {
         } else if (err === InputFlowAction.cancel) {
           step = undefined;
         } else {
-          this.current.dispose();
+          this.current?.dispose();
           throw err;
         }
       }

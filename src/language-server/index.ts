@@ -4,7 +4,7 @@ import { FirebirdSchema, Schema } from "../interfaces";
 
 export default class LanguageServer implements Disposable {
   private subscriptions: Disposable[];
-  private schemaHandler: (doc: TextDocument) => Thenable<FirebirdSchema>;
+  private schemaHandler?: (doc: TextDocument) => Thenable<FirebirdSchema>;
   private completionProvider: CompletionProvider;
 
   constructor() {

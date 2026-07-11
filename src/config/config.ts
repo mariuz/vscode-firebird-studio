@@ -21,7 +21,7 @@ function getConfig(): WorkspaceConfiguration {
   return workspace.getConfiguration("firebird");
 }
 
-function _mockarooApiKey(): string {
+function _mockarooApiKey(): string | null {
   const apiKeyConf: any = getConfig().get("mockarooApiKey");
   // const apiKey: string = properties["firebird.mockarooApiKey"]["default"];
 
@@ -96,13 +96,9 @@ function _recordsPerPage(): string {
   const recordsPerPageConf: any = getConfig().get("recordsPerPage");
   const recordsPerPage: any = properties["firebird.recordsPerPage"]["default"];
 
-  if (typeof recordsPerPageConf === "string") {
-    if (valid.indexOf(recordsPerPageConf) > -1) {
-      return recordsPerPageConf;
-    }
-  } else {
-    logger.error("Invalid value detected in Records Per Page settings. Fallback to default value.");
-    return recordsPerPage;
+  if (typeof recordsPerPageConf === "string" && valid.indexOf(recordsPerPageConf) > -1) {
+    return recordsPerPageConf;
   }
-  return null;
+  logger.error("Invalid value detected in Records Per Page settings. Fallback to default value.");
+  return recordsPerPage;
 }

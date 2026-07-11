@@ -209,7 +209,10 @@ async function streamModelResponse(
 function handleModelError(err: unknown, stream: vscode.ChatResponseStream): void {
     if (err instanceof vscode.LanguageModelError) {
         logger.error(`Language model error: ${err.message} [${err.code}]`);
-        if (err.cause instanceof Error && err.cause.message.includes('off_topic')) {
+        // Error.cause isn't declared under our ES2019 lib target; the vscode.d.ts docs
+        // guarantee LanguageModelError populates it for code "Unknown".
+        const cause = (err as { cause?: unknown }).cause;
+        if (cause instanceof Error && cause.message.includes('off_topic')) {
             stream.markdown('Sorry, I can only help with Firebird SQL database topics.');
         } else {
             stream.markdown('An error occurred while communicating with the language model. Please try again.');

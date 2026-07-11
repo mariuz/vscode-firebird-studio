@@ -8,7 +8,7 @@ const Module = require('module');
 const path = require('path');
 
 const originalLoad = Module._load;
-Module._load = function (request: string, parent: any, isMain: boolean) {
+Module._load = function (request: string, _parent: any, _isMain: boolean) {
   if (request === 'vscode') {
     // Return the compiled mock (ts-node compiles on the fly)
     return require(path.join(__dirname, 'mocks', 'vscode'));

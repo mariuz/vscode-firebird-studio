@@ -3,7 +3,7 @@ import { logger } from "../logger/logger";
 import { ConnectionOptions } from "../interfaces";
 import { Constants } from "../config/constants";
 
-export async function connectionPicker(context: ExtensionContext): Promise<QuickPickItem> {
+export async function connectionPicker(context: ExtensionContext): Promise<QuickPickItem | undefined> {
   logger.info("Choose Active Connection start...");
 
   return await getAvailableConnections(context).then(connections => {
@@ -25,7 +25,7 @@ async function getAvailableConnections(context: ExtensionContext): Promise<Quick
 
   return Object.keys(savedConnections).map(id => {
     const conn = savedConnections[id];
-    const dbName = conn.database.split("\\").pop().split("/").pop();
+    const dbName = (conn.database.split("\\").pop() ?? conn.database).split("/").pop();
     const location = conn.embedded ? "[embedded]" : conn.host;
     return {
       label: `${location}:${dbName}`,
@@ -34,7 +34,7 @@ async function getAvailableConnections(context: ExtensionContext): Promise<Quick
   });
 }
 
-async function showQuickPick(connections: QuickPickItem[]): Promise<QuickPickItem> {
+async function showQuickPick(connections: QuickPickItem[]): Promise<QuickPickItem | undefined> {
   return await window.showQuickPick(connections, {
     placeHolder: "FIREBIRD: Choose Active Database"
   });

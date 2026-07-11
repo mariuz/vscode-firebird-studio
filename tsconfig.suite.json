@@ -4,16 +4,25 @@
     "moduleResolution": "node",
     "target": "es2020",
     "outDir": "out",
-    "lib": ["ES2019"],
+    "lib": [
+      "ES2019"
+    ],
     "sourceMap": true,
     "rootDir": "src",
     "skipLibCheck": true,
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
-    "types": ["node", "mocha", "vscode"]
+    "types": [
+      "node",
+      "mocha",
+      "vscode"
+    ],
+    "strict": true
   },
   "include": [
     "src/test/suite/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

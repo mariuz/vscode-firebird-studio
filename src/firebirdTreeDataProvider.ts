@@ -9,10 +9,10 @@ import { CredentialStore } from "./shared/credential-store";
 import { logger } from "./logger/logger";
 
 export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> {
-  public _onDidChangeTreeData: EventEmitter<FirebirdTree> = new EventEmitter<FirebirdTree>();
-  public readonly onDidChangeTreeData: Event<FirebirdTree> = this._onDidChangeTreeData.event;
+  public _onDidChangeTreeData: EventEmitter<FirebirdTree | undefined> = new EventEmitter<FirebirdTree | undefined>();
+  public readonly onDidChangeTreeData: Event<FirebirdTree | undefined> = this._onDidChangeTreeData.event;
 
-  private savedConnections: { [key: string]: ConnectionOptions };
+  private savedConnections: { [key: string]: ConnectionOptions } = {};
 
   constructor(private context: ExtensionContext) {}
 
@@ -35,14 +35,9 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
     const id = uuidv1();
 
     /* fetch saved connections for update*/
-    this.savedConnections = await this.context.globalState.get<{ [key: string]: ConnectionOptions }>(
+    this.savedConnections = this.context.globalState.get<{ [key: string]: ConnectionOptions }>(
       Constants.ConectionsKey
-    );
-
-    if (!this.savedConnections) {
-      logger.debug("No saved connections found...");
-      this.savedConnections = {};
-    }
+    ) ?? {};
 
     logger.debug(`${Object.keys(this.savedConnections).length} saved connection(s) found...`);
 
@@ -97,13 +92,13 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
     return nodeHosts;
   }
 
-  private groupedArray(connections: object) {
+  private groupedArray(connections: { [key: string]: ConnectionOptions }): { [host: string]: ConnectionOptions[] } {
     return Object.keys(connections)
       .map(id => {
         connections[id].id = id;
         return connections[id];
       })
-      .reduce((h, a) => {
+      .reduce<{ [host: string]: ConnectionOptions[] }>((h, a) => {
         const groupKey = a.embedded ? "(embedded)" : a.host;
         return Object.assign(h, { [groupKey]: (h[groupKey] || []).concat(a) });
       }, {});

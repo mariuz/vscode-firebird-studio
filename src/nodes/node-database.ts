@@ -19,9 +19,7 @@ export class NodeDatabase implements FirebirdTree {
   // list databases grouped by host names
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
-      label: this.dbDetails.database
-        .split("\\")
-        .pop()
+      label: (this.dbDetails.database.split("\\").pop() ?? this.dbDetails.database)
         .split("/")
         .pop(),
       collapsibleState: TreeItemCollapsibleState.Collapsed,
@@ -170,7 +168,7 @@ export class NodeDatabase implements FirebirdTree {
     const backupPath = saveUri.fsPath;
     const { host, port, database, user, password } = this.dbDetails;
     const hostPort = `${host}/${port ?? 3050}:${database}`;
-    const args = ["-b", "-user", user, "-password", password, hostPort, backupPath];
+    const args = ["-b", "-user", user, "-password", password ?? "", hostPort, backupPath];
 
     logger.info(`Starting backup to ${backupPath}`);
     const statusItem = window.createStatusBarItem();
@@ -217,7 +215,7 @@ export class NodeDatabase implements FirebirdTree {
     const restorePath = restoreUri.fsPath;
     const { host, port, user, password } = this.dbDetails;
     const hostPort = `${host}/${port ?? 3050}:${restorePath}`;
-    const args = ["-c", "-user", user, "-password", password, backupPath, hostPort];
+    const args = ["-c", "-user", user, "-password", password ?? "", backupPath, hostPort];
 
     logger.info(`Starting restore from ${backupPath} to ${restorePath}`);
     const statusItem = window.createStatusBarItem();

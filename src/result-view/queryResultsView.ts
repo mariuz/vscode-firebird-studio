@@ -81,7 +81,9 @@ export class QueryResultsView extends EventEmitter implements Disposable {
       
     const path = dirname(htmlPath);
     const x = (str: string): string => {
-      return this.panel.webview.asWebviewUri(Uri.file(path + str)).toString();
+      // replaceUris() only runs from readWithCache()'s callback, which show() always
+      // invokes after init() has created the panel.
+      return this.panel!.webview.asWebviewUri(Uri.file(path + str)).toString();
     };
     const regex = /(?<=(href|src)=")(.+?)(?=")/g;
     html = html.replace(regex, x);

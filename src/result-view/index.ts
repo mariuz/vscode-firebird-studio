@@ -21,7 +21,7 @@ export interface PreparedResultSet {
 export default class ResultView extends QueryResultsView implements Disposable {
   private resultSet?: ResultSet;
   private batchResults?: PreparedResultSet[];
-  private recordsPerPage: string;
+  private recordsPerPage!: string;
 
   constructor(private extensionPath: string) {
     super("resultview", "Firebird Query Results");
@@ -115,7 +115,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
     return { tableHeader, tableBody, recordsPerPage: this.recordsPerPage };
   }
 
-  private prepareBatchResult(r: BatchResult, index: number): PreparedResultSet {
+  private prepareBatchResult(r: BatchResult, _index: number): PreparedResultSet {
     const decoder = new TextDecoder();
     const label = r.sql.replace(/\s+/g, " ").trim();
     const sql = label.length > 80 ? label.slice(0, 77) + "..." : label;

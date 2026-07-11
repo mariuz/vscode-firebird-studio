@@ -1,5 +1,5 @@
 export interface Options {
-  mockarooApiKey: string;
+  mockarooApiKey: string | null;
   maxTablesCount: number;
   codeCompletionKeywords: boolean;
   codeCompletionDatabase: boolean;

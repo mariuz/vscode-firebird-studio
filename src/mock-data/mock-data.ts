@@ -11,7 +11,7 @@ export interface Message {
   data: any;
 }
 
-interface MockField {
+export interface MockField {
   name: string,
   type: string,
   notnull: boolean
@@ -22,9 +22,9 @@ export default class MockData implements Disposable {
   private panel: WebviewPanel | undefined;
   private htmlCache: { [path: string]: string };
 
-  private tableName: string;
-  private fields: MockField[];
-  private apiKey: string;
+  private tableName!: string;
+  private fields!: MockField[];
+  private apiKey!: string;
 
   constructor(private extensionPath: string) {
     this.htmlCache = {};
@@ -98,7 +98,9 @@ export default class MockData implements Disposable {
   private replaceUris(html: string, htmlPath: string) {
     const path = dirname(htmlPath);
     const x = (str: string): string => {
-      return this.panel.webview.asWebviewUri(Uri.file(path + str)).toString();
+      // replaceUris() only runs from readWithCache()'s callback, which show() always
+      // invokes after init() has created the panel.
+      return this.panel!.webview.asWebviewUri(Uri.file(path + str)).toString();
     };
     const regex = /(?<=(href|src)=")(.+?)(?=")/g;
     html = html.replace(regex, x);
