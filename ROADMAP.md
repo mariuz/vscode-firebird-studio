@@ -25,7 +25,7 @@ This document outlines the planned features and improvements for the **Firebird 
 
 ## Query Execution and Results
 
-- [ ] Support for executing multiple queries in a single document (batch execution)
+- [x] Support for executing multiple queries in a single document (batch execution)
 - [ ] Session query history — automatically log and recall previously executed queries
 - [ ] Explain and analyze query performance with `SET PLANONLY ON` / `SET PLAN ON` integration
 - [ ] Editable result grids — update, insert, and delete rows directly from query results

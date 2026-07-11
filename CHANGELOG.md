@@ -2,6 +2,18 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.10 - 2026-07-11
+
+### Added
+
+- Batch execution: running a query now correctly handles multiple `;`-separated statements in a single document, including `CREATE`/`ALTER PROCEDURE`, `TRIGGER`, `FUNCTION`, and `EXECUTE BLOCK` bodies (with or without the isql `SET TERM ^ ;` convention used by this extension's own snippets) as a single atomic statement instead of splitting on their internal semicolons
+
+### Fixed
+
+- Upgraded TypeScript to 6.0.3 and fixed the resulting strict-mode findings across the codebase
+- Corrected `wireCrypt` connection option translation for the non-native driver, which previously could hang the connection instead of erroring
+- Fixed several GitHub Actions CI issues (unit tests running the wrong test tier, workflows resolving an unpinned global TypeScript instead of the project's version)
+
 ## 0.1.9 - 2026-04-07
 
 ### Changed

@@ -69,9 +69,9 @@ Before running queries, set an active database:
 ### Running SQL Queries
 
 Press `Ctrl+Alt+Q` or right-click the editor → **Run Firebird Query**.
-Results appear in a new tab with pagination, sorting, and filtering.
+If you select text first, only the selection runs; otherwise the whole document runs as a **batch**.
 
-> **Note:** Multiple queries in one document are not currently supported. Select the query you want to run if you have more than one.
+Each `;`-separated statement in the document gets its own tab in the results view, showing its row count (or error) at a glance. `CREATE`/`ALTER PROCEDURE`, `TRIGGER`, `FUNCTION`, and `EXECUTE BLOCK` bodies are treated as a single statement — including the isql `SET TERM ^ ;` convention used by this extension's own snippets — so the semicolons inside a procedure body don't get split into separate statements.
 
 ### SQL Snippets
 

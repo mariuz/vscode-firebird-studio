@@ -81,4 +81,67 @@ suite('Driver – real Firebird integration (extension host)', function () {
     const plan = await Driver.getQueryPlan('SELECT * FROM PRODUCTS WHERE ID = 1', getTestConnectionOptions());
     assert.ok(plan.includes('PRODUCTS'));
   });
+
+  // ── Batch execution of PSQL blocks (SET TERM) ──────────────────────────────
+  //
+  // The extension's own CREATE PROCEDURE/TRIGGER snippets wrap the body in
+  // `SET TERM ^ ; ... END^ SET TERM ; ^` so the semicolons inside the
+  // procedure body aren't mistaken for statement boundaries. These tests run
+  // that exact convention through Driver.runBatch() against a live server —
+  // proving a pasted snippet is actually executable end to end, not just
+  // that the splitter's output looks right in isolation (see
+  // src/test/sql-splitter.test.ts for the splitter's own unit coverage).
+
+  test('runBatch creates and calls a stored procedure defined with SET TERM, matching the CREATE PROCEDURE snippet', async function () {
+    const sql = [
+      'SET TERM ^ ;',
+      'CREATE PROCEDURE DRIVER_IT_ADD_ONE (P1 INTEGER)',
+      'RETURNS (OUT1 INTEGER)',
+      'AS',
+      'BEGIN',
+      '  OUT1 = P1 + 1;',
+      '  SUSPEND;',
+      'END^',
+      'SET TERM ; ^',
+      '',
+      'SELECT * FROM DRIVER_IT_ADD_ONE(41);',
+    ].join('\n');
+
+    try {
+      const results = await Driver.runBatch(sql, getTestConnectionOptions());
+      assert.strictEqual(results.length, 2, 'SET TERM lines must be consumed, not executed as statements');
+      assert.ok(!results[0].error, `CREATE PROCEDURE failed: ${results[0].error}`);
+      assert.ok(results[0].message?.includes('Create'));
+      assert.ok(!results[1].error, `SELECT FROM procedure failed: ${results[1].error}`);
+      assert.strictEqual(Number(results[1].rows![0].OUT1), 42);
+    } finally {
+      await Driver.runQuery('DROP PROCEDURE DRIVER_IT_ADD_ONE', getTestConnectionOptions()).catch(() => { /* best-effort cleanup */ });
+    }
+  });
+
+  test('runBatch creates and calls a bare stored procedure with a DECLARE VARIABLE section (no SET TERM)', async function () {
+    const sql = [
+      'CREATE PROCEDURE DRIVER_IT_DOUBLE (P1 INTEGER)',
+      'RETURNS (OUT1 INTEGER)',
+      'AS',
+      '  DECLARE VARIABLE v_temp INTEGER;',
+      'BEGIN',
+      '  v_temp = P1 * 2;',
+      '  OUT1 = v_temp;',
+      '  SUSPEND;',
+      'END;',
+      '',
+      'SELECT * FROM DRIVER_IT_DOUBLE(21);',
+    ].join('\n');
+
+    try {
+      const results = await Driver.runBatch(sql, getTestConnectionOptions());
+      assert.strictEqual(results.length, 2, 'the DECLARE VARIABLE section must not split the CREATE PROCEDURE statement');
+      assert.ok(!results[0].error, `CREATE PROCEDURE failed: ${results[0].error}`);
+      assert.ok(!results[1].error, `SELECT FROM procedure failed: ${results[1].error}`);
+      assert.strictEqual(Number(results[1].rows![0].OUT1), 42);
+    } finally {
+      await Driver.runQuery('DROP PROCEDURE DRIVER_IT_DOUBLE', getTestConnectionOptions()).catch(() => { /* best-effort cleanup */ });
+    }
+  });
 });
