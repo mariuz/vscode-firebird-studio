@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {NodeInfo} from "./node-info";
@@ -19,8 +19,8 @@ export class NodeCategoryFolder implements FirebirdTree {
       contextValue: `folder.${this.category}`,
       tooltip: this.label,
       iconPath: {
-        dark: join(context.extensionPath, "resources", "icons", "dark", "folder-dark.svg"),
-        light: join(context.extensionPath, "resources", "icons", "light", "folder-light.svg")
+        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "folder-dark.svg")),
+        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "folder-light.svg"))
       }
     };
   }

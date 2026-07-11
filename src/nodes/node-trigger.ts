@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {getTriggerBodyQuery, dropTriggerQuery} from "../shared/queries";
@@ -19,8 +19,8 @@ export class NodeTrigger implements FirebirdTree {
       contextValue: "trigger",
       tooltip: `[TRIGGER] ${name}\nTable: ${tableName}\nType: ${typeDesc}\n${inactive ? "INACTIVE" : "ACTIVE"}`,
       iconPath: {
-        dark: join(context.extensionPath, "resources", "icons", "dark", "trigger-dark.svg"),
-        light: join(context.extensionPath, "resources", "icons", "light", "trigger-light.svg")
+        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "trigger-dark.svg")),
+        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "trigger-light.svg"))
       }
     };
   }

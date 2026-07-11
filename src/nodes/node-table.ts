@@ -18,8 +18,8 @@ export class NodeTable implements FirebirdTree {
       contextValue: "table",
       tooltip: `[TABLE] ${this.table}`,
       iconPath: {
-        dark: join(context.extensionPath, "resources", "icons", "dark", "table-dark.svg"),
-        light: join(context.extensionPath, "resources", "icons", "light", "table-light.svg")
+        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "table-dark.svg")),
+        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "table-light.svg"))
       }
     };
   }

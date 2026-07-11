@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {viewColumnsQuery, selectAllRecordsQuery, getViewDefinitionQuery, dropViewQuery} from "../shared/queries";
@@ -17,8 +17,8 @@ export class NodeView implements FirebirdTree {
       contextValue: "view",
       tooltip: `[VIEW] ${this.viewName.trim()}`,
       iconPath: {
-        dark: join(context.extensionPath, "resources", "icons", "dark", "view-dark.svg"),
-        light: join(context.extensionPath, "resources", "icons", "light", "view-light.svg")
+        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "view-dark.svg")),
+        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "view-light.svg"))
       }
     };
   }

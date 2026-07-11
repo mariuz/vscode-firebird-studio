@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, window} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, window, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {dropGeneratorQuery, setGeneratorValueQuery} from "../shared/queries";
@@ -15,8 +15,8 @@ export class NodeGenerator implements FirebirdTree {
       contextValue: "generator",
       tooltip: `[GENERATOR] ${this.generatorName.trim()}`,
       iconPath: {
-        dark: join(context.extensionPath, "resources", "icons", "dark", "generator-dark.svg"),
-        light: join(context.extensionPath, "resources", "icons", "light", "generator-light.svg")
+        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "generator-dark.svg")),
+        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "generator-light.svg"))
       }
     };
   }

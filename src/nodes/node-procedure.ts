@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {procedureParametersQuery, getProcedureBodyQuery, dropProcedureQuery} from "../shared/queries";
@@ -16,8 +16,8 @@ export class NodeProcedure implements FirebirdTree {
       contextValue: "procedure",
       tooltip: `[PROCEDURE] ${this.procedureName.trim()}`,
       iconPath: {
-        dark: join(context.extensionPath, "resources", "icons", "dark", "procedure-dark.svg"),
-        light: join(context.extensionPath, "resources", "icons", "light", "procedure-light.svg")
+        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "procedure-dark.svg")),
+        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "procedure-light.svg"))
       }
     };
   }

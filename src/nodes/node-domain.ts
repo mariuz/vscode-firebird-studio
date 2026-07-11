@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {dropDomainQuery} from "../shared/queries";
@@ -19,8 +19,8 @@ export class NodeDomain implements FirebirdTree {
       contextValue: "domain",
       tooltip: `[DOMAIN] ${name}\n${type} (${length})\n${notNull}`,
       iconPath: {
-        dark: join(context.extensionPath, "resources", "icons", "dark", "domain-dark.svg"),
-        light: join(context.extensionPath, "resources", "icons", "light", "domain-light.svg")
+        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "domain-dark.svg")),
+        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "domain-light.svg"))
       }
     };
   }

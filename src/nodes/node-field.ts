@@ -1,4 +1,4 @@
-import { ExtensionContext, TreeItem, TreeItemCollapsibleState } from "vscode";
+import { ExtensionContext, TreeItem, TreeItemCollapsibleState, Uri } from "vscode";
 import { TextDecoder } from "util";
 import { join } from "path";
 import { ConnectionOptions, FirebirdTree } from "../interfaces";
@@ -35,7 +35,7 @@ export class NodeField implements FirebirdTree {
   }
 
   // sets the correct field icon depending on field type and ui theme color
-  private setIcon(constraint: any, notNull: number, tint: string, context: ExtensionContext): string {
+  private setIcon(constraint: any, notNull: number, tint: string, context: ExtensionContext): Uri {
     const type = this.parseConstraint(constraint);
     if (!type) {
       return notNull ? this.joinPath("notnull", tint, context) : this.joinPath("null", tint, context);
@@ -46,7 +46,7 @@ export class NodeField implements FirebirdTree {
     } else if (type.trim() === "UNIQUE") {
       return this.joinPath("unique", tint, context);
     } else {
-      return "";
+      return this.joinPath("null", tint, context);
     }
   }
 
@@ -70,8 +70,8 @@ export class NodeField implements FirebirdTree {
   }
 
   // construct path to icon
-  private joinPath(type: string, tint: string, context: ExtensionContext): string {
-    return join(context.extensionPath, "resources", "icons", tint, type + "-" + tint + ".svg");
+  private joinPath(type: string, tint: string, context: ExtensionContext): Uri {
+    return Uri.file(join(context.extensionPath, "resources", "icons", tint, type + "-" + tint + ".svg"));
   }
 
   //  run predefined sql query
