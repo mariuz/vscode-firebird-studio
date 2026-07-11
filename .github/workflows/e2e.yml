@@ -82,7 +82,11 @@ jobs:
         run: ./node_modules/.bin/tsc -p tsconfig.e2e.json --noEmitOnError false
 
       - name: Run E2E tests
-        run: ./node_modules/.bin/mocha 'out/test/e2e/**/*.test.js' --timeout 30000
+        # --exit: node-firebird doesn't close its TCP socket when a login fails (doError() only
+        # invokes the callback, never touches the connection) — tests that intentionally trigger
+        # an auth failure (e.g. verifying a changed/dropped user's old credentials are rejected)
+        # leave a dangling open handle that keeps the process alive forever without this flag.
+        run: ./node_modules/.bin/mocha 'out/test/e2e/**/*.test.js' --timeout 30000 --exit
         env:
           FIREBIRD_HOST: localhost
           FIREBIRD_PORT: 3050
