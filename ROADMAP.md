@@ -63,6 +63,10 @@ This document outlines the planned features and improvements for the **Firebird 
 - [x] Sample databases and tutorials for getting started
 - [x] Contributing guide for community contributors
 
+## Testing and CI
+
+- [x] E2E test matrix covering Firebird 3, 4, 5, and 6 (snapshot) across Node.js 24-26, mirroring [node-firebird's own CI](https://github.com/mariuz/node-firebird/blob/master/.github/workflows/node.js.yml) so driver-compatibility regressions surface before they reach users on older or newer servers
+
 ---
 
 > **Note**: This roadmap is subject to change based on community feedback and contributions. Feature requests and suggestions are welcome via [GitHub Issues](https://github.com/mariuz/vscode-firebird-studio/issues).
