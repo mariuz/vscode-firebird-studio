@@ -99,7 +99,8 @@ div.img-wrapper img {
   width: 200px;
 }
 .btn-toggle-edit,
-.btn-gen-update {
+.btn-add-row,
+.btn-apply-changes {
   padding: 3px 10px;
   font-size: 12px;
   border: none;
@@ -109,11 +110,26 @@ div.img-wrapper img {
   color: var(--vscode-button-foreground, #fff);
 }
 .btn-toggle-edit:hover,
-.btn-gen-update:hover {
+.btn-add-row:hover,
+.btn-apply-changes:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
 }
+.btn-apply-changes {
+  background: var(--vscode-statusBarItem-warningBackground, #7a6400);
+}
+.btn-apply-changes:hover {
+  filter: brightness(1.15);
+}
+.btn-apply-changes:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.edit-status {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+}
 
-/* ── Editable grid cells ──────────────────────────────────────────────────── */
+/* ── Editable grid cells and row states ──────────────────────────────────── */
 td.fb-editable {
   background: var(--vscode-input-background, #2a2a2a) !important;
   outline: 1px dashed var(--vscode-focusBorder, #007acc);
@@ -122,57 +138,47 @@ td.fb-editable {
 td.fb-editable:focus {
   outline: 2px solid var(--vscode-focusBorder, #007acc);
 }
+td.fb-dirty {
+  background: var(--vscode-inputValidation-warningBackground, #352a05) !important;
+}
+tr.fb-row-inserted td {
+  background: var(--vscode-diffEditor-insertedLineBackground, #1a3a1a) !important;
+}
+tr.fb-row-deleted td {
+  background: var(--vscode-diffEditor-removedLineBackground, #3a1a1a) !important;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+tr.fb-row-error td {
+  outline: 1px solid var(--vscode-errorForeground, #f44);
+}
 
-/* ── UPDATE modal ─────────────────────────────────────────────────────────── */
-#update-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.55);
-  z-index: 5000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Actions column: a per-row delete-toggle button, only shown while editing.
+   Positional (:first-child) rather than the .fb-row-actions class, since
+   DataTables doesn't reliably apply columns[].className to the <thead> cell
+   it generates — this keeps the header and body cells in sync either way. */
+.batch-table-wrapper table.dataTable > thead > tr > th:first-child,
+.batch-table-wrapper table.dataTable > tbody > tr > td:first-child {
+  display: none;
+  width: 24px;
+  text-align: center;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
-#update-modal-inner {
-  background: var(--vscode-editor-background, #1e1e1e);
-  color: var(--vscode-editor-foreground, #ccc);
-  border: 1px solid var(--vscode-focusBorder, #007acc);
-  border-radius: 6px;
-  padding: 20px 24px;
-  max-width: 680px;
-  width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
+.fb-editing table.dataTable > thead > tr > th:first-child,
+.fb-editing table.dataTable > tbody > tr > td:first-child {
+  display: table-cell;
 }
-#update-modal-inner h3 {
-  margin-top: 0;
-  font-size: 14px;
-}
-#update-sql-text {
-  font-family: monospace;
-  font-size: 13px;
-  white-space: pre-wrap;
-  background: var(--vscode-textBlockQuote-background, #2d2d2d);
-  padding: 10px;
-  border-radius: 4px;
-  margin: 10px 0;
-}
-.modal-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.modal-actions button {
-  padding: 4px 12px;
+.btn-row-delete {
   border: none;
-  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-errorForeground, #f44);
   cursor: pointer;
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
   font-size: 12px;
+  padding: 0 4px;
 }
-.modal-actions button:hover {
-  background: var(--vscode-button-hoverBackground, #1177bb);
+.btn-row-delete:hover {
+  color: var(--vscode-inputValidation-errorForeground, #ff8080);
 }
 
 /* ── batch table wrapper ──────────────────────────────────────────────────── */

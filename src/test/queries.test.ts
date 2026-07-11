@@ -3,6 +3,7 @@ import {
   getProcedureBodyQuery,
   getTriggerBodyQuery,
   getViewDefinitionQuery,
+  getPrimaryKeyColumnsQuery,
   MAX_SOURCE_CAST_LENGTH,
 } from '../shared/queries';
 
@@ -50,5 +51,24 @@ suite('getProcedureBodyQuery / getTriggerBodyQuery / getViewDefinitionQuery', fu
 
   test('getViewDefinitionQuery filters by the given view name', function () {
     assert.ok(getViewDefinitionQuery("MY_VIEW").includes("= 'MY_VIEW'"));
+  });
+});
+
+// ── getPrimaryKeyColumnsQuery ──────────────────────────────────────────────────
+//
+// Used by the editable results grid to target UPDATE/DELETE at a single row.
+
+suite('getPrimaryKeyColumnsQuery', function () {
+
+  test('filters by the given table name', function () {
+    assert.ok(getPrimaryKeyColumnsQuery('PRODUCTS').includes("= 'PRODUCTS'"));
+  });
+
+  test('filters constraints down to PRIMARY KEY', function () {
+    assert.ok(getPrimaryKeyColumnsQuery('PRODUCTS').includes("RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'"));
+  });
+
+  test('orders by field position so a composite key comes back in key order', function () {
+    assert.ok(getPrimaryKeyColumnsQuery('PRODUCTS').includes('ORDER BY s.RDB$FIELD_POSITION'));
   });
 });

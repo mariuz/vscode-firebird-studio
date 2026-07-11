@@ -11,6 +11,10 @@ import {withTruncationWarning} from "../shared/utils";
 export class NodeView implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly viewName: string) {}
 
+  public getViewName(): string {
+    return this.viewName.trim();
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
       label: this.viewName.trim(),

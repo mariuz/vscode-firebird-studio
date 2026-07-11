@@ -22,25 +22,11 @@
       <!-- Single-result view (legacy) -->
       <div id="single-result">
         <div class="container" id="zero-results" style="display:none; width:100%"><p>Records found: 0</p></div>
-        <div class="container" style="width:100%">
-          <table id="query-results" class="row-border order-column cell-border compact display" style="width:100%;"></table>
-        </div>
+        <div class="container" id="single-result-table" style="width:100%"></div>
       </div>
 
       <!-- Batch result panels, one per statement -->
       <div id="batch-results"></div>
-    </div>
-
-    <!-- Edit-mode overlay: generated UPDATE SQL -->
-    <div id="update-modal" style="display:none;">
-      <div id="update-modal-inner">
-        <h3>Generated UPDATE Statement</h3>
-        <pre id="update-sql-text"></pre>
-        <div class="modal-actions">
-          <button id="btn-copy-update">Copy to Clipboard</button>
-          <button id="btn-close-modal">Close</button>
-        </div>
-      </div>
     </div>
 
     <!-- JavaScript at end of body for optimized loading -->

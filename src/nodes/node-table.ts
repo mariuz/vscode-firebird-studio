@@ -11,6 +11,10 @@ import MockData, {MockField} from "../mock-data/mock-data";
 export class NodeTable implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly table: string) {}
 
+  public getTableName(): string {
+    return this.table.trim();
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
       label: this.table.trim(),

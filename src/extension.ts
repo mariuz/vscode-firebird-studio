@@ -264,7 +264,7 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.selectAllRecords", (tableNode: NodeTable) => {
       tableNode.selectAllRecords().then(result => {
-        firebirdQueryResults.display(result, config.recordsPerPage);
+        firebirdQueryResults.display(result, config.recordsPerPage, tableNode.getTableName());
       });
     })
   );
@@ -283,7 +283,7 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.selectFieldRecords", (fieldNode: NodeField) => {
       fieldNode.selectAllSingleFieldRecords().then(result => {
-        firebirdQueryResults.display(result, config.recordsPerPage);
+        firebirdQueryResults.display(result, config.recordsPerPage, fieldNode.getTableName());
       });
     })
   );
@@ -292,7 +292,7 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.selectAllViewRecords", (viewNode: NodeView) => {
       viewNode.selectAllRecords().then(result => {
-        firebirdQueryResults.display(result, config.recordsPerPage);
+        firebirdQueryResults.display(result, config.recordsPerPage, viewNode.getViewName());
       });
     })
   );

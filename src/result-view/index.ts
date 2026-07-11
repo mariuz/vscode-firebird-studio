@@ -1,9 +1,12 @@
-import { Disposable } from "vscode";
+import { Disposable, window } from "vscode";
 import { TextDecoder } from "util";
 import { join } from "path";
 
 import { QueryResultsView, Message } from "./queryResultsView";
-import { BatchResult } from "../shared/driver";
+import { BatchResult, Driver, extractTableNames } from "../shared/driver";
+import { getPrimaryKeyColumnsQuery } from "../shared/queries";
+import { RowChange, buildStatementForChange } from "../shared/row-edit";
+import { logger } from "../logger/logger";
 
 type ResultSet = Array<any>;
 
@@ -16,10 +19,21 @@ export interface PreparedResultSet {
   durationMs: number;
   message?: string;
   error?: string;
+  /** Table name auto-detected from the statement's FROM clause, pre-filled for row editing. */
+  editableTable?: string;
+}
+
+/** Payload for the "applyChanges" message sent from the webview's edit toolbar. */
+interface ApplyChangesRequest {
+  requestId: string;
+  tableName: string;
+  columns: string[];
+  changes: RowChange[];
 }
 
 export default class ResultView extends QueryResultsView implements Disposable {
   private resultSet?: ResultSet;
+  private resultTableName?: string;
   private batchResults?: PreparedResultSet[];
   private recordsPerPage!: string;
 
@@ -27,9 +41,10 @@ export default class ResultView extends QueryResultsView implements Disposable {
     super("resultview", "Firebird Query Results");
   }
 
-  /** Display a single (legacy) result set. */
-  display(resultSet: any, recordsPerPage: string) {
+  /** Display a single (legacy) result set. `tableName`, when known, pre-fills row editing. */
+  display(resultSet: any, recordsPerPage: string, tableName?: string) {
     this.resultSet = resultSet;
+    this.resultTableName = tableName;
     this.batchResults = undefined;
     this.recordsPerPage = recordsPerPage;
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
@@ -37,7 +52,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
 
   /** Display results from a batch run (multiple statements). */
   displayBatch(batchResults: BatchResult[], recordsPerPage: string) {
-    this.batchResults = batchResults.map((r, i) => this.prepareBatchResult(r, i));
+    this.batchResults = batchResults.map(r => this.prepareBatchResult(r));
     this.resultSet = undefined;
     this.recordsPerPage = recordsPerPage;
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
@@ -51,48 +66,109 @@ export default class ResultView extends QueryResultsView implements Disposable {
           data: { results: this.batchResults, recordsPerPage: this.recordsPerPage },
         });
       } else {
-        const data = this.resultSet ? this.getPreparedResults() : { tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage };
+        const data = this.resultSet
+          ? { ...this.getPreparedResults(), editableTable: this.resultTableName }
+          : { tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage };
         this.send({ command: "message", data });
       }
       return;
     }
 
-    if (message.command === "generateUpdate") {
-      const { tableName, originalRow, changedFields, columns } = message.data as any;
-      const updateSql = this.buildUpdateSql(tableName, originalRow, changedFields, columns);
-      this.send({ command: "updateSql", data: { sql: updateSql } });
+    if (message.command === "getPrimaryKey") {
+      this.handleGetPrimaryKey(message.data as { requestId: string; tableName: string });
+      return;
+    }
+
+    if (message.command === "applyChanges") {
+      this.handleApplyChanges(message.data as ApplyChangesRequest);
       return;
     }
   }
 
-  /** Build a best-effort UPDATE statement from an edited row. */
-  private buildUpdateSql(
-    tableName: string,
-    originalRow: string[],
-    changedFields: { colIndex: number; newValue: string }[],
-    columns: string[]
-  ): string {
-    if (!tableName || changedFields.length === 0) {
-      return "-- No table name or changes detected.";
-    }
-    // Validate table name: only allow identifiers (letters, digits, $, _)
-    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(tableName)) {
-      return "-- Invalid table name. Only alphanumeric identifiers are allowed.";
-    }
-    // Validate column names the same way
-    const invalidCol = columns.find(c => !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(c));
-    if (invalidCol) {
-      return `-- Invalid column name: ${invalidCol}`;
-    }
-    const setClauses = changedFields
-      .map(cf => `  ${columns[cf.colIndex]} = ${quoteValue(cf.newValue)}`)
-      .join(",\n");
+  /** Looks up a table's primary key columns, for targeting UPDATE/DELETE at a single row. */
+  private async handleGetPrimaryKey(data: { requestId: string; tableName: string }): Promise<void> {
+    const columns = await this.fetchPrimaryKeyColumns(data.tableName);
+    this.send({ command: "primaryKey", data: { requestId: data.requestId, columns } });
+  }
 
-    const whereClauses = columns
-      .map((col, i) => `  ${col} = ${quoteValue(originalRow[i])}`)
-      .join("\n  AND ");
+  private async fetchPrimaryKeyColumns(tableName: string): Promise<string[]> {
+    if (!tableName) {
+      return [];
+    }
+    try {
+      const rows = await Driver.runQuery(getPrimaryKeyColumnsQuery(tableName));
+      return (rows ?? []).map((r: any) => (r.FIELD_NAME ?? "").toString().trim()).filter(Boolean);
+    } catch (err) {
+      logger.error(err);
+      return [];
+    }
+  }
 
-    return `UPDATE ${tableName}\n   SET\n${setClauses}\n WHERE\n  ${whereClauses};`;
+  /**
+   * Builds and executes the SQL for a batch of pending row edits (update/insert/delete),
+   * after an explicit confirmation, and reports the outcome via a native notification.
+   */
+  private async handleApplyChanges(data: ApplyChangesRequest): Promise<void> {
+    const { requestId, tableName, columns, changes } = data;
+
+    if (!tableName) {
+      logger.showError("Enter a table name before applying changes.");
+      this.send({ command: "applyResult", data: { requestId, cancelled: true } });
+      return;
+    }
+    if (!changes || changes.length === 0) {
+      this.send({ command: "applyResult", data: { requestId, cancelled: true } });
+      return;
+    }
+
+    const counts = { update: 0, insert: 0, delete: 0 };
+    changes.forEach(c => counts[c.type]++);
+    const summary = ([
+      counts.update ? `${counts.update} update(s)` : null,
+      counts.insert ? `${counts.insert} insert(s)` : null,
+      counts.delete ? `${counts.delete} delete(s)` : null,
+    ].filter(Boolean) as string[]).join(", ");
+
+    const answer = await window.showWarningMessage(
+      `Apply ${summary} to ${tableName}?`,
+      { modal: true },
+      "Apply"
+    );
+    if (answer !== "Apply") {
+      this.send({ command: "applyResult", data: { requestId, cancelled: true } });
+      return;
+    }
+
+    const pkColumns = await this.fetchPrimaryKeyColumns(tableName);
+
+    const results: { changeIndex: number; sql: string; error?: string }[] = [];
+    for (let i = 0; i < changes.length; i++) {
+      let sql = "";
+      try {
+        sql = buildStatementForChange(tableName, columns, pkColumns, changes[i]);
+        await Driver.runQuery(sql);
+        results.push({ changeIndex: i, sql });
+      } catch (err: any) {
+        results.push({ changeIndex: i, sql, error: err?.message ?? String(err) });
+        logger.error(`Row edit failed: ${sql || "(could not build statement)"} -> ${err?.message ?? err}`);
+      }
+    }
+
+    const failed = results.filter(r => r.error);
+    if (failed.length === 0) {
+      logger.showInfo(`Applied ${results.length} change(s) to ${tableName}. Re-run the query to see the updated data.`);
+    } else {
+      logger.showError(
+        `${failed.length} of ${results.length} change(s) to ${tableName} failed. Check logs for details.`,
+        ["Show Logs"]
+      ).then(sel => {
+        if (sel === "Show Logs") {
+          logger.showOutput();
+        }
+      });
+    }
+
+    this.send({ command: "applyResult", data: { requestId, results } });
   }
 
   /* prepare results before displaying */
@@ -115,8 +191,9 @@ export default class ResultView extends QueryResultsView implements Disposable {
     return { tableHeader, tableBody, recordsPerPage: this.recordsPerPage };
   }
 
-  private prepareBatchResult(r: BatchResult, _index: number): PreparedResultSet {
+  private prepareBatchResult(r: BatchResult): PreparedResultSet {
     const decoder = new TextDecoder();
+    const editableTable = extractTableNames(r.sql)[0];
     const label = r.sql.replace(/\s+/g, " ").trim();
     const sql = label.length > 80 ? label.slice(0, 77) + "..." : label;
 
@@ -129,7 +206,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
 
     const tableHeader = Object.keys(r.rows[0]).map(f => ({ title: f }));
     const tableBody = r.rows.map(row => encodeRow(row, decoder));
-    return { sql, tableHeader, tableBody, rowCount: r.rows.length, durationMs: r.durationMs };
+    return { sql, tableHeader, tableBody, rowCount: r.rows.length, durationMs: r.durationMs, editableTable };
   }
 }
 
@@ -142,11 +219,4 @@ function encodeRow(row: any, decoder: TextDecoder): string[] {
     if (typeof v === "object") { return JSON.stringify(v, null, "\t"); }
     return v.toString();
   });
-}
-
-function quoteValue(v: string): string {
-  if (v === "&lt;null&gt;" || v === "<null>") { return "NULL"; }
-  const n = Number(v);
-  if (!isNaN(n) && v.trim() !== "") { return v; }
-  return `'${v.replace(/'/g, "''")}'`;
 }

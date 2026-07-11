@@ -285,6 +285,19 @@ export function setGeneratorValueQuery(generatorName: string, value: number): st
   return `SET GENERATOR ${generatorName} TO ${value};`;
 }
 
+/**
+ * Returns the primary key column(s) of a table, in key order — used by the editable results
+ * grid to target UPDATE/DELETE statements at a single row instead of matching every column.
+ */
+export function getPrimaryKeyColumnsQuery(tableName: string): string {
+  return `SELECT TRIM(s.RDB$FIELD_NAME) AS FIELD_NAME
+            FROM RDB$RELATION_CONSTRAINTS rc
+            JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = rc.RDB$INDEX_NAME
+           WHERE rc.RDB$RELATION_NAME = '${tableName}'
+             AND rc.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'
+        ORDER BY s.RDB$FIELD_POSITION;`;
+}
+
 export const monitorConnectionsQuery: string = `
   SELECT mon.MON$ATTACHMENT_ID AS ATTACHMENT_ID,
          mon.MON$USER AS USER_NAME,

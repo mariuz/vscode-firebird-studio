@@ -17,6 +17,10 @@ export class NodeField implements FirebirdTree {
     this.decoder = new TextDecoder();
   }
 
+  public getTableName(): string {
+    return this.table.trim();
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
       label: `${this.field.FIELD_NAME.trim()} : ${this.field.FIELD_TYPE.trim() + " (" + this.field.FIELD_LENGTH + ")"}`,

@@ -32,6 +32,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Realtime** results filtering and sorting
 - Export results to **JSON**, **CSV**, **XSLX** or **PDF** file
 - **Session query history** — every query you run is logged automatically (with the database it ran against, row count/duration, and any error), and can be reopened or re-run from the **History** view
+- **Editable result grids** — enable editing on any result set to update cells, add rows, or mark rows for deletion, then apply the changes directly to the database (primary-key aware, with a confirmation before anything is written)
 
 ## Getting Started
 
@@ -73,6 +74,16 @@ Press `Ctrl+Alt+Q` or right-click the editor → **Run Firebird Query**.
 If you select text first, only the selection runs; otherwise the whole document runs as a **batch**.
 
 Each `;`-separated statement in the document gets its own tab in the results view, showing its row count (or error) at a glance. `CREATE`/`ALTER PROCEDURE`, `TRIGGER`, `FUNCTION`, and `EXECUTE BLOCK` bodies are treated as a single statement — including the isql `SET TERM ^ ;` convention used by this extension's own snippets — so the semicolons inside a procedure body don't get split into separate statements.
+
+### Editing Query Results Directly
+
+Any result grid (single query or a batch panel) can be edited in place:
+
+1. Click **Enable Editing**. The **Table** field pre-fills automatically when it can be detected from the query; the extension looks up that table's primary key so edits target exactly one row.
+2. Edit a cell directly in the grid, click **+ Add Row** for a new row, or click the ✕ next to a row to mark it for deletion.
+3. Click **Apply Changes**. You'll be asked to confirm before anything is written; each change reports success or failure individually, and failed rows stay highlighted so you can retry.
+
+Without a primary key, edits fall back to matching every column in the row — still safe, but less precise if the table has duplicate rows.
 
 ### SQL Snippets
 

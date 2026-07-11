@@ -28,7 +28,7 @@ This document outlines the planned features and improvements for the **Firebird 
 - [x] Support for executing multiple queries in a single document (batch execution)
 - [x] Session query history — automatically log and recall previously executed queries
 - [ ] Explain and analyze query performance with `SET PLANONLY ON` / `SET PLAN ON` integration
-- [ ] Editable result grids — update, insert, and delete rows directly from query results
+- [x] Editable result grids — update, insert, and delete rows directly from query results
 - [ ] Enhanced export options — export results to CSV, JSON, Excel (XLSX), and PDF
 
 ## Connection Management
