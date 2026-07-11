@@ -8,7 +8,9 @@
  */
 
 import * as assert from 'assert';
-import { Driver, extractTableNames } from '../shared/driver';
+import * as Firebird from 'node-firebird';
+import { Driver, extractTableNames, toNodeFirebirdOptions } from '../shared/driver';
+import { ConnectionOptions } from '../interfaces';
 
 // ── Driver.constructResponse ──────────────────────────────────────────────────
 
@@ -106,5 +108,60 @@ suite('Driver – extractTableNames()', function () {
   test('handles table names with underscores and digits', function () {
     const names = extractTableNames('SELECT * FROM ORDER_LINE_ITEMS_2024');
     assert.deepStrictEqual(names, ['ORDER_LINE_ITEMS_2024']);
+  });
+});
+
+// ── toNodeFirebirdOptions ────────────────────────────────────────────────────
+//
+// Regression coverage for a bug where the UI-facing wireCrypt string
+// ('Required' | 'Enabled' | 'Disabled') was passed straight through to
+// node-firebird, which expects the numeric WIRE_CRYPT_DISABLE/WIRE_CRYPT_ENABLE
+// constant written into the wire protocol handshake — a raw string there
+// corrupts the handshake and hangs the connection.
+
+suite('Driver – toNodeFirebirdOptions()', function () {
+  function baseConnection(overrides: Partial<ConnectionOptions> = {}): ConnectionOptions {
+    return {
+      id: 'test',
+      host: 'localhost',
+      port: 3050,
+      database: '/data/test.fdb',
+      user: 'sysdba',
+      password: 'masterkey',
+      role: null,
+      ...overrides,
+    };
+  }
+
+  test('maps wireCrypt "Disabled" to Firebird.WIRE_CRYPT_DISABLE', function () {
+    const opts = toNodeFirebirdOptions(baseConnection({ wireCrypt: 'Disabled' }));
+    assert.strictEqual(opts.wireCrypt, Firebird.WIRE_CRYPT_DISABLE);
+  });
+
+  test('maps wireCrypt "Enabled" to Firebird.WIRE_CRYPT_ENABLE', function () {
+    const opts = toNodeFirebirdOptions(baseConnection({ wireCrypt: 'Enabled' }));
+    assert.strictEqual(opts.wireCrypt, Firebird.WIRE_CRYPT_ENABLE);
+  });
+
+  test('maps wireCrypt "Required" to Firebird.WIRE_CRYPT_ENABLE (node-firebird has no separate "required" value)', function () {
+    const opts = toNodeFirebirdOptions(baseConnection({ wireCrypt: 'Required' }));
+    assert.strictEqual(opts.wireCrypt, Firebird.WIRE_CRYPT_ENABLE);
+  });
+
+  test('omits wireCrypt entirely when not set', function () {
+    const opts = toNodeFirebirdOptions(baseConnection());
+    assert.strictEqual('wireCrypt' in opts, false);
+  });
+
+  test('includes host/port for non-embedded connections', function () {
+    const opts = toNodeFirebirdOptions(baseConnection());
+    assert.strictEqual(opts.host, 'localhost');
+    assert.strictEqual(opts.port, 3050);
+  });
+
+  test('omits host/port for embedded connections', function () {
+    const opts = toNodeFirebirdOptions(baseConnection({ embedded: true }));
+    assert.strictEqual(opts.host, undefined);
+    assert.strictEqual(opts.port, undefined);
   });
 });

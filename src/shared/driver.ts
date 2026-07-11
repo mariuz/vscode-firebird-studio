@@ -302,8 +302,11 @@ export interface ClientI<K extends Firebird.Database | Attachment> {
   detach(connection: K): Promise<void>;
 }
 
-/** Maps our ConnectionOptions to a node-firebird Options object, handling embedded and Firebird 4.x/5.x fields. */
-function toNodeFirebirdOptions(connectionOptions: ConnectionOptions): Firebird.Options {
+/**
+ * Maps our ConnectionOptions to a node-firebird Options object, handling embedded and
+ * Firebird 4.x/5.x fields. Exported for unit testing.
+ */
+export function toNodeFirebirdOptions(connectionOptions: ConnectionOptions): Firebird.Options {
   const opts: Firebird.Options = {
     database: connectionOptions.database,
     user: connectionOptions.user,
@@ -317,7 +320,11 @@ function toNodeFirebirdOptions(connectionOptions: ConnectionOptions): Firebird.O
   }
 
   if (connectionOptions.wireCrypt) {
-    (opts as any).wireCrypt = connectionOptions.wireCrypt;
+    // node-firebird's Options.wireCrypt is the numeric WIRE_CRYPT_DISABLE/WIRE_CRYPT_ENABLE
+    // constant (written directly into the wire protocol handshake), not our UI-facing
+    // 'Required' | 'Enabled' | 'Disabled' string — node-firebird has no separate
+    // "required" wire value, so anything but 'Disabled' maps to WIRE_CRYPT_ENABLE.
+    opts.wireCrypt = connectionOptions.wireCrypt === 'Disabled' ? Firebird.WIRE_CRYPT_DISABLE : Firebird.WIRE_CRYPT_ENABLE;
   }
   if (connectionOptions.authPlugin) {
     (opts as any).authPlugin = connectionOptions.authPlugin;
