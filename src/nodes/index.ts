@@ -12,3 +12,4 @@ export * from "./node-domain";
 export * from "./node-role";
 export * from "./node-exception";
 export * from "./node-system-table";
+export * from "./node-user";

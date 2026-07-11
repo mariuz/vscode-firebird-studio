@@ -1,13 +1,13 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri} from "vscode";
 import {join} from "path";
-import {NodeTable, NodeCategoryFolder, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeSystemTable} from "./";
+import {NodeTable, NodeCategoryFolder, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeSystemTable, NodeUser} from "./";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {getOptions, Constants} from "../config";
 import {Driver} from "../shared/driver";
 import {Global} from "../shared/global";
 import {CredentialStore} from "../shared/credential-store";
 import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
-import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getSystemTablesQuery, monitorConnectionsQuery} from "../shared/queries";
+import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getSystemTablesQuery, getUsersQuery, monitorConnectionsQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
 import {SchemaVisualizer} from "../schema-visualizer";
@@ -50,6 +50,7 @@ export class NodeDatabase implements FirebirdTree {
       new NodeCategoryFolder("Domains", "domains", this.dbDetails, this.getDomainChildren.bind(this)),
       new NodeCategoryFolder("Roles", "roles", this.dbDetails, this.getRoleChildren.bind(this)),
       new NodeCategoryFolder("Exceptions", "exceptions", this.dbDetails, this.getExceptionChildren.bind(this)),
+      new NodeCategoryFolder("Users", "users", this.dbDetails, this.getUserChildren.bind(this)),
     ];
     if (getOptions().showSystemObjects) {
       children.push(new NodeCategoryFolder("System Tables", "systemTables", this.dbDetails, this.getSystemTableChildren.bind(this)));
@@ -110,6 +111,12 @@ export class NodeDatabase implements FirebirdTree {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const tables = await Driver.client.queryPromise<any>(connection, getSystemTablesQuery());
     return tables.map<NodeSystemTable>(table => new NodeSystemTable(this.dbDetails, table.TABLE_NAME));
+  }
+
+  private async getUserChildren(): Promise<FirebirdTree[]> {
+    const connection = await Driver.client.createConnection(await this.resolvedDetails());
+    const users = await Driver.client.queryPromise<any>(connection, getUsersQuery());
+    return users.map<NodeUser>(user => new NodeUser(user.USER_NAME, this.dbDetails));
   }
 
   //  run predefined sql query

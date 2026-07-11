@@ -39,11 +39,11 @@ suite('Tree nodes – real Firebird integration (extension host)', function () {
     assert.ok(children[0] instanceof NodeDatabase);
   });
 
-  test('NodeDatabase.getChildren returns the eight object-category folders (System Tables hidden by default)', async function () {
+  test('NodeDatabase.getChildren returns the nine object-category folders (System Tables hidden by default)', async function () {
     const db = new NodeDatabase(getTestConnectionOptions());
     const children = await db.getChildren();
     const labels = await Promise.all(children.map(async c => (await c.getTreeItem(fakeContext)).label));
-    assert.deepStrictEqual(labels, ['Tables', 'Views', 'Stored Procedures', 'Triggers', 'Generators', 'Domains', 'Roles', 'Exceptions']);
+    assert.deepStrictEqual(labels, ['Tables', 'Views', 'Stored Procedures', 'Triggers', 'Generators', 'Domains', 'Roles', 'Exceptions', 'Users']);
   });
 
   test('Tables folder lists the seeded PRODUCTS table', async function () {

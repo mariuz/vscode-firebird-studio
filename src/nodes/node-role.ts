@@ -1,7 +1,7 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {dropRoleQuery} from "../shared/queries";
+import {dropRoleQuery, createRoleQuery} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 
@@ -24,6 +24,21 @@ export class NodeRole implements FirebirdTree {
 
   public getChildren(): FirebirdTree[] {
     return [];
+  }
+
+  /** No password/secret involved, so this can safely go through Driver.runQuery like any other DDL. */
+  public static async createRole(dbDetails: ConnectionOptions, roleName: string): Promise<void> {
+    logger.info("Create Role");
+    return Driver.runQuery(createRoleQuery(roleName.trim()), dbDetails)
+      .then(results => {
+        logger.info(results[0].message);
+        logger.showInfo(results[0].message);
+        commands.executeCommand("firebird.explorer.refresh");
+      })
+      .catch(err => {
+        logger.error(err);
+        logger.showError(`Failed to create role: ${err}`);
+      });
   }
 
   public async dropRole() {

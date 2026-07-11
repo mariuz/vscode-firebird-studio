@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -212,6 +212,26 @@
       {
         "command": "firebird.exception.dropException",
         "title": "Drop Exception",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.role.createRole",
+        "title": "Create Role",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.user.createUser",
+        "title": "Create User",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.user.dropUser",
+        "title": "Drop User",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.user.changePassword",
+        "title": "Change Password",
         "category": "Firebird"
       },
       {
@@ -622,6 +642,26 @@
         {
           "command": "firebird.exception.dropException",
           "when": "view == firebird-explorer && viewItem == exception",
+          "group": "other@0"
+        },
+        {
+          "command": "firebird.role.createRole",
+          "when": "view == firebird-explorer && viewItem == folder.roles",
+          "group": "firebird@0"
+        },
+        {
+          "command": "firebird.user.createUser",
+          "when": "view == firebird-explorer && viewItem == folder.users",
+          "group": "firebird@0"
+        },
+        {
+          "command": "firebird.user.changePassword",
+          "when": "view == firebird-explorer && viewItem == user",
+          "group": "firebird@0"
+        },
+        {
+          "command": "firebird.user.dropUser",
+          "when": "view == firebird-explorer && viewItem == user",
           "group": "other@0"
         },
         {

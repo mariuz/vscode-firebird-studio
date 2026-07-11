@@ -1,7 +1,7 @@
 import {ExtensionContext, window, commands, workspace} from "vscode";
 import {Constants, getOptions} from "./config";
 import {FirebirdTreeDataProvider} from "./firebirdTreeDataProvider";
-import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException} from "./nodes";
+import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeUser} from "./nodes";
 import {Options, FirebirdTree, ConnectionOptions} from "./interfaces";
 import {connectionPicker} from "./shared/connection-picker";
 import {Driver} from "./shared/driver";
@@ -25,6 +25,8 @@ import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
 import {getConnectionLabel} from "./shared/utils";
 
+/** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
+const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 export function activate(context: ExtensionContext) {
   logger.info(`Activating extension ...`);
@@ -411,6 +413,73 @@ export function activate(context: ExtensionContext) {
       if (answer === "Yes") {
         exceptionNode.dropException();
       }
+    })
+  );
+
+  /* DDL: create role */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.role.createRole", async () => {
+      if (!Global.activeConnection) {
+        logger.showError("Set a database active first.");
+        return;
+      }
+      const roleName = await vscode.window.showInputBox({
+        prompt: "Name of the new role",
+        placeHolder: "e.g. APP_ADMIN",
+        ignoreFocusOut: true,
+        validateInput: v => IDENTIFIER_RE.test(v) ? undefined : "Enter a valid identifier (letters, digits, _, $ — must not start with a digit)"
+      });
+      if (!roleName) { return; }
+      NodeRole.createRole(Global.activeConnection, roleName);
+    })
+  );
+
+  /* DDL: create user */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.user.createUser", async () => {
+      if (!Global.activeConnection) {
+        logger.showError("Set a database active first.");
+        return;
+      }
+      const userName = await vscode.window.showInputBox({
+        prompt: "Name of the new user",
+        placeHolder: "e.g. APP_USER",
+        ignoreFocusOut: true,
+        validateInput: v => IDENTIFIER_RE.test(v) ? undefined : "Enter a valid identifier (letters, digits, _, $ — must not start with a digit)"
+      });
+      if (!userName) { return; }
+      const password = await vscode.window.showInputBox({
+        prompt: `Password for ${userName}`,
+        ignoreFocusOut: true,
+        password: true,
+        validateInput: v => v ? undefined : "Password is required"
+      });
+      if (!password) { return; }
+      NodeUser.createUser(Global.activeConnection, userName, password);
+    })
+  );
+
+  /* DDL: drop user */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.user.dropUser", async (userNode: NodeUser) => {
+      const answer = await vscode.window.showInformationMessage("Do you really want to drop this user?", "Yes", "No");
+      if (answer === "Yes") {
+        userNode.dropUser();
+      }
+    })
+  );
+
+  /* DDL: change user password */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.user.changePassword", async (userNode: NodeUser) => {
+      const password = await vscode.window.showInputBox({
+        prompt: "New password",
+        ignoreFocusOut: true,
+        password: true,
+        validateInput: v => v ? undefined : "Password is required"
+      });
+      if (!password) { return; }
+      userNode.changePassword(password);
     })
   );
 

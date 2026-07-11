@@ -1,3 +1,5 @@
+import { assertValidIdentifier } from "./row-edit";
+
 export function getTablesQuery(maxTableCount: number): string {
   if (maxTableCount !== 0) {
     return `SELECT FIRST ${Math.abs(maxTableCount)} RDB$RELATION_NAME TABLE_NAME
@@ -241,6 +243,47 @@ export function getExceptionsQuery(): string {
             FROM RDB$EXCEPTIONS
            WHERE (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
         ORDER BY 1;`;
+}
+
+/**
+ * SEC$USERS is Firebird 3+'s SQL-visible view of the security database attached to the current
+ * connection — lists every login, not just ones tied to this particular database.
+ */
+export function getUsersQuery(): string {
+  return `SELECT TRIM(SEC$USER_NAME) AS USER_NAME
+            FROM SEC$USERS
+        ORDER BY 1;`;
+}
+
+/**
+ * Escapes a value for use inside a single-quoted SQL string literal (doubles embedded quotes).
+ * Only for cases like CREATE/ALTER USER's PASSWORD clause, which has no parameterized-query
+ * equivalent since it's DDL — identifiers in these same statements are validated separately via
+ * assertValidIdentifier(), never string-escaped, since Firebird identifiers can't be
+ * parameterized either and must instead be restricted to a safe character set.
+ */
+function escapeSqlLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+export function createUserQuery(userName: string, password: string): string {
+  assertValidIdentifier(userName, "user name");
+  return `CREATE USER ${userName} PASSWORD '${escapeSqlLiteral(password)}';`;
+}
+
+export function alterUserPasswordQuery(userName: string, password: string): string {
+  assertValidIdentifier(userName, "user name");
+  return `ALTER USER ${userName} PASSWORD '${escapeSqlLiteral(password)}';`;
+}
+
+export function dropUserQuery(userName: string): string {
+  assertValidIdentifier(userName, "user name");
+  return `DROP USER ${userName};`;
+}
+
+export function createRoleQuery(roleName: string): string {
+  assertValidIdentifier(roleName, "role name");
+  return `CREATE ROLE ${roleName};`;
 }
 
 /**

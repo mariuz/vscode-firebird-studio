@@ -2,6 +2,14 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.19 - 2026-07-12
+
+### Added
+
+- Object Explorer: databases now show a **Users** folder (Firebird 3+'s SQL-visible `SEC$USERS`), alongside **Roles**, which now supports **Create Role** in addition to the existing Drop
+- **Create User**, **Change Password**, and **Drop User** actions, using Firebird's native `CREATE USER`/`ALTER USER`/`DROP USER` SQL — no `gsec` shell-out required
+- Passwords for these actions are entered through a masked input box and applied via a direct connection that bypasses the extension's normal query-execution path, so the plaintext password is never written to session query history or the output channel log (unlike a typical typed-and-run `CREATE USER ... PASSWORD '...'` statement, which would be)
+
 ## 0.1.18 - 2026-07-12
 
 ### Added
