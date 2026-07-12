@@ -9,6 +9,7 @@ import {simpleCallbackToPromise, getConnectionLabel} from './utils';
 import {CredentialStore} from './credential-store';
 import {splitStatements} from './sql-splitter';
 import {PooledClient, ConnectionPoolOptions} from './connection-pool';
+import {SshTunnelClient} from './ssh-tunnel';
 import {getOptions} from '../config';
 import * as fs from 'fs';
 import path = require('path');
@@ -149,21 +150,32 @@ export class Driver {
     pooling?: ConnectionPoolOptions
   ): Promise<void> {
     CredentialStore.setContext(context);
-    if (this.client instanceof PooledClient) {
-      await this.client.shutdown();
-    }
+    await this.shutdown();
     const rawClient: ClientI<any> = useNativeDriver ? new NativeClient(context.extensionUri.fsPath) : new NodeClient();
-    this.client = pooling ? new PooledClient(rawClient, pooling) : rawClient;
+    const pooledOrRaw: ClientI<any> = pooling ? new PooledClient(rawClient, pooling) : rawClient;
+    // Always wraps outermost (even when no connection uses sshTunnel) — createConnection() is a
+    // pure passthrough for any ConnectionOptions without one, so this costs nothing when unused.
+    this.client = new SshTunnelClient(pooledOrRaw);
   }
 
-  /** Closes any pooled idle connections. Call on extension deactivation. */
+  /** Closes any open SSH tunnels and pooled idle connections. Call on extension deactivation. */
   static async shutdown(): Promise<void> {
-    if (this.client instanceof PooledClient) {
+    if (this.client instanceof SshTunnelClient) {
+      await this.client.shutdown();
+    } else if (this.client instanceof PooledClient) {
       await this.client.shutdown();
     }
   }
 
   static client: ClientI<any>;
+
+  /** Unwraps any decorator (SshTunnelClient, PooledClient) to find the real NodeClient/NativeClient instance underneath. */
+  private static unwrapClient(client: ClientI<any>): ClientI<any> {
+    if (client instanceof SshTunnelClient || client instanceof PooledClient) {
+      return this.unwrapClient(client.unwrap());
+    }
+    return client;
+  }
 
   /** Optional sink for automatic query history logging; wired up once in extension.ts#activate(). */
   static historyLogger?: (entry: HistoryLogEntry) => void;
@@ -433,8 +445,12 @@ export class Driver {
     const resolved = await this.resolveSqlAndConnection(sql, connectionOptions);
     const stmt = resolved.sql;
 
-    if (this.client instanceof NativeClient) {
-      return (this.client as NativeClient).getQueryPlan(resolved.connectionOptions, stmt);
+    const rawClient = this.unwrapClient(this.client);
+    if (rawClient instanceof NativeClient) {
+      const connectionOptions = this.client instanceof SshTunnelClient
+        ? await this.client.resolveConnectionOptions(resolved.connectionOptions)
+        : resolved.connectionOptions;
+      return rawClient.getQueryPlan(connectionOptions, stmt);
     }
 
     // NodeClient fallback: extract table names and show index metadata

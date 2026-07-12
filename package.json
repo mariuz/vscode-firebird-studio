@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.52",
+  "version": "0.1.53",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -35,7 +35,7 @@
   "scripts": {
     "tsc-compile": "tsc -p ./",
     "vscode:prepublish": "npm run compile",
-    "esbuild-base": "rimraf out && rimraf node_modules/node-firebird-native-api/build/Release && esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:node-firebird-native-api --format=cjs --platform=node",
+    "esbuild-base": "rimraf out && rimraf node_modules/node-firebird-native-api/build/Release && esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:node-firebird-native-api --external:*.node --format=cjs --platform=node",
     "esbuild-mcp-server": "esbuild ./src/mcp-server/server.ts --bundle --outfile=out/mcp-server/server.js --format=cjs --platform=node",
     "esbuild-build": "npm run -S esbuild-base -- --sourcemap && npm run -S esbuild-mcp-server -- --sourcemap",
     "install-native": "npm run --prefix node_modules/node-firebird-native-api/ gyp:configure && npm run --prefix node_modules/node-firebird-native-api/ gyp:build",
@@ -1463,12 +1463,14 @@
     "node-firebird-driver-native": "^3.6.0",
     "node-firebird-native-api": "^3.2.0",
     "node-gyp": "^9.3.0",
+    "ssh2": "^1.17.0",
     "uuid": "^8.3.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^14.11.2",
+    "@types/ssh2": "^1.15.5",
     "@types/uuid": "^8.3.0",
     "@types/vscode": "^1.32.0",
     "@typescript-eslint/eslint-plugin": "^5.52.0",

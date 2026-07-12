@@ -99,7 +99,7 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
     const picked = await input.showQuickPick({
       title,
       step: 1,
-      totalSteps: 7,
+      totalSteps: 8,
       items,
       placeholder: "Select connection type",
       ignoreFocusOut: true
@@ -122,7 +122,7 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       options.port = null;
       return (input: MultiStepInput) => database(input, options, 2, 5);
     } else if (type === "docker") {
-      return (input: MultiStepInput) => dockerContainer(input, options, 2, 7);
+      return (input: MultiStepInput) => dockerContainer(input, options, 2, 8);
     } else {
       return (input: MultiStepInput) => host(input, options);
     }
@@ -191,7 +191,7 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
     options.host = await input.showInputBox({
       title,
       step: 2,
-      totalSteps: 7,
+      totalSteps: 8,
       prompt: "[REQUIRED] The hostname of the database.",
       placeHolder: "e.g. 'localhost'",
       ignoreFocusOut: true
@@ -199,7 +199,7 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
     if (!options.host) {
       return Promise.reject("Hostname cannot be empty. Add Connection canceled.");
     } else {
-      return (input: MultiStepInput) => database(input, options, 3, 7);
+      return (input: MultiStepInput) => database(input, options, 3, 8);
     }
   }
 
@@ -350,6 +350,115 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       options.wireCrypt = picked.label as ConnectionOptions["wireCrypt"];
     }
     // Enabled is the default so we don't need to store it explicitly
+
+    return (input: MultiStepInput) => sshTunnel(input, options, step + 1, totalSteps);
+  }
+
+  async function sshTunnel(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ) {
+    const items: QuickPickItem[] = [
+      { label: "No", description: "Connect directly (default)" },
+      { label: "Yes", description: "Connect through an SSH bastion/jump host" }
+    ];
+
+    const picked = await input.showQuickPick({
+      title,
+      step,
+      totalSteps,
+      items,
+      placeholder: "[OPTIONAL] Connect through an SSH tunnel?",
+      ignoreFocusOut: true
+    });
+
+    if (!picked || picked.label === "No") {
+      return undefined;
+    }
+
+    const sshHost = await input.showInputBox({
+      title,
+      step,
+      totalSteps,
+      prompt: "[REQUIRED] SSH bastion/jump host.",
+      placeHolder: "e.g. 'bastion.example.com'",
+      ignoreFocusOut: true
+    });
+    if (!sshHost) {
+      return Promise.reject("SSH host cannot be empty. Add Connection canceled.");
+    }
+
+    const sshPortInput = await input.showInputBox({
+      title,
+      step,
+      totalSteps,
+      prompt: "[OPTIONAL] SSH port. Leave empty for default.",
+      placeHolder: "defaults to 22",
+      ignoreFocusOut: true
+    });
+    const sshPort = sshPortInput ? (Number.parseInt(sshPortInput) || 22) : 22;
+
+    const sshUser = await input.showInputBox({
+      title,
+      step,
+      totalSteps,
+      prompt: "[REQUIRED] SSH username.",
+      placeHolder: "e.g. 'ec2-user'",
+      ignoreFocusOut: true
+    });
+    if (!sshUser) {
+      return Promise.reject("SSH user cannot be empty. Add Connection canceled.");
+    }
+
+    const authItems: QuickPickItem[] = [
+      { label: "Password", description: "Authenticate with an SSH password" },
+      { label: "Private Key", description: "Authenticate with an OpenSSH-format private key file" },
+      { label: "SSH Agent", description: "Use the running SSH agent (SSH_AUTH_SOCK)" }
+    ];
+    const authPicked = await input.showQuickPick({
+      title,
+      step,
+      totalSteps,
+      items: authItems,
+      placeholder: "SSH authentication method",
+      ignoreFocusOut: true
+    });
+    if (!authPicked) {
+      return Promise.reject("SSH authentication method not selected. Add Connection canceled.");
+    }
+
+    const authMethod: "password" | "privateKey" | "agent" =
+      authPicked.label === "Private Key" ? "privateKey" : authPicked.label === "SSH Agent" ? "agent" : "password";
+
+    let privateKeyPath: string | undefined;
+    if (authMethod === "privateKey") {
+      const openUris = await window.showOpenDialog({
+        title: "Select SSH Private Key File",
+        canSelectMany: false
+      });
+      if (!openUris || openUris.length === 0) {
+        return Promise.reject("No private key file selected. Add Connection canceled.");
+      }
+      privateKeyPath = openUris[0].fsPath;
+    }
+
+    options.sshTunnel = { host: sshHost, port: sshPort, user: sshUser, authMethod, privateKeyPath };
+
+    if (authMethod !== "agent") {
+      options.sshTunnelPassword = await input.showInputBox({
+        title,
+        step,
+        totalSteps,
+        prompt: authMethod === "privateKey"
+          ? "[OPTIONAL] Passphrase for the private key. Leave empty if it's not encrypted."
+          : "[REQUIRED] SSH password.",
+        placeHolder: authMethod === "privateKey" ? "Leave empty if not encrypted" : "",
+        ignoreFocusOut: true,
+        password: true
+      });
+    }
   }
 
   return await collectInputs();

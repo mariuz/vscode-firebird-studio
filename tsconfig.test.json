@@ -27,6 +27,7 @@
     "src/shared/sql-linter.ts",
     "src/shared/driver.ts",
     "src/shared/connection-pool.ts",
+    "src/shared/ssh-tunnel.ts",
     "src/shared/workspace-config.ts",
     "src/shared/global.ts",
     "src/shared/utils.ts",

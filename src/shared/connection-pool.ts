@@ -36,6 +36,11 @@ export class PooledClient<K extends Firebird.Database | Attachment> implements C
     this.sweepTimer.unref?.();
   }
 
+  /** The wrapped client — lets a caller that needs the real NodeClient/NativeClient instance (e.g. Driver.getQueryPlan()'s native-only API) unwrap past pooling. */
+  public unwrap(): ClientI<K> {
+    return this.inner;
+  }
+
   public queryPromise<T extends object>(connection: K, sql: string): Promise<T[]> {
     return this.inner.queryPromise(connection, sql);
   }

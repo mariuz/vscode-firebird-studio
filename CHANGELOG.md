@@ -2,7 +2,15 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
-## 0.1.52 - 2026-07-13
+## 0.1.53 - 2026-07-13
+
+### Added
+
+- **SSH tunneling** — connect to a Firebird server reachable only through an SSH bastion/jump host. The Add Connection wizard has a new step (password, private key, or SSH agent authentication) that tunnels the connection through a local forwarded port, opened once per connection and reused across queries rather than re-established each time. Uses the `ssh2` package.
+
+### Fixed
+
+- `Driver.getQueryPlan()`'s native-driver detection and `NativeClient`'s own internal connect path are now routed correctly through any active SSH tunnel — both were exposed only while wiring in tunnel support and are fixed alongside it.
 
 ### Added
 

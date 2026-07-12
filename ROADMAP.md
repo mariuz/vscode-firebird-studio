@@ -125,7 +125,7 @@ The following features are adapted from Microsoft's [PostgreSQL extension for VS
 
 ### Connectivity
 
-- [ ] SSH tunneling — connect to a Firebird server reachable only through an SSH bastion/jump host, tunneling the wire-protocol connection through a local forwarded port ([design doc](docs/roadmap/ssh-tunneling.md))
+- [x] SSH tunneling — connect to a Firebird server reachable only through an SSH bastion/jump host, tunneling the wire-protocol connection through a local forwarded port ([design doc](docs/roadmap/ssh-tunneling.md))
 
 ## Testing and CI
 

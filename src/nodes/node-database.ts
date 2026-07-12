@@ -373,6 +373,7 @@ export class NodeDatabase implements FirebirdTree {
     if (connections) {
       delete connections[this.dbDetails.id];
       await CredentialStore.deletePassword(this.dbDetails.id);
+      await CredentialStore.deleteSshPassword(this.dbDetails.id);
       await context.globalState.update(Constants.ConectionsKey, connections);
       logger.debug(`Removed connection ${this.dbDetails.id}`);
     }

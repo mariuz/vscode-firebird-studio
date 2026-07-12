@@ -91,7 +91,11 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
 
     const password = newOptions.password;
     await CredentialStore.storePassword(id, password || "");
-    const optionsToSave: ConnectionOptions = { ...newOptions, password: undefined };
+
+    if (newOptions.sshTunnel) {
+      await CredentialStore.storeSshPassword(id, newOptions.sshTunnelPassword || "");
+    }
+    const optionsToSave: ConnectionOptions = { ...newOptions, password: undefined, sshTunnelPassword: undefined };
 
     this.savedConnections[id] = optionsToSave;
 
