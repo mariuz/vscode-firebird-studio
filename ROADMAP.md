@@ -75,7 +75,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 
 ### Query execution & analysis
 
-- [ ] Graphical Query Plan Visualizer — interactive execution-plan diagram instead of today's plain-text `EXPLAIN PLAN` output ([design doc](docs/roadmap/query-plan-visualizer.md))
+- [x] Graphical Query Plan Visualizer — interactive execution-plan diagram instead of today's plain-text `EXPLAIN PLAN` output ([design doc](docs/roadmap/query-plan-visualizer.md))
 - [ ] Live connection/query Profiler — polling `MON$*` dashboard with delta stats, replacing today's one-shot connection snapshot ([design doc](docs/roadmap/live-profiler.md))
 - [ ] Results grid: column freeze/show/hide, copy selection as an `INSERT` statement, copy selection as a SQL `IN (...)` clause
 - [ ] Configurable keyboard shortcuts for query/result actions (a `firebird.shortcuts` setting, mirroring `mssql.shortcuts`)

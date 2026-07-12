@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebird Query Plan</title>
+  <link type="text/css" rel="stylesheet" href="/css/app.css" media="screen,projection" />
+</head>
+<body>
+  <div id="toolbar">
+    <button id="btn-refresh" title="Re-run EXPLAIN for the current query">Refresh</button>
+    <button id="btn-fit" class="secondary" title="Zoom and center so the whole plan is visible">Fit to View</button>
+    <span class="zoom-controls">
+      <button id="btn-zoom-out" class="secondary" title="Zoom out">−</button>
+      <button id="btn-zoom-in" class="secondary" title="Zoom in">+</button>
+    </span>
+    <button id="btn-toggle-raw" class="secondary" title="Show/hide the raw PLAN text">Raw Text</button>
+    <span class="toolbar-spacer"></span>
+    <span id="status"></span>
+  </div>
+
+  <div id="main">
+    <div id="canvas-wrapper">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="fb-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L8,4 L0,8 Z" fill="var(--vscode-widget-border, #666)"></path>
+          </marker>
+        </defs>
+        <g id="viewport">
+          <g id="edges"></g>
+          <g id="nodes"></g>
+        </g>
+      </svg>
+      <div id="loading">Loading plan…</div>
+      <div id="error-banner" style="display:none;"></div>
+      <div id="empty-banner" style="display:none;">No plan to show.</div>
+    </div>
+
+    <div id="detail-panel">
+      <h3 id="detail-heading">Node</h3>
+      <dl id="detail-body"></dl>
+    </div>
+  </div>
+
+  <pre id="raw-output"></pre>
+
+  <script type="text/javascript" src="/js/app.js"></script>
+</body>
+</html>

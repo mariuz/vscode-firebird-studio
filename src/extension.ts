@@ -12,6 +12,7 @@ import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
 import QueryResultsView from "./result-view";
 import {SchemaDesigner} from "./schema-designer";
+import {QueryPlanView} from "./query-plan-view";
 import MockData from "./mock-data/mock-data";
 import LanguageServer from "./language-server";
 import * as cp from 'node:child_process';
@@ -97,6 +98,7 @@ export function activate(context: ExtensionContext) {
   const firebirdMockData = new MockData(context.extensionPath);
   const firebirdQueryResults = new QueryResultsView(context.extensionPath);
   const firebirdSchemaDesigner = new SchemaDesigner(context.extensionPath);
+  const firebirdQueryPlanView = new QueryPlanView(context.extensionPath);
 
   /* SQL linter */
   const sqlLinter = new SqlLinter();
@@ -126,6 +128,7 @@ export function activate(context: ExtensionContext) {
     firebirdMockData,
     firebirdQueryResults,
     firebirdSchemaDesigner,
+    firebirdQueryPlanView,
     firebirdLanguageServer,
     sqlLinter,
     bookmarkProvider,
@@ -993,6 +996,13 @@ export function activate(context: ExtensionContext) {
           });
         }
       }
+    })
+  );
+
+  /* COMMAND: show the graphical (diagram) query plan for the active SQL */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.showEstimatedPlan", () => {
+      firebirdQueryPlanView.open();
     })
   );
 

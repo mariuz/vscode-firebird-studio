@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.28 - 2026-07-12
+
+### Added
+
+- **Graphical Query Plan** — new "Show Graphical Query Plan" command (`Ctrl+Alt+Shift+E` / `Cmd+Alt+Shift+E`) renders the active query's execution plan as an interactive, pannable/zoomable node diagram instead of plain text: click a node to see its access method and index, toggle to the raw `PLAN` text if you just want to copy it. Requires the native driver, same as the existing text-based explain plan.
+
 ## 0.1.27 - 2026-07-12
 
 ### Added

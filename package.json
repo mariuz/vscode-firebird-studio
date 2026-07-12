@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -356,6 +356,11 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.showEstimatedPlan",
+        "title": "Show Graphical Query Plan",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.history.open",
         "title": "Open in Editor",
         "category": "Firebird"
@@ -510,6 +515,12 @@
         "command": "firebird.explainPlan",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
+        "when": "editorTextFocus && editorLangId == sql"
+      },
+      {
+        "command": "firebird.showEstimatedPlan",
+        "key": "ctrl+alt+shift+e",
+        "mac": "cmd+alt+shift+e",
         "when": "editorTextFocus && editorLangId == sql"
       }
     ],

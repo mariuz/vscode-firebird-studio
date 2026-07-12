@@ -4,35 +4,40 @@
 
 ## Current state in Firebird Studio
 
-`Driver.getQueryPlan()` (`src/shared/driver.ts:305`) already returns a plan, but only as **plain text**:
+**Phases 1, 2, and (partially) 4 are done.** `Driver.getQueryPlan()` (`src/shared/driver.ts`) still returns plain text — that's unchanged, and `firebird.explainPlan` still dumps it into a plaintext editor exactly as before — but there's now a second, graphical way to view the same plan:
 
-- With the native driver (`NativeClient.getQueryPlan()`, `src/shared/driver.ts:495`): the real Firebird `EXPLAIN PLAN` string from `Attachment.prepare()` + `Statement.getPlan()`.
-- With the pure-JS driver (default, `node-firebird`): a heuristic fallback built from `extractTableNames()` and index metadata (`src/shared/driver.ts:320-351`), clearly labeled as a fallback, not a real plan.
+- `src/shared/plan-parser.ts` — `parsePlan(planText): PlanNode[]` parses Firebird's legacy `PLAN (...)` syntax into a tree (or forest — a statement with subqueries produces multiple top-level blocks). **The grammar was reverse-engineered against a real Firebird 3.0 server** (a scratch database created and queried directly via `isql-fb` in this environment, not just recalled from documentation), which corrected two wrong assumptions this doc originally made:
+  1. `JOIN` doesn't nest each participant as its own sub-plan (`JOIN (PLAN(...), PLAN(...))`) — it's a **flat**, comma-separated list of scans, regardless of how many tables are joined: `JOIN (A NATURAL, B INDEX (IB), C INDEX (IC))`.
+  2. `SORT` isn't only ever wrapped around a `JOIN` — it can wrap a flat list of scans directly (seen from a `UNION` query) *or* a nested `JOIN (...)` (seen from an `ORDER BY` on a joined query that couldn't use an index to satisfy it). Wrapper nodes (`JOIN`/`HASH`/`MERGE`/`SORT`) genuinely recurse into either scans or other wrappers.
+  
+  `HASH` was directly observed too (a hash join); `MERGE` wasn't triggered by the available test data but shares the identical `KEYWORD (item, item, ...)` shape as the other three in every case that was observed, so it's parsed the same way. See the file's header comment for the full reasoning and the exact captured strings this was built against.
+- `src/query-plan-view/` — a new webview (`QueryPlanView`, following the same scaffolding as `schema-designer`/`result-view`) that renders the parsed tree as a node diagram: a classic layered-tree layout (scans are leaves, wrapper nodes branch), pan/zoom/fit, click a node for a detail panel (access method, index name(s)), and a "Raw Text" toggle showing the underlying `PLAN (...)` string. New command `firebird.showEstimatedPlan` (keybinding `Ctrl+Alt+Shift+E` / `Cmd+Alt+Shift+E`, mirroring `firebird.explainPlan`'s `Ctrl+Alt+E`) opens it for the active editor's query, same resolution behavior (`Driver.getQueryPlan()` resolves from the active editor/active connection when not given explicit args). When the pure-JS driver's non-machine-readable fallback text is detected (checked by prefix before even attempting to parse), shows a clear "enable the native driver" message instead of a parse error.
 
-This text is presumably surfaced today only as a dump (e.g. into a panel or editor) — there's no diagram, no per-node cost breakdown, no click-to-inspect.
+### Explicitly deferred (not done)
 
-## Proposed feature
+- **Phase 3 — Actual vs. Estimated**: no `MON$STATEMENTS`/`MON$RECORD_STATS` overlay yet; the diagram only ever shows the estimated plan.
+- **Phase 4, remainder — result-view tab integration**: `firebird.showEstimatedPlan` opens a standalone webview panel today, not a tab alongside Results/Messages in `src/result-view/`.
+- **Phase 5 — table and source views**: no sortable one-row-per-node table view yet. (A minimal raw-text toggle *was* added early, since the raw string is already available in the message payload at no extra cost — but that's just a plain `<pre>` dump, not the sortable table view this phase describes.)
+- **Phase 6 — Copilot "Analyze" action.**
+- **Phase 7 — icicle chart view.**
 
-1. **Parse** Firebird's plan syntax (`PLAN (TABLE NATURAL|INDEX (...) JOIN ...)`, nested `PLAN JOIN (...)`, `SORT`, `MERGE`) into a small tree structure — a new pure function module (e.g. `src/shared/plan-parser.ts`), unit-testable the same way `sql-formatter.ts`/`sql-linter.ts` are (per `tsconfig.test.json`'s pattern of listing pure modules for the unit tier).
-2. **Render** the parsed tree as a node-link diagram in a webview (new `src/query-plan-view/`, following the same webview scaffolding as `src/result-view/` or `src/schema-designer/`): each node is a table scan or join step, edges show data flow, clicking a node shows details (index used, natural vs. indexed access, estimated cost if the native driver's plan carries cost info).
-3. **Estimated vs. Actual**: Firebird's `EXPLAIN PLAN` from `Statement.getPlan()` is available without executing (estimated); to get "actual" per-node stats, correlate with `MON$STATEMENTS`/`MON$RECORD_STATS` for the just-run statement (Firebird doesn't expose true per-operator runtime stats like SQL Server's Extended Events, so "actual" here would realistically mean: total actual row counts and I/O from monitoring tables overlaid on the same static plan tree, not a full actual-plan replay). This should be scoped honestly as an approximation, not a 1:1 port of the mssql feature.
-4. Wire up two new commands mirroring mssql's, e.g. `firebird.showEstimatedPlan` (calls `getQueryPlan()` without running the query) and `firebird.toggleActualPlan` (runs the query, then overlays monitoring stats), both surfaced as result-view tab options alongside the existing Results/Messages tabs (`src/result-view/`).
-5. **Additional views, borrowed from vscode-pgsql** (verified against its demo media, not just its docs — see Technical notes): once the node-link diagram exists, the same parsed tree can drive two more presentations of the *same* data with little extra logic — a **table view** (one row per plan node — table, access method, index, estimated cost — sortable by any column, useful for scanning a large plan for the most expensive step without hunting through a diagram) and a **source view** (the raw `PLAN (...)` text, for copy/paste or comparing against what changed after an index was added). Keep these as alternate renderers of the one parsed tree, not separate parsers.
-6. **Import a saved plan** — accept a `.txt`/pasted plan string with no live connection required (parse + render only), for sharing/reviewing a plan captured elsewhere (e.g. from a production server this machine can't reach). Since the parser is already a pure function taking a plan string, this is mostly a "skip the DB round trip, take text from a file/paste box instead" UI path, not new parsing logic.
-7. **Analyze with Copilot** — a button that sends the parsed plan (as structured data, not just the raw string) plus the query text into a `vscode.LanguageModelChatMessage` request, same pattern as `src/copilot/copilot-chat-participant.ts`'s `/optimize`. This can reuse `/optimize`'s existing prompt largely as-is; the value-add here is passing the *parsed* plan (per-node cost/access-method) as structured context rather than making the model re-parse the raw plan text itself.
+### Testing
+
+`src/test/plan-parser.test.ts` — 15 tests, every fixture string captured verbatim from the real server (not invented), covering every scan method, all four wrapper keywords, nesting, mixed-case identifiers, multi-block plans, and malformed input. The webview's layout/rendering JS (`src/query-plan-view/htmlContent/js/app.js`) has no automated coverage, matching this repo's convention for webview inline JS — verified instead with a one-off Node harness (not committed) checking the tree-layout math (leaf counting, centering a parent over its children, side-by-side placement of independent blocks) against several of the same real plan shapes.
 
 ## Technical notes
 
-- The native-driver requirement matters here: without it, there's no real machine-readable plan to parse (the pure-JS fallback is explicitly a heuristic string, not real Firebird plan syntax) — the visualizer should detect this and show a clear "install/enable the native driver for graphical plans" prompt rather than trying to parse the fallback text.
-- Keep the plan parser and the rendering layer separate (parser is pure/testable; the webview is presentation-only) — matches this repo's stated convention of isolating SQL-parsing logic into pure functions.
-- An "icicle chart" (vscode-pgsql's fourth view: a horizontal stacked-bar breakdown of cost/time by plan node, nesting shown as bar width rather than tree depth) is a nice way to spot the single most expensive node at a glance in a large plan, but it's a distinct rendering mode from the node-link diagram, not a trivial CSS variant of it — treat it as optional polish after the table/source views (which are much cheaper, reusing the same parsed-tree data with no new layout code) rather than a phase-1 requirement.
+- The native-driver requirement matters here: without it, there's no real machine-readable plan to parse (the pure-JS fallback is explicitly a heuristic string, not real Firebird plan syntax) — `QueryPlanView` detects this by checking the fallback text's known prefixes before attempting to parse, rather than surfacing a confusing parse error.
+- Keep the plan parser and the rendering layer separate (parser is pure/testable; the webview is presentation-only) — matches this repo's stated convention of isolating SQL-parsing logic into pure functions. This paid off directly: the two grammar corrections above were found and fixed in the parser alone, with zero changes needed to the (not-yet-written-at-the-time) rendering code.
+- If you need to re-derive real plan fixtures for further work on the parser (e.g. to finally trigger a genuine `MERGE` plan), a Firebird 3.0 server is reachable in this environment via `isql-fb`; `plan-parser.ts`'s file header documents the exact scratch-database setup used.
+- An "icicle chart" (vscode-pgsql's fourth view: a horizontal stacked-bar breakdown of cost/time by plan node, nesting shown as bar width rather than tree depth) is a nice way to spot the single most expensive node at a glance in a large plan, but it's a distinct rendering mode from the node-link diagram, not a trivial CSS variant of it — treat it as optional polish after the table/source views (which are much cheaper, reusing the same parsed-tree data with no new layout code) rather than a priority.
 
-## Suggested phases
+## Suggested phases (remaining)
 
-1. Write `plan-parser.ts` + unit tests against real Firebird plan strings (collect samples from `NATURAL`, single index, and multi-table join plans).
-2. Static diagram webview for the *estimated* plan only (no monitoring overlay yet).
+1. ~~Write `plan-parser.ts` + unit tests against real Firebird plan strings.~~ — **done**.
+2. ~~Static diagram webview for the *estimated* plan only.~~ — **done**.
 3. Add the actual-plan monitoring overlay using `MON$STATEMENTS`/`MON$RECORD_STATS`.
-4. Add commands + result-view tab integration.
-5. Add the table and source views as alternate renderers of the same parsed tree; add "import a saved plan" (no connection needed).
+4. Move from a standalone panel to a result-view tab alongside Results/Messages.
+5. Add the sortable table view as an alternate renderer of the same parsed tree; add "import a saved plan" (paste/open a file, no connection needed).
 6. Add the Copilot "Analyze" action.
 7. (Optional polish) icicle chart view.
