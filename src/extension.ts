@@ -27,6 +27,7 @@ import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
+import {registerMcpServer} from "./mcp-server";
 import {runBuildProject} from "./database-projects";
 import {runContainerProvisionWizard} from "./container-provisioning";
 
@@ -128,6 +129,9 @@ export function activate(context: ExtensionContext) {
 
   /* SQL Notebooks (.fbnb) — serializer + execution controller */
   context.subscriptions.push(...registerSqlNotebook(context));
+
+  /* MCP Server (Phase 2: list_connections + get_schema, read-only) — no-ops on VS Code builds without MCP support */
+  context.subscriptions.push(registerMcpServer(context));
   context.subscriptions.push(
     commands.registerCommand("firebird.notebook.new", async () => {
       const notebookData = new vscode.NotebookData([
@@ -290,6 +294,15 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.database.setConnectionGroup", (databaseNode: NodeDatabase) => {
       databaseNode.setConnectionGroup(context, firebirdTreeDataProvider).catch(err => {
+        logger.error(err?.message ?? err);
+      });
+    })
+  );
+
+  /* DB ITEM: opt this connection in/out of the firebird-mcp MCP server's tools */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.toggleMcpExposure", (databaseNode: NodeDatabase) => {
+      databaseNode.toggleMcpExposure(context, firebirdTreeDataProvider).catch(err => {
         logger.error(err?.message ?? err);
       });
     })

@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.41 - 2026-07-12
+
+### Added
+
+- **MCP Server** (`firebird.mcp.enabled`, off by default) — exposes a `list_connections`/`get_schema` MCP server to any MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode), independent of this extension's own `@firebird` Copilot Chat participant. Right-click a database → **Toggle MCP Server Exposure** to opt a connection in — nothing is exposed by default even with the setting on, and credentials never reach the MCP client itself. Read-only schema inspection only in this pass; no query-execution tool yet.
+
 ## 0.1.40 - 2026-07-12
 
 ### Added

@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -36,7 +36,8 @@
     "tsc-compile": "tsc -p ./",
     "vscode:prepublish": "npm run compile",
     "esbuild-base": "rimraf out && rimraf node_modules/node-firebird-native-api/build/Release && esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:node-firebird-native-api --format=cjs --platform=node",
-    "esbuild-build": "npm run -S esbuild-base -- --sourcemap",
+    "esbuild-mcp-server": "esbuild ./src/mcp-server/server.ts --bundle --outfile=out/mcp-server/server.js --format=cjs --platform=node",
+    "esbuild-build": "npm run -S esbuild-base -- --sourcemap && npm run -S esbuild-mcp-server -- --sourcemap",
     "install-native": "npm run --prefix node_modules/node-firebird-native-api/ gyp:configure && npm run --prefix node_modules/node-firebird-native-api/ gyp:build",
     "compile": "npm run -S esbuild-build",
     "watch": "npm run -S esbuild-base -- --sourcemap --watch",
@@ -55,6 +56,12 @@
             "filenamePattern": "*.fbnb"
           }
         ]
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "firebird-mcp",
+        "label": "Firebird MCP Server"
       }
     ],
     "commands": [
@@ -366,6 +373,11 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.database.toggleMcpExposure",
+        "title": "Toggle MCP Server Exposure",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.formatSql",
         "title": "Format SQL Document",
         "category": "Firebird"
@@ -508,7 +520,13 @@
         },
         "firebird.transaction.isolationLevel": {
           "type": "string",
-          "enum": ["", "READ_COMMITTED_RECORD_VERSION", "READ_COMMITTED_NO_RECORD_VERSION", "SNAPSHOT", "SNAPSHOT_TABLE_STABILITY"],
+          "enum": [
+            "",
+            "READ_COMMITTED_RECORD_VERSION",
+            "READ_COMMITTED_NO_RECORD_VERSION",
+            "SNAPSHOT",
+            "SNAPSHOT_TABLE_STABILITY"
+          ],
           "enumDescriptions": [
             "Use the driver's default (Read Committed, No Record Version).",
             "Read Committed: see the latest committed version of a row a concurrent transaction is updating, instead of waiting on or conflicting with it.",
@@ -531,7 +549,11 @@
         },
         "firebird.transaction.waitMode": {
           "type": "string",
-          "enum": ["", "WAIT", "NO_WAIT"],
+          "enum": [
+            "",
+            "WAIT",
+            "NO_WAIT"
+          ],
           "enumDescriptions": [
             "Use the driver's default (WAIT).",
             "Wait for a conflicting lock to clear, optionally bounded by firebird.transaction.lockTimeoutSec.",
@@ -539,6 +561,11 @@
           ],
           "default": "",
           "markdownDescription": "Whether a query that hits a lock conflict waits or fails immediately."
+        },
+        "firebird.mcp.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Registers the **Firebird MCP Server**, exposing whichever connections have `firebird.database.toggleMcpExposure` turned on as read-only schema-inspection tools (`list_connections`, `get_schema`) to any MCP-compatible AI client. No connection is exposed by default even when this is on — each one needs its own explicit opt-in from its right-click menu. Requires a VS Code build with MCP server registration support; has no effect on older versions."
         },
         "firebird.shortcuts": {
           "type": "object",
@@ -964,6 +991,11 @@
           "group": "manage@4"
         },
         {
+          "command": "firebird.database.toggleMcpExposure",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "manage@5"
+        },
+        {
           "command": "firebird.table.createTable",
           "when": "view == firebird-explorer && viewItem == folder.tables",
           "group": "firebird@0"
@@ -1079,6 +1111,7 @@
     "onNotebook:firebird-notebook"
   ],
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "bindings": "^1.5.0",
     "node-addon-api": "^5.0.0",
     "node-firebird": "^2.3.4",
@@ -1086,7 +1119,8 @@
     "node-firebird-driver-native": "^3.6.0",
     "node-firebird-native-api": "^3.2.0",
     "node-gyp": "^9.3.0",
-    "uuid": "^8.3.2"
+    "uuid": "^8.3.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

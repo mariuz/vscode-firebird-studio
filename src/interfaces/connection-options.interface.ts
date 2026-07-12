@@ -28,4 +28,6 @@ export interface ConnectionOptions {
   group?: string;
   /** Optional color tag for quick visual identification in the tree icon and status bar. */
   color?: ConnectionColor;
+  /** Explicit opt-in: exposes this connection's schema (never its password) to the firebird.mcp MCP server, if enabled. Defaults to false/unset — an MCP client sees nothing unless a connection opts in. */
+  mcpExposed?: boolean;
 }

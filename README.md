@@ -50,6 +50,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Object Search** — fuzzy-search every table, view, procedure, trigger, generator, and domain by name in one connection
 - **Create Local Firebird Container** — provision a brand-new Dockerized Firebird server from the extension
 - **Color-coded connection groups**, and paste a full connection string to prefill the "Add New Connection" wizard
+- **MCP Server** — expose opted-in connections' schema to any MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode)
 
 ## Getting Started
 
@@ -73,6 +74,10 @@ Choosing **Docker** as the connection type auto-detects Firebird containers curr
 Right-click any connection → **Set Connection Color...** tags it with a color (shown in its tree icon, and in the status bar while it's active) or **Set Connection Group...** to organize it under a named folder in the tree instead of by host — handy for telling Production apart from Staging/Dev at a glance.
 
 For advanced options (native driver, WireCrypt) see **[docs/connection-setup.md](docs/connection-setup.md)**.
+
+### MCP Server
+
+Turn on `firebird.mcp.enabled`, then right-click a database → **Toggle MCP Server Exposure** for each connection you want reachable — nothing is exposed by default even with the setting on. Any MCP-compatible AI client (Claude Desktop, Cursor, VS Code's own Copilot in Agent mode) can then call `list_connections` and `get_schema` to inspect an opted-in connection's schema, independent of this extension's own `@firebird` Copilot Chat participant. This is read-only schema inspection only — there's no query-execution tool yet, and passwords never reach the MCP client, only the schema data it asks for.
 
 ### Explore Database Contents
 
@@ -212,6 +217,7 @@ Run **Create Local Firebird Container...** from the Command Palette — Docker's
 | `firebird.transaction.lockTimeoutSec` | number | `0` | Lock wait timeout in seconds before a blocked query gives up (`0` = wait indefinitely); only honored by the pure-JS driver |
 | `firebird.transaction.readOnly` | boolean | `false` | Open every query's transaction as READ ONLY |
 | `firebird.transaction.waitMode` | string | *(blank)* | `WAIT` or `NO_WAIT` for a lock conflict; blank uses the driver's default (`WAIT`) |
+| `firebird.mcp.enabled` | boolean | `false` | Registers the Firebird MCP Server; only connections with **Toggle MCP Server Exposure** turned on are actually reachable |
 
 ## Documentation
 

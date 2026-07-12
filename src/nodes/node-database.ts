@@ -230,8 +230,23 @@ export class NodeDatabase implements FirebirdTree {
     firebirdTreeDataProvider.refresh();
   }
 
-  /** Patches one field of this connection's saved globalState entry (color/group tags — not password, which never lives there). */
-  private async updateSavedConnectionField<K extends "color" | "group">(
+  // opt this connection in/out of the firebird-mcp MCP server's list_connections/get_schema tools
+  public async toggleMcpExposure(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+    if (this.dbDetails.workspace) {
+      logger.showInfo("This connection comes from this workspace's .vscode/firebird.json — edit it there instead.");
+      return;
+    }
+
+    const nowExposed = !this.dbDetails.mcpExposed;
+    await this.updateSavedConnectionField(context, "mcpExposed", nowExposed);
+    firebirdTreeDataProvider.refresh();
+    logger.showInfo(nowExposed
+      ? `${getDatabaseFileName(this.dbDetails.database)} is now exposed to the Firebird MCP server (if firebird.mcp.enabled is on).`
+      : `${getDatabaseFileName(this.dbDetails.database)} is no longer exposed to the Firebird MCP server.`);
+  }
+
+  /** Patches one field of this connection's saved globalState entry (color/group/mcpExposed tags — not password, which never lives there). */
+  private async updateSavedConnectionField<K extends "color" | "group" | "mcpExposed">(
     context: ExtensionContext, field: K, value: ConnectionOptions[K]
   ): Promise<void> {
     const connections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);

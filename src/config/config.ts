@@ -25,7 +25,8 @@ export function getOptions() {
     transactionIsolationLevel: _transactionIsolationLevel(),
     transactionLockTimeoutSec: _transactionLockTimeoutSec(),
     transactionReadOnly: _transactionReadOnly(),
-    transactionWaitMode: _transactionWaitMode()
+    transactionWaitMode: _transactionWaitMode(),
+    mcpEnabled: _mcpEnabled()
   } as Options;
 }
 
@@ -237,6 +238,15 @@ function _transactionWaitMode(): Options["transactionWaitMode"] {
   }
   logger.error("Invalid value detected in Transaction Wait Mode settings. Fallback to default value.");
   return "";
+}
+
+function _mcpEnabled(): boolean {
+  const conf: any = getConfig().get("mcp.enabled");
+  const def: boolean = properties["firebird.mcp.enabled"]["default"];
+  if (typeof conf !== "boolean") {
+    return def;
+  }
+  return conf;
 }
 
 function _recordsPerPage(): string {

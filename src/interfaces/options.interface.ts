@@ -33,4 +33,6 @@ export interface Options {
   transactionReadOnly: boolean;
   /** Whether a lock conflict waits or fails immediately. `''` means "use the driver's default (WAIT)". */
   transactionWaitMode: '' | 'WAIT' | 'NO_WAIT';
+  /** Registers the firebird-mcp MCP server, exposing whichever connections have opted in (ConnectionOptions.mcpExposed) as read-only schema-inspection tools to MCP clients. Off by default. */
+  mcpEnabled: boolean;
 }
