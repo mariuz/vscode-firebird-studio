@@ -53,6 +53,13 @@ suite('Extension Host – commands', function () {
   });
 });
 
+suite('Extension Host – What\'s New notification', function () {
+  test('extension still activates cleanly with the What\'s New check wired into activate()', function () {
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext?.isActive, 'Extension should still be active — a throw in showWhatsNewIfUpdated() must not break activation');
+  });
+});
+
 suite('Extension Host – workspace API sanity', function () {
   test('vscode API is available', function () {
     assert.ok(typeof vscode.version === 'string', 'vscode.version should be a string');

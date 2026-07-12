@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.47 - 2026-07-12
+
+### Added
+
+- **"What's New" notification** — shown once after an update (not on first install), summarizing the new version's `CHANGELOG.md` entry with a **Show Full Changelog** button. Silent on a fresh install and on same-version re-activations (e.g. a window reload).
+
 ## 0.1.46 - 2026-07-12
 
 ### Added

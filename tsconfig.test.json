@@ -21,6 +21,7 @@
   "include": [
     "src/shared/sql-splitter.ts",
     "src/shared/sql-formatter.ts",
+    "src/shared/changelog-notice.ts",
     "src/shared/sql-linter.ts",
     "src/shared/driver.ts",
     "src/shared/connection-pool.ts",

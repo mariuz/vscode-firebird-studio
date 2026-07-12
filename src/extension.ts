@@ -17,6 +17,9 @@ import {ProfilerView} from "./profiler";
 import MockData from "./mock-data/mock-data";
 import LanguageServer from "./language-server";
 import * as cp from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import {extractChangelogEntry, summarizeChangelogEntry} from "./shared/changelog-notice";
 import {formatSQL} from "./shared/sql-formatter";
 import {SqlLinter} from "./shared/sql-linter";
 import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
@@ -41,6 +44,42 @@ function poolingOptions(config: Options): { maxSize: number; idleTimeoutMs: numb
     : undefined;
 }
 
+/**
+ * Shows a one-time "What's New" notification after an extension update, summarizing that
+ * version's CHANGELOG.md entry. Silent on first-ever install (no stored previous version) since
+ * the Getting Started walkthrough already covers first-run onboarding; silent on same-version
+ * re-activations (e.g. a window reload) since context.globalState persists across those.
+ */
+async function showWhatsNewIfUpdated(context: ExtensionContext): Promise<void> {
+  const previousVersion = context.globalState.get<string>(Constants.LastShownVersionKey);
+  const currentVersion = Constants.Version;
+  if (previousVersion === currentVersion) { return; }
+  await context.globalState.update(Constants.LastShownVersionKey, currentVersion);
+  if (previousVersion === undefined) { return; }
+
+  try {
+    const changelogPath = path.join(context.extensionPath, "CHANGELOG.md");
+    const changelog = fs.readFileSync(changelogPath, "utf8");
+    const entry = extractChangelogEntry(changelog, currentVersion);
+    const summary = entry ? summarizeChangelogEntry(entry) : undefined;
+    const message = summary
+      ? `Firebird Studio updated to v${currentVersion}: ${summary}`
+      : `Firebird Studio updated to v${currentVersion}.`;
+
+    const selected = await window.showInformationMessage(message, "Show Full Changelog", "Dismiss");
+    if (selected === "Show Full Changelog") {
+      try {
+        await commands.executeCommand("markdown.showPreview", vscode.Uri.file(changelogPath));
+      } catch {
+        // markdown-language-features isn't guaranteed to be present/enabled — fall back to plain text.
+        await window.showTextDocument(vscode.Uri.file(changelogPath));
+      }
+    }
+  } catch (err) {
+    logger.error(err);
+  }
+}
+
 /** Prompts for a new object name, validated as a safe Firebird identifier. */
 async function promptIdentifier(prompt: string, placeHolder: string): Promise<string | undefined> {
   return vscode.window.showInputBox({
@@ -56,6 +95,10 @@ export function activate(context: ExtensionContext) {
 
   /* initialise credential store with extension context for SecretStorage access */
   CredentialStore.setContext(context);
+
+  /* "What's New" notification, shown once after an update (not on first install — the Getting
+     Started walkthrough already covers that). */
+  void showWhatsNewIfUpdated(context);
 
   /* load configuration and reload every time it's changed */
   logger.info(`Loading configuration...`);
