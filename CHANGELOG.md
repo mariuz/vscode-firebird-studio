@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.26 - 2026-07-12
+
+### Added
+
+- **Visual Schema Designer** — replaces the separate read-only "Visualize Schema" diagram and single-table "Create/Alter Table" designer with one merged, editable multi-table designer: add new tables and columns, draw or delete foreign key relationships between columns by dragging, and alter existing tables' columns and primary key, all from the same whole-database canvas. Generates a consolidated `CREATE`/`ALTER TABLE` DDL script for review before running, correctly handling constraint drop/re-add ordering (e.g. when changing a primary key that a foreign key elsewhere still depends on). The **Visualize Schema**, **Create Table**, and **Alter Table** commands all now open this designer, focused appropriately — no new commands to learn.
+
+### Fixed
+
+- Executing generated DDL from the table/schema designer now runs each statement individually instead of sending the whole (possibly multi-statement) script as one query, which could silently fail to run everything past the first statement.
+
 ## 0.1.25 - 2026-07-12
 
 ### Added

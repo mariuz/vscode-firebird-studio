@@ -1,5 +1,5 @@
 /**
- * Extension Development Host integration tests for the schema visualizer's
+ * Extension Development Host integration tests for the Schema Designer's
  * data pipeline against a real Firebird server.
  *
  * src/test/schema-graph.test.ts covers buildSchemaGraph()'s assembly logic
@@ -13,10 +13,10 @@
 import * as assert from 'assert';
 import { Driver, NodeClient } from '../../shared/driver';
 import { getSchemaColumnsQuery, getForeignKeysQuery } from '../../shared/queries';
-import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from '../../schema-visualizer/schema-graph';
+import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from '../../schema-designer/schema-graph';
 import { getTestConnectionOptions } from './firebird-test-env';
 
-suite('Schema visualizer data pipeline – real Firebird integration', function () {
+suite('Schema Designer data pipeline – real Firebird integration', function () {
   this.timeout(20000);
 
   const conn = getTestConnectionOptions();

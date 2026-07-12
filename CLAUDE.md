@@ -61,7 +61,7 @@ CI (`.github/workflows/ci.yml`) only runs the unit-test tier; e2e and vscode-hos
 - `src/language-server/` — completion provider for reserved words, table/field names (`completionProvider.ts`, `db-words.provider.ts`, `firebird-reserved.ts`).
 - `src/shared/sql-linter.ts`, `sql-formatter.ts`, `sql-splitter.ts` — SQL diagnostics, formatting, and statement splitting; pure functions, easiest place to add SQL-parsing logic and unit-test it in isolation.
 - `src/result-view/` — webview that renders query results (pagination, sort/filter, export to JSON/CSV/XLSX/PDF).
-- `src/table-designer/` — visual DDL table designer webview.
+- `src/schema-designer/` — visual multi-table Schema Designer webview (`schema-graph.ts` assembles the whole-database ER graph from `getSchemaColumnsQuery()`/`getForeignKeysQuery()`; the webview lets you view/add/alter tables, columns, and foreign keys, then diffs the in-memory draft against the loaded schema to generate `CREATE`/`ALTER TABLE` DDL). Backs the `firebird.schemaVisualizer.open`, `firebird.table.createTable`, and `firebird.table.alterTable` commands — same webview, different initial focus.
 - `src/mock-data/` — Mockaroo API integration for generating mock rows.
 - `src/schema-diff/` — fetches schema snapshots from two saved connections and renders a text diff report.
 - `src/bookmarks/`, `src/query-history/` — separate `TreeDataProvider`s persisted in `context.globalState`, for saved queries and session run history respectively.

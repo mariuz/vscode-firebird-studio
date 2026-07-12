@@ -11,8 +11,7 @@ import {CredentialStore} from "./shared/credential-store";
 import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
 import QueryResultsView from "./result-view";
-import {TableDesigner} from "./table-designer";
-import {SchemaVisualizer} from "./schema-visualizer";
+import {SchemaDesigner} from "./schema-designer";
 import MockData from "./mock-data/mock-data";
 import LanguageServer from "./language-server";
 import * as cp from 'node:child_process';
@@ -97,8 +96,7 @@ export function activate(context: ExtensionContext) {
   }
   const firebirdMockData = new MockData(context.extensionPath);
   const firebirdQueryResults = new QueryResultsView(context.extensionPath);
-  const firebirdTableDesigner = new TableDesigner(context.extensionPath);
-  const firebirdSchemaVisualizer = new SchemaVisualizer(context.extensionPath);
+  const firebirdSchemaDesigner = new SchemaDesigner(context.extensionPath);
 
   /* SQL linter */
   const sqlLinter = new SqlLinter();
@@ -127,8 +125,7 @@ export function activate(context: ExtensionContext) {
     window.registerTreeDataProvider("firebird-query-history", queryHistoryProvider),
     firebirdMockData,
     firebirdQueryResults,
-    firebirdTableDesigner,
-    firebirdSchemaVisualizer,
+    firebirdSchemaDesigner,
     firebirdLanguageServer,
     sqlLinter,
     bookmarkProvider,
@@ -355,17 +352,17 @@ export function activate(context: ExtensionContext) {
     })
   );
 
-  /* DDL: alter table via visual designer */
+  /* DDL: alter table via the Schema Designer */
   context.subscriptions.push(
     commands.registerCommand("firebird.table.alterTable", (tableNode: NodeTable) => {
-      tableNode.alterTable(firebirdTableDesigner).catch(err => logger.error(err));
+      tableNode.alterTable(firebirdSchemaDesigner);
     })
   );
 
-  /* DDL: open visual table designer */
+  /* DDL: open the Schema Designer with a blank new table */
   context.subscriptions.push(
     commands.registerCommand("firebird.table.createTable", () => {
-      firebirdTableDesigner.open(Global.activeConnection);
+      firebirdSchemaDesigner.openNewTable(Global.activeConnection);
     })
   );
 
@@ -738,7 +735,7 @@ export function activate(context: ExtensionContext) {
   /* DB ITEM: visualize schema — entity-relationship diagram for a database */
   context.subscriptions.push(
     commands.registerCommand("firebird.schemaVisualizer.open", (databaseNode: NodeDatabase) => {
-      databaseNode.visualizeSchema(firebirdSchemaVisualizer);
+      databaseNode.openSchemaDesigner(firebirdSchemaDesigner);
     })
   );
 

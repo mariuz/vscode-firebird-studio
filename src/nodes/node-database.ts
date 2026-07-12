@@ -10,7 +10,7 @@ import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
 import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getSystemTablesQuery, getUsersQuery, monitorConnectionsQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
-import {SchemaVisualizer} from "../schema-visualizer";
+import {SchemaDesigner} from "../schema-designer";
 import * as cp from 'node:child_process';
 
 
@@ -151,9 +151,9 @@ export class NodeDatabase implements FirebirdTree {
       });
   }
 
-  // open the entity-relationship diagram (tables, columns, foreign keys) for this database
-  public visualizeSchema(schemaVisualizer: SchemaVisualizer): void {
-    schemaVisualizer.open(this.dbDetails);
+  // open the Schema Designer (whole-database ER diagram, editable) for this database
+  public openSchemaDesigner(schemaDesigner: SchemaDesigner): void {
+    schemaDesigner.openFullSchema(this.dbDetails);
   }
 
   /** Connection details with the password resolved from SecretStorage, for callers (e.g. the

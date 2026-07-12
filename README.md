@@ -76,14 +76,16 @@ Right-click the **Roles** folder → **Create Role**, or the **Users** folder �
 
 Right-click a table's **Indexes** folder → **Create Index**, choose the column(s) (comma-separated, for a composite index) and whether it should be unique. Right-click an existing index for **Drop Index**.
 
-### Visualizing the Schema
+### Visual Schema Designer
 
-Right-click a database node → **Visualize Schema** to open an entity-relationship diagram of every table, its columns, and its foreign key relationships (primary key columns are marked).
+Right-click a database node → **Visualize Schema** (or a table → **Create Table**/**Alter Table**) to open the Schema Designer: an editable entity-relationship diagram of every table, its columns, and its foreign key relationships (primary key columns are marked).
 
 - **Pan**: drag an empty area of the canvas. **Zoom**: scroll wheel, or the **+**/**−** buttons.
 - **Fit to View** zooms and centers so every table is visible; the **minimap** in the corner shows your position in a large schema, and is clickable to jump around.
-- Drag a table to reposition it; **Auto Layout** recalculates positions for the whole diagram.
-- The diagram doesn't update automatically after schema changes — use **Refresh** to reload it.
+- Click a table to open its column editor in the side panel — add/remove/edit columns, change the primary key. **+ Add Table** creates a new one; drag from a column's right edge to another table's column to draw a foreign key, and click an edge + <kbd>Delete</kbd> to remove one.
+- **Generate DDL in Editor** / **Execute DDL** produce the `CREATE`/`ALTER TABLE` statements needed to apply your changes — always reviewable before running.
+- Dropping an existing table isn't done here — use **Drop Table** from the tree instead.
+- The diagram doesn't update automatically after schema changes made elsewhere — use **Refresh** to reload it (this discards any unsaved edits on the canvas, after a confirmation).
 
 Firebird doesn't have PostgreSQL-style schemas/namespaces, so unlike similar tools this always shows the whole database rather than one schema at a time.
 

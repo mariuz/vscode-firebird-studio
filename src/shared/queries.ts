@@ -464,21 +464,21 @@ export function getPrimaryKeyColumnsQuery(tableName: string): string {
 }
 
 /**
- * The primary key constraint's own name (0 or 1 row) — needed to DROP CONSTRAINT before adding a
- * new primary key, since ALTER TABLE can't just "replace" one. Used by the visual Table
- * Designer's Alter Table mode when the set of primary key columns changes.
+ * Every table's primary key constraint name (0 or 1 row per table) — needed to DROP CONSTRAINT
+ * before adding a new primary key, since ALTER TABLE can't just "replace" one. Used by the
+ * Schema Designer when a table's set of primary key columns changes.
  */
-export function getPrimaryKeyConstraintNameQuery(tableName: string): string {
-  return `SELECT TRIM(rc.RDB$CONSTRAINT_NAME) AS CONSTRAINT_NAME
+export function getAllPrimaryKeyConstraintNamesQuery(): string {
+  return `SELECT TRIM(rc.RDB$RELATION_NAME) AS TABLE_NAME,
+                 TRIM(rc.RDB$CONSTRAINT_NAME) AS CONSTRAINT_NAME
             FROM RDB$RELATION_CONSTRAINTS rc
-           WHERE rc.RDB$RELATION_NAME = '${tableName}'
-             AND rc.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY';`;
+           WHERE rc.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY';`;
 }
 
 /**
  * Returns every column of every table in the database, one row per column, with a primary-key
- * flag — used by the schema visualizer to build all its table nodes in a single round trip
- * instead of one tableInfoQuery() per table.
+ * flag and default value — used by the Schema Designer to build its whole-database graph in a
+ * single round trip instead of one tableInfoQuery() per table.
  */
 export function getSchemaColumnsQuery(): string {
   return `SELECT TRIM(r.RDB$RELATION_NAME) AS TABLE_NAME,
@@ -503,7 +503,8 @@ export function getSchemaColumnsQuery(): string {
                  f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
                  CASE WHEN r.RDB$NULL_FLAG = 1 THEN 1 ELSE 0 END AS NOT_NULL,
                  r.RDB$FIELD_POSITION AS FIELD_POSITION,
-                 CASE WHEN pk.RDB$FIELD_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PRIMARY_KEY
+                 CASE WHEN pk.RDB$FIELD_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PRIMARY_KEY,
+                 CAST(r.RDB$DEFAULT_SOURCE AS VARCHAR(100) CHARACTER SET UTF8) AS DFLT_VALUE
             FROM RDB$RELATION_FIELDS r
             JOIN RDB$RELATIONS rel ON rel.RDB$RELATION_NAME = r.RDB$RELATION_NAME
        LEFT JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = r.RDB$FIELD_SOURCE

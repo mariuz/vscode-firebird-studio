@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebird Schema Designer</title>
+  <link type="text/css" rel="stylesheet" href="/css/app.css" media="screen,projection" />
+</head>
+<body>
+  <div id="toolbar">
+    <button id="btn-add-table" title="Add a new table to the canvas">+ Add Table</button>
+    <button id="btn-refresh" class="secondary" title="Reload the schema from the database (discards unsaved changes)">Refresh</button>
+    <button id="btn-auto-layout" class="secondary" title="Recalculate table positions">Auto Layout</button>
+    <button id="btn-fit" class="secondary" title="Zoom and center so every table is visible">Fit to View</button>
+    <span class="zoom-controls">
+      <button id="btn-zoom-out" class="secondary" title="Zoom out">−</button>
+      <button id="btn-zoom-in" class="secondary" title="Zoom in">+</button>
+    </span>
+    <span class="hint">Drag from a column's right edge to draw a relationship. Click an edge + Delete to remove it.</span>
+    <span class="toolbar-spacer"></span>
+    <span id="status"></span>
+    <button id="generateBtn">Generate DDL in Editor</button>
+    <button id="executeBtn">Execute DDL</button>
+  </div>
+
+  <div id="main">
+    <div id="canvas-wrapper">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="fb-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L8,4 L0,8 Z" class="fb-arrow-head"></path>
+          </marker>
+        </defs>
+        <g id="viewport">
+          <g id="edges"></g>
+          <g id="nodes"></g>
+        </g>
+      </svg>
+      <svg id="minimap" xmlns="http://www.w3.org/2000/svg">
+        <g id="minimap-nodes"></g>
+        <rect id="minimap-viewport"></rect>
+      </svg>
+      <div id="loading">Loading schema…</div>
+      <div id="error-banner" style="display:none;"></div>
+      <div id="empty-banner" style="display:none;">No tables found in this database. Click "+ Add Table" to create one.</div>
+    </div>
+
+    <div id="inspector">
+      <h3 id="inspector-heading">Table</h3>
+      <div class="table-name-row">
+        <label for="tableName">Table Name</label>
+        <input type="text" id="tableName" placeholder="MY_TABLE" />
+      </div>
+
+      <label>Columns</label>
+      <table id="columnsTable">
+        <thead>
+          <tr>
+            <th>Column Name</th>
+            <th>Data Type</th>
+            <th>Size</th>
+            <th>Not Null</th>
+            <th>PK</th>
+            <th>Default</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="columnsBody"></tbody>
+      </table>
+
+      <div class="inspector-actions">
+        <button class="secondary" id="addColumnBtn">+ Add Column</button>
+        <button class="secondary" id="closeInspectorBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <pre id="ddl-output"></pre>
+
+  <script type="text/javascript" src="/js/app.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 /**
  * Assembles the raw rows from getSchemaColumnsQuery()/getForeignKeysQuery() into a SchemaGraph
- * — the shape the schema visualizer's webview renders as an ER diagram. Kept free of any
- * vscode/Driver dependency so it's unit-testable without a database.
+ * — the shape the Schema Designer's webview renders as an ER diagram and edits in place. Kept
+ * free of any vscode/Driver dependency so it's unit-testable without a database.
  */
 
 export interface SchemaColumn {
@@ -10,6 +10,8 @@ export interface SchemaColumn {
   length: number;
   notNull: boolean;
   isPrimaryKey: boolean;
+  /** Bare default value expression (no leading "DEFAULT" keyword), if any. */
+  dflt?: string;
 }
 
 export interface SchemaTable {
@@ -38,6 +40,8 @@ export interface SchemaColumnRow {
   FIELD_LENGTH: number | null;
   NOT_NULL: number;
   IS_PRIMARY_KEY: number;
+  /** Raw RDB$DEFAULT_SOURCE text (e.g. "DEFAULT 0"), or null/empty if there's no default. */
+  DFLT_VALUE?: string | null;
 }
 
 /** Row shape returned by getForeignKeysQuery(). */
@@ -49,9 +53,18 @@ export interface ForeignKeyRow {
   REF_COLUMN_NAME: string;
 }
 
+/** Strips a leading "DEFAULT" keyword from RDB$DEFAULT_SOURCE, leaving just the value expression. */
+function normalizeDefault(raw: string | null | undefined): string | undefined {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.replace(/^DEFAULT\s+/i, "").trim() || undefined;
+}
+
 /**
  * Groups column rows by table (in query order, so columns stay in RDB$FIELD_POSITION order) and
- * attaches the foreign key relationships, ready for the webview to lay out and draw.
+ * attaches the foreign key relationships, ready for the webview to lay out, draw, and edit.
  */
 export function buildSchemaGraph(columnRows: SchemaColumnRow[], fkRows: ForeignKeyRow[]): SchemaGraph {
   const tablesByName = new Map<string, SchemaTable>();
@@ -69,6 +82,7 @@ export function buildSchemaGraph(columnRows: SchemaColumnRow[], fkRows: ForeignK
       length: row.FIELD_LENGTH ?? 0,
       notNull: !!row.NOT_NULL,
       isPrimaryKey: !!row.IS_PRIMARY_KEY,
+      dflt: normalizeDefault(row.DFLT_VALUE),
     });
   }
 

@@ -4,7 +4,7 @@ import {
   getTriggerBodyQuery,
   getViewDefinitionQuery,
   getPrimaryKeyColumnsQuery,
-  getPrimaryKeyConstraintNameQuery,
+  getAllPrimaryKeyConstraintNamesQuery,
   getSchemaColumnsQuery,
   getForeignKeysQuery,
   MAX_SOURCE_CAST_LENGTH,
@@ -82,19 +82,35 @@ suite('getPrimaryKeyColumnsQuery', function () {
   });
 });
 
-// ── getPrimaryKeyConstraintNameQuery ──────────────────────────────────────────
+// ── getAllPrimaryKeyConstraintNamesQuery ──────────────────────────────────────
 //
-// Used by the Table Designer's Alter Table mode to DROP CONSTRAINT before adding a new primary
-// key when the set of PK columns changes.
+// Used by the Schema Designer to DROP CONSTRAINT before adding a new primary key when a table's
+// set of PK columns changes — one round trip for every table's PK constraint name at once.
 
-suite('getPrimaryKeyConstraintNameQuery', function () {
+suite('getAllPrimaryKeyConstraintNamesQuery', function () {
+  const sql = getAllPrimaryKeyConstraintNamesQuery();
 
-  test('filters by the given table name', function () {
-    assert.ok(getPrimaryKeyConstraintNameQuery('PRODUCTS').includes("= 'PRODUCTS'"));
+  test('takes no parameters — it covers every table in one query', function () {
+    assert.strictEqual(getAllPrimaryKeyConstraintNamesQuery.length, 0);
   });
 
   test('filters constraints down to PRIMARY KEY', function () {
-    assert.ok(getPrimaryKeyConstraintNameQuery('PRODUCTS').includes("RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'"));
+    assert.ok(sql.includes("RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'"), sql);
+  });
+
+  test('selects both the table name and the constraint name', function () {
+    assert.ok(sql.includes('TABLE_NAME'), sql);
+    assert.ok(sql.includes('CONSTRAINT_NAME'), sql);
+  });
+});
+
+// ── getSchemaColumnsQuery — default value column ──────────────────────────────
+
+suite('getSchemaColumnsQuery default value column', function () {
+  const sql = getSchemaColumnsQuery();
+
+  test('casts the default source with an explicit CHARACTER SET UTF8', function () {
+    assert.ok(sql.includes('CAST(r.RDB$DEFAULT_SOURCE AS VARCHAR(100) CHARACTER SET UTF8) AS DFLT_VALUE'), sql);
   });
 });
 

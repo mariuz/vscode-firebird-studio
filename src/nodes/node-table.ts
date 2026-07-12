@@ -2,12 +2,12 @@ import {TreeItem, TreeItemCollapsibleState, commands, Uri, ExtensionContext} fro
 import {join} from "path";
 import {NodeField, NodeInfo, NodeIndexFolder} from ".";
 import {ConnectionOptions, FirebirdTree, Options} from "../interfaces";
-import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery, getPrimaryKeyConstraintNameQuery} from "../shared/queries";
+import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery} from "../shared/queries";
 import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 import MockData, {MockField} from "../mock-data/mock-data";
-import {TableDesigner, AlterTableColumn} from "../table-designer";
+import {SchemaDesigner} from "../schema-designer";
 
 export class NodeTable implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly table: string) {}
@@ -96,34 +96,9 @@ export class NodeTable implements FirebirdTree {
       });
   }
 
-  public async alterTable(tableDesigner: TableDesigner) {
-    logger.info("Alter Table: open visual designer");
-
-    try {
-      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
-      const fields = await Driver.client.queryPromise<any>(connection, tableInfoQuery(this.table.trim()));
-      const pkRows = await Driver.client.queryPromise<any>(connection, getPrimaryKeyConstraintNameQuery(this.table.trim()));
-      const pkConstraintName = pkRows[0]?.CONSTRAINT_NAME ?? null;
-
-      const columns: AlterTableColumn[] = fields.map(f => {
-        const type = (f.FIELD_TYPE ?? "VARCHAR").trim();
-        const sizedType = ["VARCHAR", "CHAR", "CSTRING"].includes(type);
-        const dflt = (f.DFLT_VALUE ?? "").toString().replace(/^\s*DEFAULT\s+/i, "").trim();
-        return {
-          name: (f.FIELD_NAME ?? "").trim(),
-          type,
-          size: sizedType && f.FIELD_LENGTH ? f.FIELD_LENGTH : undefined,
-          notNull: Boolean(f.NOT_NULL),
-          pk: f.CONSTRAINT_TYPE === "PRIMARY KEY",
-          dflt: dflt || undefined
-        };
-      });
-
-      tableDesigner.openForAlter(this.dbDetails, this.table.trim(), columns, pkConstraintName);
-    } catch (err) {
-      logger.error(err);
-      logger.showError(`Failed to load table info: ${err}`);
-    }
+  public alterTable(schemaDesigner: SchemaDesigner): void {
+    logger.info("Alter Table: open Schema Designer, focused on this table");
+    schemaDesigner.openForAlterTable(this.dbDetails, this.table.trim());
   }
 
   public async generateMockData(firebirdMockData: MockData, config: Options) {

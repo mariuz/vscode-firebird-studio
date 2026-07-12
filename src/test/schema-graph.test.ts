@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from '../schema-visualizer/schema-graph';
+import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from '../schema-designer/schema-graph';
 
 function columnRow(overrides: Partial<SchemaColumnRow> = {}): SchemaColumnRow {
   return {
@@ -93,6 +93,26 @@ suite('buildSchemaGraph', function () {
   test('defaults a null FIELD_LENGTH to 0', function () {
     const graph = buildSchemaGraph([columnRow({ FIELD_LENGTH: null as unknown as number })], []);
     assert.strictEqual(graph.tables[0].columns[0].length, 0);
+  });
+
+  test('strips the leading DEFAULT keyword from DFLT_VALUE', function () {
+    const graph = buildSchemaGraph([columnRow({ DFLT_VALUE: "DEFAULT 'NEW'" })], []);
+    assert.strictEqual(graph.tables[0].columns[0].dflt, "'NEW'");
+  });
+
+  test('is case-insensitive and trims whitespace when stripping DEFAULT', function () {
+    const graph = buildSchemaGraph([columnRow({ DFLT_VALUE: '  default   0  ' })], []);
+    assert.strictEqual(graph.tables[0].columns[0].dflt, '0');
+  });
+
+  test('leaves dflt undefined when there is no default', function () {
+    const graph = buildSchemaGraph([columnRow({ DFLT_VALUE: null })], []);
+    assert.strictEqual(graph.tables[0].columns[0].dflt, undefined);
+  });
+
+  test('leaves dflt undefined for an empty-string DFLT_VALUE', function () {
+    const graph = buildSchemaGraph([columnRow({ DFLT_VALUE: '   ' })], []);
+    assert.strictEqual(graph.tables[0].columns[0].dflt, undefined);
   });
 
   test('builds a single relationship', function () {
