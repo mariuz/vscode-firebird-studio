@@ -2,6 +2,13 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.23 - 2026-07-12
+
+### Added
+
+- **Create** actions for object types that only supported edit/drop before: right-click the **Stored Procedures**, **Triggers**, **Views**, **Generators**, and **Domains** folders to scaffold a new one (opened as SQL for you to fill in and run, the same way the existing edit/alter actions work)
+- **Alter Domain** — right-click an existing domain for an `ALTER DOMAIN` scaffold pre-filled with its current type
+
 ## 0.1.22 - 2026-07-12
 
 ### Added

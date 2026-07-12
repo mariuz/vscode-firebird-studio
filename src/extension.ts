@@ -34,6 +34,16 @@ function poolingOptions(config: Options): { maxSize: number; idleTimeoutMs: numb
     : undefined;
 }
 
+/** Prompts for a new object name, validated as a safe Firebird identifier. */
+async function promptIdentifier(prompt: string, placeHolder: string): Promise<string | undefined> {
+  return vscode.window.showInputBox({
+    prompt,
+    placeHolder,
+    ignoreFocusOut: true,
+    validateInput: v => IDENTIFIER_RE.test(v) ? undefined : "Enter a valid identifier (letters, digits, _, $ — must not start with a digit)"
+  });
+}
+
 export function activate(context: ExtensionContext) {
   logger.info(`Activating extension ...`);
 
@@ -324,6 +334,15 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DDL: create procedure scaffold */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.procedure.createProcedure", async () => {
+      const procedureName = await promptIdentifier("Name of the new procedure", "e.g. GET_ACTIVE_CUSTOMERS");
+      if (!procedureName) { return; }
+      NodeProcedure.createProcedure(procedureName);
+    })
+  );
+
   /* DDL: edit procedure source */
   context.subscriptions.push(
     commands.registerCommand("firebird.procedure.editProcedure", (procNode: NodeProcedure) => {
@@ -338,6 +357,15 @@ export function activate(context: ExtensionContext) {
       if (answer === "Yes") {
         procNode.dropProcedure();
       }
+    })
+  );
+
+  /* DDL: create trigger scaffold */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.trigger.createTrigger", async () => {
+      const triggerName = await promptIdentifier("Name of the new trigger", "e.g. CUSTOMERS_BI");
+      if (!triggerName) { return; }
+      NodeTrigger.createTrigger(triggerName);
     })
   );
 
@@ -358,6 +386,15 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DDL: create view scaffold */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.view.createView", async () => {
+      const viewName = await promptIdentifier("Name of the new view", "e.g. ACTIVE_CUSTOMERS");
+      if (!viewName) { return; }
+      NodeView.createView(viewName);
+    })
+  );
+
   /* DDL: edit view definition */
   context.subscriptions.push(
     commands.registerCommand("firebird.view.editView", (viewNode: NodeView) => {
@@ -375,6 +412,19 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DDL: create generator/sequence */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.generator.createGenerator", async () => {
+      if (!Global.activeConnection) {
+        logger.showError("Set a database active first.");
+        return;
+      }
+      const generatorName = await promptIdentifier("Name of the new generator/sequence", "e.g. GEN_CUSTOMER_ID");
+      if (!generatorName) { return; }
+      NodeGenerator.createGenerator(Global.activeConnection, generatorName);
+    })
+  );
+
   /* DDL: set generator value */
   context.subscriptions.push(
     commands.registerCommand("firebird.generator.setValue", (genNode: NodeGenerator) => {
@@ -389,6 +439,22 @@ export function activate(context: ExtensionContext) {
       if (answer === "Yes") {
         genNode.dropGenerator();
       }
+    })
+  );
+
+  /* DDL: create domain scaffold */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.domain.createDomain", async () => {
+      const domainName = await promptIdentifier("Name of the new domain", "e.g. D_EMAIL");
+      if (!domainName) { return; }
+      NodeDomain.createDomain(domainName);
+    })
+  );
+
+  /* DDL: alter domain scaffold */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.domain.alterDomain", (domainNode: NodeDomain) => {
+      domainNode.alterDomain().catch(err => logger.error(err));
     })
   );
 

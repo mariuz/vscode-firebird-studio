@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -160,6 +160,11 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.procedure.createProcedure",
+        "title": "Create Procedure",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.procedure.editProcedure",
         "title": "Edit Procedure",
         "category": "Firebird"
@@ -167,6 +172,11 @@
       {
         "command": "firebird.procedure.dropProcedure",
         "title": "Drop Procedure",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.trigger.createTrigger",
+        "title": "Create Trigger",
         "category": "Firebird"
       },
       {
@@ -180,6 +190,11 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.view.createView",
+        "title": "Create View",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.view.editView",
         "title": "Edit View",
         "category": "Firebird"
@@ -190,6 +205,11 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.generator.createGenerator",
+        "title": "Create Generator",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.generator.setValue",
         "title": "Set Generator Value",
         "category": "Firebird"
@@ -197,6 +217,16 @@
       {
         "command": "firebird.generator.dropGenerator",
         "title": "Drop Generator",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.domain.createDomain",
+        "title": "Create Domain",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.domain.alterDomain",
+        "title": "Alter Domain",
         "category": "Firebird"
       },
       {
@@ -610,6 +640,11 @@
           "group": "firebird@0"
         },
         {
+          "command": "firebird.view.createView",
+          "when": "view == firebird-explorer && viewItem == folder.views",
+          "group": "firebird@0"
+        },
+        {
           "command": "firebird.view.editView",
           "when": "view == firebird-explorer && viewItem == view",
           "group": "firebird@1"
@@ -625,6 +660,11 @@
           "group": "firebird@3"
         },
         {
+          "command": "firebird.procedure.createProcedure",
+          "when": "view == firebird-explorer && viewItem == folder.procedures",
+          "group": "firebird@0"
+        },
+        {
           "command": "firebird.procedure.editProcedure",
           "when": "view == firebird-explorer && viewItem == procedure",
           "group": "firebird@0"
@@ -633,6 +673,11 @@
           "command": "firebird.procedure.dropProcedure",
           "when": "view == firebird-explorer && viewItem == procedure",
           "group": "other@0"
+        },
+        {
+          "command": "firebird.trigger.createTrigger",
+          "when": "view == firebird-explorer && viewItem == folder.triggers",
+          "group": "firebird@0"
         },
         {
           "command": "firebird.trigger.editTrigger",
@@ -645,6 +690,11 @@
           "group": "other@0"
         },
         {
+          "command": "firebird.generator.createGenerator",
+          "when": "view == firebird-explorer && viewItem == folder.generators",
+          "group": "firebird@0"
+        },
+        {
           "command": "firebird.generator.setValue",
           "when": "view == firebird-explorer && viewItem == generator",
           "group": "firebird@0"
@@ -653,6 +703,16 @@
           "command": "firebird.generator.dropGenerator",
           "when": "view == firebird-explorer && viewItem == generator",
           "group": "other@0"
+        },
+        {
+          "command": "firebird.domain.createDomain",
+          "when": "view == firebird-explorer && viewItem == folder.domains",
+          "group": "firebird@0"
+        },
+        {
+          "command": "firebird.domain.alterDomain",
+          "when": "view == firebird-explorer && viewItem == domain",
+          "group": "firebird@0"
         },
         {
           "command": "firebird.domain.dropDomain",

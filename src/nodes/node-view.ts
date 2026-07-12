@@ -1,7 +1,7 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {viewColumnsQuery, selectAllRecordsQuery, getViewDefinitionQuery, dropViewQuery} from "../shared/queries";
+import {viewColumnsQuery, selectAllRecordsQuery, getViewDefinitionQuery, dropViewQuery, createViewScaffold} from "../shared/queries";
 import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
@@ -49,6 +49,11 @@ export class NodeView implements FirebirdTree {
       .catch(err => {
         logger.error(err);
       });
+  }
+
+  public static createView(viewName: string): void {
+    logger.info("Create View: open scaffold for editing");
+    Driver.createSQLTextDocument(createViewScaffold(viewName.trim()));
   }
 
   public async editView() {

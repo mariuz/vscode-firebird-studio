@@ -1,7 +1,7 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {getTriggerBodyQuery, dropTriggerQuery} from "../shared/queries";
+import {getTriggerBodyQuery, dropTriggerQuery, createTriggerScaffold} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 import {withTruncationWarning} from "../shared/utils";
@@ -28,6 +28,11 @@ export class NodeTrigger implements FirebirdTree {
 
   public getChildren(): FirebirdTree[] {
     return [];
+  }
+
+  public static createTrigger(triggerName: string): void {
+    logger.info("Create Trigger: open scaffold for editing");
+    Driver.createSQLTextDocument(createTriggerScaffold(triggerName.trim()));
   }
 
   public async editTrigger() {

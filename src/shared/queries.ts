@@ -399,6 +399,57 @@ export function setGeneratorValueQuery(generatorName: string, value: number): st
   return `SET GENERATOR ${generatorName} TO ${value};`;
 }
 
+export function createGeneratorQuery(generatorName: string): string {
+  assertValidIdentifier(generatorName, "generator name");
+  return `CREATE SEQUENCE ${generatorName};`;
+}
+
+/**
+ * "Create new object" scaffolds — opened in a new SQL editor for the user to fill in and run
+ * manually, the same way NodeProcedure#editProcedure()/NodeView#editView()/
+ * NodeTrigger#editTrigger() open an ALTER scaffold for an existing object. Names come from user
+ * input (an input box), so they're validated the same way createUserQuery/createRoleQuery are —
+ * DDL identifiers can't be parameterized, only restricted to a safe character set.
+ */
+export function createViewScaffold(viewName: string): string {
+  assertValidIdentifier(viewName, "view name");
+  return `CREATE VIEW ${viewName} AS\nSELECT /* column_list */ FROM /* table_name */;`;
+}
+
+export function createProcedureScaffold(procedureName: string): string {
+  assertValidIdentifier(procedureName, "procedure name");
+  return `CREATE PROCEDURE ${procedureName}\nAS\nBEGIN\n  /* procedure body */\nEND`;
+}
+
+export function createTriggerScaffold(triggerName: string): string {
+  assertValidIdentifier(triggerName, "trigger name");
+  return `CREATE TRIGGER ${triggerName}\nACTIVE BEFORE INSERT ON /* table_name */\nAS\nBEGIN\n  /* trigger body */\nEND`;
+}
+
+export function createDomainScaffold(domainName: string): string {
+  assertValidIdentifier(domainName, "domain name");
+  return `CREATE DOMAIN ${domainName} AS INTEGER;\n-- Adjust the data type below, and add DEFAULT/NOT NULL/CHECK constraints as needed.`;
+}
+
+/**
+ * Scaffold for altering an existing domain, pre-filled with its current (simplified) type.
+ * FIELD_PRECISION/FIELD_SCALE aren't factored in, matching the same simplification the domain
+ * tree item's own tooltip already uses.
+ */
+export function alterDomainScaffold(domain: {
+  DOMAIN_NAME: string;
+  DOMAIN_TYPE?: string;
+  FIELD_LENGTH?: number;
+  NOT_NULL?: number | boolean;
+}): string {
+  const name = domain.DOMAIN_NAME.trim();
+  assertValidIdentifier(name, "domain name");
+  const type = domain.DOMAIN_TYPE?.trim() || "UNKNOWN";
+  const length = domain.FIELD_LENGTH || 0;
+  const notNull = domain.NOT_NULL ? " NOT NULL" : "";
+  return `-- Current definition: ${name} ${type}(${length})${notNull}\nALTER DOMAIN ${name} TYPE ${type}(${length});`;
+}
+
 /**
  * Returns the primary key column(s) of a table, in key order — used by the editable results
  * grid to target UPDATE/DELETE statements at a single row instead of matching every column.

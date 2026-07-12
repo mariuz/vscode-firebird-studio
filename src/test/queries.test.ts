@@ -7,6 +7,12 @@ import {
   getSchemaColumnsQuery,
   getForeignKeysQuery,
   MAX_SOURCE_CAST_LENGTH,
+  createGeneratorQuery,
+  createViewScaffold,
+  createProcedureScaffold,
+  createTriggerScaffold,
+  createDomainScaffold,
+  alterDomainScaffold,
 } from '../shared/queries';
 
 // ── Source-fetching queries (procedure/trigger/view "edit source") ────────────
@@ -125,5 +131,74 @@ suite('getForeignKeysQuery', function () {
     ['TABLE_NAME', 'COLUMN_NAME', 'REF_TABLE_NAME', 'REF_COLUMN_NAME'].forEach(col => {
       assert.ok(sql.includes(col), `expected ${col} in: ${sql}`);
     });
+  });
+});
+
+// ── "Create new object" scaffolds/queries ─────────────────────────────────────
+
+suite('createGeneratorQuery', function () {
+  test('produces a CREATE SEQUENCE statement', function () {
+    assert.strictEqual(createGeneratorQuery('GEN_CUSTOMER_ID'), 'CREATE SEQUENCE GEN_CUSTOMER_ID;');
+  });
+
+  test('rejects an unsafe generator name instead of interpolating it unescaped', function () {
+    assert.throws(() => createGeneratorQuery('BAD; DROP TABLE X'), /Invalid generator name/);
+  });
+});
+
+suite('createViewScaffold / createProcedureScaffold / createTriggerScaffold', function () {
+  test('createViewScaffold embeds the name in a CREATE VIEW statement', function () {
+    const sql = createViewScaffold('ACTIVE_CUSTOMERS');
+    assert.ok(sql.startsWith('CREATE VIEW ACTIVE_CUSTOMERS AS'), sql);
+  });
+
+  test('createViewScaffold rejects an unsafe view name', function () {
+    assert.throws(() => createViewScaffold('BAD; DROP TABLE X'), /Invalid view name/);
+  });
+
+  test('createProcedureScaffold embeds the name in a CREATE PROCEDURE statement', function () {
+    const sql = createProcedureScaffold('GET_ACTIVE_CUSTOMERS');
+    assert.ok(sql.startsWith('CREATE PROCEDURE GET_ACTIVE_CUSTOMERS'), sql);
+    assert.ok(sql.includes('BEGIN') && sql.includes('END'), sql);
+  });
+
+  test('createProcedureScaffold rejects an unsafe procedure name', function () {
+    assert.throws(() => createProcedureScaffold('BAD; DROP TABLE X'), /Invalid procedure name/);
+  });
+
+  test('createTriggerScaffold embeds the name in a CREATE TRIGGER statement', function () {
+    const sql = createTriggerScaffold('CUSTOMERS_BI');
+    assert.ok(sql.startsWith('CREATE TRIGGER CUSTOMERS_BI'), sql);
+    assert.ok(sql.includes('BEGIN') && sql.includes('END'), sql);
+  });
+
+  test('createTriggerScaffold rejects an unsafe trigger name', function () {
+    assert.throws(() => createTriggerScaffold('BAD; DROP TABLE X'), /Invalid trigger name/);
+  });
+});
+
+suite('createDomainScaffold / alterDomainScaffold', function () {
+  test('createDomainScaffold embeds the name in a CREATE DOMAIN statement', function () {
+    const sql = createDomainScaffold('D_EMAIL');
+    assert.ok(sql.startsWith('CREATE DOMAIN D_EMAIL AS'), sql);
+  });
+
+  test('createDomainScaffold rejects an unsafe domain name', function () {
+    assert.throws(() => createDomainScaffold('BAD; DROP TABLE X'), /Invalid domain name/);
+  });
+
+  test('alterDomainScaffold pre-fills the current type as a comment and an ALTER DOMAIN template', function () {
+    const sql = alterDomainScaffold({ DOMAIN_NAME: 'D_EMAIL', DOMAIN_TYPE: 'VARCHAR', FIELD_LENGTH: 100, NOT_NULL: 1 });
+    assert.ok(sql.includes('-- Current definition: D_EMAIL VARCHAR(100) NOT NULL'), sql);
+    assert.ok(sql.includes('ALTER DOMAIN D_EMAIL TYPE VARCHAR(100);'), sql);
+  });
+
+  test('alterDomainScaffold omits NOT NULL when the domain allows nulls', function () {
+    const sql = alterDomainScaffold({ DOMAIN_NAME: 'D_NOTES', DOMAIN_TYPE: 'VARCHAR', FIELD_LENGTH: 200, NOT_NULL: 0 });
+    assert.ok(!sql.includes('NOT NULL'), sql);
+  });
+
+  test('alterDomainScaffold rejects an unsafe domain name', function () {
+    assert.throws(() => alterDomainScaffold({ DOMAIN_NAME: 'BAD; DROP TABLE X', DOMAIN_TYPE: 'INTEGER' }), /Invalid domain name/);
   });
 });

@@ -1,7 +1,7 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {procedureParametersQuery, getProcedureBodyQuery, dropProcedureQuery} from "../shared/queries";
+import {procedureParametersQuery, getProcedureBodyQuery, dropProcedureQuery, createProcedureScaffold} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
@@ -33,6 +33,11 @@ export class NodeProcedure implements FirebirdTree {
       logger.error(err);
       return [new NodeInfo(String(err))];
     }
+  }
+
+  public static createProcedure(procedureName: string): void {
+    logger.info("Create Procedure: open scaffold for editing");
+    Driver.createSQLTextDocument(createProcedureScaffold(procedureName.trim()));
   }
 
   public async editProcedure() {

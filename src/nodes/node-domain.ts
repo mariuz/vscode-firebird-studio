@@ -1,7 +1,7 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {dropDomainQuery} from "../shared/queries";
+import {dropDomainQuery, createDomainScaffold, alterDomainScaffold} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 
@@ -27,6 +27,16 @@ export class NodeDomain implements FirebirdTree {
 
   public getChildren(): FirebirdTree[] {
     return [];
+  }
+
+  public static createDomain(domainName: string): void {
+    logger.info("Create Domain: open scaffold for editing");
+    Driver.createSQLTextDocument(createDomainScaffold(domainName.trim()));
+  }
+
+  public async alterDomain() {
+    logger.info("Alter Domain: open scaffold for editing");
+    Driver.createSQLTextDocument(alterDomainScaffold(this.domain));
   }
 
   public async dropDomain() {

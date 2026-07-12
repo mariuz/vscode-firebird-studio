@@ -1,7 +1,7 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, window, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {dropGeneratorQuery, setGeneratorValueQuery} from "../shared/queries";
+import {dropGeneratorQuery, setGeneratorValueQuery, createGeneratorQuery} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 
@@ -23,6 +23,20 @@ export class NodeGenerator implements FirebirdTree {
 
   public getChildren(): FirebirdTree[] {
     return [];
+  }
+
+  public static async createGenerator(dbDetails: ConnectionOptions, generatorName: string): Promise<void> {
+    logger.info("Create Generator");
+    return Driver.runQuery(createGeneratorQuery(generatorName.trim()), dbDetails)
+      .then(results => {
+        logger.info(results[0].message);
+        logger.showInfo(results[0].message);
+        commands.executeCommand("firebird.explorer.refresh");
+      })
+      .catch(err => {
+        logger.error(err);
+        logger.showError(`Failed to create generator: ${err}`);
+      });
   }
 
   public async dropGenerator() {
