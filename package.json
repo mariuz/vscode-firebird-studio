@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -805,6 +805,10 @@
           {
             "name": "explain",
             "description": "Explain what a SQL query does in plain English"
+          },
+          {
+            "name": "designSchema",
+            "description": "Infer a Firebird table schema (DDL) from sample data"
           }
         ]
       }

@@ -26,9 +26,10 @@ function systemPrompt(schemaBlock: string): string {
  * Registers the `@firebird` Copilot Chat participant.
  *
  * Slash commands:
- * - `/query`    – generate Firebird SQL from a natural-language description
- * - `/optimize` – suggest optimisations for a given SQL query
- * - `/explain`  – explain what a SQL query does in plain English
+ * - `/query`        – generate Firebird SQL from a natural-language description
+ * - `/optimize`     – suggest optimisations for a given SQL query
+ * - `/explain`      – explain what a SQL query does in plain English
+ * - `/designSchema` – infer a Firebird table schema (DDL) from sample data
  */
 export function registerCopilotChatParticipant(
     context: vscode.ExtensionContext,
@@ -59,6 +60,8 @@ export function registerCopilotChatParticipant(
                 return handleOptimize(request, messages, stream, token);
             case 'explain':
                 return handleExplain(request, messages, stream, token);
+            case 'designSchema':
+                return handleDesignSchema(request, messages, stream, token);
             default:
                 return handleDefault(request, messages, stream, token);
         }
@@ -156,6 +159,41 @@ async function handleExplain(
 }
 
 /* ------------------------------------------------------------------ */
+/*  /designSchema – AI-assisted schema design from sample data         */
+/* ------------------------------------------------------------------ */
+
+async function handleDesignSchema(
+    request: vscode.ChatRequest,
+    messages: vscode.LanguageModelChatMessage[],
+    stream: vscode.ChatResponseStream,
+    token: vscode.CancellationToken
+): Promise<vscode.ChatResult> {
+    const sampleData = request.prompt.trim() || getActiveEditorText();
+    if (!sampleData) {
+        stream.markdown(
+            'Please paste some sample data (CSV, JSON rows, or a plain description of the fields), ' +
+            'or open a file containing it, and I\'ll suggest a Firebird table schema.\n\n' +
+            'Example:\n```\nid,name,email,signup_date\n1,Jane Doe,jane@example.com,2024-03-01\n```'
+        );
+        return {};
+    }
+
+    stream.progress('Designing schema from sample data…');
+    messages.push(
+        vscode.LanguageModelChatMessage.User(
+            'The user will provide sample data (CSV, JSON, or plain-text rows). Infer an appropriate ' +
+            'Firebird table schema from it: a reasonable table name, column names, Firebird data types ' +
+            '(e.g. VARCHAR(n), INTEGER, BIGINT, NUMERIC(p,s), DATE, TIMESTAMP, BOOLEAN, BLOB SUB_TYPE TEXT), ' +
+            'a primary key, and NOT NULL constraints where the data suggests they apply. ' +
+            'Output one or more ```sql``` fenced CREATE TABLE statements, followed by a brief explanation ' +
+            'of the inferred types and any assumptions you made.\n\nSample data:\n' + sampleData
+        )
+    );
+
+    return streamModelResponse(request, messages, stream, token);
+}
+
+/* ------------------------------------------------------------------ */
 /*  default – general Firebird assistance                             */
 /* ------------------------------------------------------------------ */
 
@@ -170,7 +208,8 @@ async function handleDefault(
             'Hi! I\'m the **Firebird SQL** assistant. You can ask me anything about Firebird databases, or use one of the slash commands:\n\n' +
             '- `/query` — Generate SQL from a natural-language description\n' +
             '- `/optimize` — Get optimization suggestions for a SQL query\n' +
-            '- `/explain` — Explain what a SQL query does\n'
+            '- `/explain` — Explain what a SQL query does\n' +
+            '- `/designSchema` — Infer a Firebird table schema from sample data\n'
         );
         return {};
     }
@@ -226,6 +265,18 @@ function handleModelError(err: unknown, stream: vscode.ChatResponseStream): void
 function getActiveEditorSql(): string {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'sql') {
+        return '';
+    }
+    const selection = editor.selection;
+    return selection.isEmpty
+        ? editor.document.getText()
+        : editor.document.getText(selection);
+}
+
+/** Returns the text (or selection) from the active editor, regardless of language. */
+function getActiveEditorText(): string {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
         return '';
     }
     const selection = editor.selection;

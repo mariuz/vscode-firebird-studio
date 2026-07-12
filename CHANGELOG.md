@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.21 - 2026-07-12
+
+### Added
+
+- `@firebird` Copilot Chat participant: new `/designSchema` slash command — paste or open sample data (CSV, JSON, or plain-text rows) and it suggests Firebird `CREATE TABLE` DDL with inferred column types and constraints
+
 ## 0.1.20 - 2026-07-12
 
 ### Added
