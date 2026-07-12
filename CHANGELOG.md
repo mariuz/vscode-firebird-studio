@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.44 - 2026-07-12
+
+### Added
+
+- **Generic "Script as Create" / "Script as Drop"** — right-click any table, view, procedure, trigger, generator, domain, role, exception, user, or index for one pair of commands that reconstructs its DDL for review, instead of each object type needing its own bespoke edit command. Users get a clearly-marked placeholder (Firebird never exposes an existing password); everything else is a genuine reconstruction from live metadata.
+
+### Fixed
+
+- `NUMERIC`/`DECIMAL` columns now round-trip with their real precision/scale (e.g. `NUMERIC(9,2)`) in Database Projects' Extract and the new Script as Create, instead of showing up as their bare underlying `INTEGER`/`BIGINT`/`DOUBLE` storage type — confirmed the exact `RDB$FIELD_SUB_TYPE`/`PRECISION`/`SCALE` semantics directly against a live Firebird server.
+
 ## 0.1.43 - 2026-07-12
 
 ### Added

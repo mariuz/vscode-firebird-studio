@@ -4,6 +4,7 @@ import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {dropExceptionQuery} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
+import {buildExceptionCreateDDL} from "../script-as/ddl-builders";
 
 export class NodeException implements FirebirdTree {
   constructor(private readonly exception: any, private readonly dbDetails?: ConnectionOptions) {}
@@ -48,5 +49,15 @@ export class NodeException implements FirebirdTree {
         logger.error(err);
         logger.showError(`Failed to drop exception: ${err}`);
       });
+  }
+
+  /** Generic "Script as Create". */
+  public async scriptAsCreate(): Promise<void> {
+    await Driver.createSQLTextDocument(buildExceptionCreateDDL({ name: this.getExceptionName(), message: this.getMessage() }));
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropExceptionQuery(this.getExceptionName()));
   }
 }

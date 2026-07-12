@@ -55,4 +55,14 @@ export class NodeRole implements FirebirdTree {
         logger.showError(`Failed to drop role: ${err}`);
       });
   }
+
+  /** Generic "Script as Create" — a role has no other attributes to reconstruct beyond its name. */
+  public async scriptAsCreate(): Promise<void> {
+    await Driver.createSQLTextDocument(createRoleQuery(this.roleName.trim()));
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropRoleQuery(this.roleName.trim()));
+  }
 }

@@ -6,6 +6,7 @@ import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
 import {withTruncationWarning} from "../shared/utils";
+import {buildProcedureCreateDDL} from "../database-projects/project-model";
 
 export class NodeProcedure implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly procedureName: string) {}
@@ -68,6 +69,24 @@ export class NodeProcedure implements FirebirdTree {
         logger.error(err);
         logger.showError(`Failed to drop procedure: ${err}`);
       });
+  }
+
+  /** Generic "Script as Create". */
+  public async scriptAsCreate(): Promise<void> {
+    try {
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
+      const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery(this.procedureName.trim()));
+      const source = rows[0]?.PROCEDURE_SOURCE ?? "";
+      await Driver.createSQLTextDocument(buildProcedureCreateDDL({ name: this.procedureName.trim(), source }));
+    } catch (err: any) {
+      logger.error(err?.message ?? err);
+      logger.showError(`Could not script ${this.procedureName.trim()} as CREATE: ${err?.message ?? err}`);
+    }
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropProcedureQuery(this.procedureName.trim()));
   }
 }
 

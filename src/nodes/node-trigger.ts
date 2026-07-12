@@ -5,6 +5,7 @@ import {getTriggerBodyQuery, dropTriggerQuery, createTriggerScaffold} from "../s
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 import {withTruncationWarning} from "../shared/utils";
+import {buildTriggerCreateDDL} from "../database-projects/project-model";
 
 export class NodeTrigger implements FirebirdTree {
   constructor(private readonly trigger: any, private readonly dbDetails?: ConnectionOptions) {}
@@ -67,6 +68,29 @@ export class NodeTrigger implements FirebirdTree {
         logger.error(err);
         logger.showError(`Failed to drop trigger: ${err}`);
       });
+  }
+
+  /** Generic "Script as Create". */
+  public async scriptAsCreate(): Promise<void> {
+    if (!this.dbDetails) { return; }
+    const name = this.trigger.TRIGGER_NAME ? this.trigger.TRIGGER_NAME.trim() : "";
+    try {
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
+      const rows = await Driver.client.queryPromise<any>(connection, getTriggerBodyQuery(name));
+      const source = rows[0]?.TRIGGER_SOURCE ?? "";
+      await Driver.createSQLTextDocument(buildTriggerCreateDDL({
+        name, source, table: this.trigger.TABLE_NAME ?? "", inactive: this.trigger.INACTIVE === 1,
+      }));
+    } catch (err: any) {
+      logger.error(err?.message ?? err);
+      logger.showError(`Could not script ${name} as CREATE: ${err?.message ?? err}`);
+    }
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    const name = this.trigger.TRIGGER_NAME ? this.trigger.TRIGGER_NAME.trim() : "";
+    await Driver.createSQLTextDocument(dropTriggerQuery(name));
   }
 
   private parseTriggerType(type: number): string {

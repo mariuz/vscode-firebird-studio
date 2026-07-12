@@ -12,6 +12,12 @@ export interface SchemaColumn {
   isPrimaryKey: boolean;
   /** Bare default value expression (no leading "DEFAULT" keyword), if any. */
   dflt?: string;
+  /** RDB$FIELD_SUB_TYPE: 1 = NUMERIC, 2 = DECIMAL, 0/undefined = plain (not a fixed-point type). Confirmed directly against a live Firebird server, not assumed. */
+  subType?: number;
+  /** RDB$FIELD_PRECISION — total significant digits, only meaningful when subType is 1 or 2. */
+  precision?: number;
+  /** RDB$FIELD_SCALE — negative; decimal places = -scale. Only meaningful when subType is 1 or 2. */
+  scale?: number;
 }
 
 export interface SchemaTable {
@@ -38,6 +44,9 @@ export interface SchemaColumnRow {
   FIELD_NAME: string;
   FIELD_TYPE: string;
   FIELD_LENGTH: number | null;
+  FIELD_SUB_TYPE?: number | null;
+  FIELD_PRECISION?: number | null;
+  FIELD_SCALE?: number | null;
   NOT_NULL: number;
   IS_PRIMARY_KEY: number;
   /** Raw RDB$DEFAULT_SOURCE text (e.g. "DEFAULT 0"), or null/empty if there's no default. */
@@ -53,8 +62,8 @@ export interface ForeignKeyRow {
   REF_COLUMN_NAME: string;
 }
 
-/** Strips a leading "DEFAULT" keyword from RDB$DEFAULT_SOURCE, leaving just the value expression. */
-function normalizeDefault(raw: string | null | undefined): string | undefined {
+/** Strips a leading "DEFAULT" keyword from RDB$DEFAULT_SOURCE, leaving just the value expression. Exported for reuse by other per-object DDL builders (e.g. Script as Create) that read the same raw column shape. */
+export function normalizeDefault(raw: string | null | undefined): string | undefined {
   const trimmed = (raw ?? "").trim();
   if (!trimmed) {
     return undefined;
@@ -83,6 +92,9 @@ export function buildSchemaGraph(columnRows: SchemaColumnRow[], fkRows: ForeignK
       notNull: !!row.NOT_NULL,
       isPrimaryKey: !!row.IS_PRIMARY_KEY,
       dflt: normalizeDefault(row.DFLT_VALUE),
+      subType: row.FIELD_SUB_TYPE ?? undefined,
+      precision: row.FIELD_PRECISION ?? undefined,
+      scale: row.FIELD_SCALE ?? undefined,
     });
   }
 

@@ -7,6 +7,7 @@ import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
 import {withTruncationWarning} from "../shared/utils";
+import {buildViewCreateDDL} from "../database-projects/project-model";
 
 export class NodeView implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly viewName: string) {}
@@ -84,6 +85,24 @@ export class NodeView implements FirebirdTree {
         logger.error(err);
         logger.showError(`Failed to drop view: ${err}`);
       });
+  }
+
+  /** Generic "Script as Create". */
+  public async scriptAsCreate(): Promise<void> {
+    try {
+      const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
+      const rows = await Driver.client.queryPromise<any>(connection, getViewDefinitionQuery(this.viewName.trim()));
+      const source = rows[0]?.VIEW_SOURCE ?? "";
+      await Driver.createSQLTextDocument(buildViewCreateDDL({ name: this.viewName.trim(), source }));
+    } catch (err: any) {
+      logger.error(err?.message ?? err);
+      logger.showError(`Could not script ${this.viewName.trim()} as CREATE: ${err?.message ?? err}`);
+    }
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropViewQuery(this.viewName.trim()));
   }
 }
 

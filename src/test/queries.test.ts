@@ -153,6 +153,22 @@ suite('getSchemaColumnsQuery default value column', function () {
   });
 });
 
+// ── getSchemaColumnsQuery — NUMERIC/DECIMAL fidelity ───────────────────────────
+//
+// Regression coverage for the "a NUMERIC(9,2) column round-trips as plain INTEGER" gap: this
+// query used to select only the simplified type name + length, with nothing to distinguish a
+// NUMERIC/DECIMAL column from its underlying INTEGER/BIGINT/DOUBLE storage type.
+
+suite('getSchemaColumnsQuery NUMERIC/DECIMAL columns', function () {
+  const sql = getSchemaColumnsQuery();
+
+  test('selects RDB$FIELD_SUB_TYPE/PRECISION/SCALE from the already-joined RDB$FIELDS table', function () {
+    assert.ok(sql.includes('f.RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE'), sql);
+    assert.ok(sql.includes('f.RDB$FIELD_PRECISION AS FIELD_PRECISION'), sql);
+    assert.ok(sql.includes('f.RDB$FIELD_SCALE AS FIELD_SCALE'), sql);
+  });
+});
+
 // ── getSchemaColumnsQuery / getForeignKeysQuery ─────────────────────────────────
 //
 // Used by the schema visualizer to build the whole database's table/column/

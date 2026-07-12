@@ -2,12 +2,14 @@ import {TreeItem, TreeItemCollapsibleState, commands, Uri, ExtensionContext} fro
 import {join} from "path";
 import {NodeField, NodeInfo, NodeIndexFolder} from ".";
 import {ConnectionOptions, FirebirdTree, Options} from "../interfaces";
-import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery} from "../shared/queries";
+import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery, getForeignKeysQuery} from "../shared/queries";
 import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 import MockData, {MockField} from "../mock-data/mock-data";
 import {SchemaDesigner} from "../schema-designer";
+import {tableInfoRowsToTable} from "../script-as/ddl-builders";
+import {buildTableCreateDDL, buildForeignKeyDDL} from "../database-projects/project-model";
 
 export class NodeTable implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly table: string) {}
@@ -99,6 +101,40 @@ export class NodeTable implements FirebirdTree {
   public alterTable(schemaDesigner: SchemaDesigner): void {
     logger.info("Alter Table: open Schema Designer, focused on this table");
     schemaDesigner.openForAlterTable(this.dbDetails, this.table.trim());
+  }
+
+  /** Generic "Script as Create": reconstructs this table's CREATE TABLE (plus any foreign keys it owns) for review. */
+  public async scriptAsCreate(): Promise<void> {
+    const tableName = this.table.trim();
+    const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
+    try {
+      const columnRows = await Driver.client.queryPromise<any>(connection, tableInfoQuery(tableName));
+      const fkRows = await Driver.client.queryPromise<any>(connection, getForeignKeysQuery());
+      const table = tableInfoRowsToTable(tableName, columnRows);
+      const ddl = [buildTableCreateDDL(table)];
+      fkRows
+        .filter((row: any) => row.TABLE_NAME.trim() === tableName)
+        .forEach((row: any) => {
+          ddl.push(buildForeignKeyDDL({
+            constraintName: row.CONSTRAINT_NAME.trim(),
+            table: row.TABLE_NAME.trim(),
+            column: row.COLUMN_NAME.trim(),
+            refTable: row.REF_TABLE_NAME.trim(),
+            refColumn: row.REF_COLUMN_NAME.trim(),
+          }));
+        });
+      await Driver.createSQLTextDocument(ddl.join("\n\n"));
+    } catch (err: any) {
+      logger.error(err?.message ?? err);
+      logger.showError(`Could not script ${tableName} as CREATE: ${err?.message ?? err}`);
+    } finally {
+      await Driver.client.detach(connection);
+    }
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropTableQuery(this.table.trim()));
   }
 
   public async generateMockData(firebirdMockData: MockData, config: Options) {

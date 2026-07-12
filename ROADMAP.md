@@ -110,7 +110,7 @@ The following features are adapted from Microsoft's [PostgreSQL extension for VS
 
 ### Object explorer
 
-- [ ] Generic "Script as Create" / "Script as Drop" — reverse-engineer any selected object's DDL from one tree action regardless of type, rather than only tables/procedures/views/triggers each having their own bespoke edit command
+- [x] Generic "Script as Create" / "Script as Drop" — reverse-engineer any selected object's DDL from one tree action regardless of type, rather than only tables/procedures/views/triggers each having their own bespoke edit command
 
 ## Testing and CI
 

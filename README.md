@@ -53,6 +53,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **MCP Server** — expose opted-in connections' schema to any MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode)
 - **AI Query Actions in the editor** — right-click SQL for Explain/Optimize without opening the Copilot Chat panel first
 - **Chart visualization for query results** — Bar/Line/Pie/Scatter charts alongside the results grid
+- **Generic "Script as Create" / "Script as Drop"** — reconstruct DDL for any object type from one pair of tree actions
 
 ## Getting Started
 
@@ -100,6 +101,10 @@ Right-click the **Roles** folder → **Create Role**, or the **Users** folder �
 ### Managing Indexes
 
 Right-click a table's **Indexes** folder → **Create Index**, choose the column(s) (comma-separated, for a composite index) and whether it should be unique. Right-click an existing index for **Drop Index**.
+
+### Script as Create / Script as Drop
+
+Right-click any table, view, procedure, trigger, generator, domain, role, exception, user, or index → **Script as Create** or **Script as Drop** — one pair of actions works for every object type, opening the reconstructed DDL in an editor for review (never run automatically). Most object types get a genuine reconstruction from live metadata; a **user**'s "Script as Create" is a clearly-marked placeholder instead, since Firebird never exposes an existing user's password (and this extension never stores one in plaintext to begin with).
 
 ### Visual Schema Designer
 

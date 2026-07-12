@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.43",
+  "version": "0.1.44",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -468,6 +468,16 @@
         "title": "Delete Entry",
         "category": "Firebird",
         "icon": "$(trash)"
+      },
+      {
+        "command": "firebird.scriptAsCreate",
+        "title": "Script as Create",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.scriptAsDrop",
+        "title": "Script as Drop",
+        "category": "Firebird"
       },
       {
         "command": "firebird.history.clear",
@@ -1049,6 +1059,106 @@
           "command": "firebird.history.delete",
           "when": "view == firebird-query-history && viewItem == historyEntry",
           "group": "2_history"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == table",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == table",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == view",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == view",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == procedure",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == procedure",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == trigger",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == trigger",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == generator",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == generator",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == domain",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == domain",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == role",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == role",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == exception",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == exception",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == user",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == user",
+          "group": "script@1"
+        },
+        {
+          "command": "firebird.scriptAsCreate",
+          "when": "view == firebird-explorer && viewItem == index",
+          "group": "script@0"
+        },
+        {
+          "command": "firebird.scriptAsDrop",
+          "when": "view == firebird-explorer && viewItem == index",
+          "group": "script@1"
         }
       ]
     },

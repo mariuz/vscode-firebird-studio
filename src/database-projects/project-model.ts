@@ -41,13 +41,21 @@ export const MANIFEST_FILE_NAME = "firebird.project.json";
 const FOREIGN_KEYS_FILE = "foreign-keys.sql";
 
 /**
- * Best-effort reconstruction of a column's DDL type from getSchemaColumnsQuery()'s bare Firebird
- * type name + length. Known gap: NUMERIC/DECIMAL columns are stored as an underlying integer/
- * double type in RDB$FIELDS (distinguished only by RDB$FIELD_SUB_TYPE/RDB$FIELD_PRECISION/
- * RDB$FIELD_SCALE, none of which getSchemaColumnsQuery() selects today), so a NUMERIC(9,2) column
- * round-trips as plain INTEGER here, losing its declared precision/scale. Exported for testing.
+ * Reconstructs a column's DDL type from getSchemaColumnsQuery()'s bare Firebird type name +
+ * length, or — for a NUMERIC/DECIMAL column — from RDB$FIELD_SUB_TYPE/PRECISION/SCALE instead,
+ * since NUMERIC/DECIMAL are stored as an underlying INTEGER/BIGINT/DOUBLE type in RDB$FIELDS with
+ * no trace of the declared precision/scale in the bare type name alone. Confirmed directly
+ * against a live Firebird server (not assumed): RDB$FIELD_SUB_TYPE is 1 for NUMERIC, 2 for
+ * DECIMAL, 0/null for a plain (non-fixed-point) column; RDB$FIELD_SCALE is negative, so decimal
+ * places = -scale. Exported for testing.
  */
 export function columnTypeToDDL(column: SchemaColumn): string {
+  if ((column.subType === 1 || column.subType === 2) && column.precision) {
+    const kind = column.subType === 1 ? "NUMERIC" : "DECIMAL";
+    const scale = column.scale ? -column.scale : 0;
+    return `${kind}(${column.precision},${scale})`;
+  }
+
   switch (column.type) {
     case "VARCHAR":
       return `VARCHAR(${column.length || 1})`;

@@ -4,6 +4,7 @@ import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {dropDomainQuery, createDomainScaffold, alterDomainScaffold} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
+import {buildDomainCreateDDL} from "../script-as/ddl-builders";
 
 export class NodeDomain implements FirebirdTree {
   constructor(private readonly domain: any, private readonly dbDetails?: ConnectionOptions) {}
@@ -53,5 +54,16 @@ export class NodeDomain implements FirebirdTree {
         logger.error(err);
         logger.showError(`Failed to drop domain: ${err}`);
       });
+  }
+
+  /** Generic "Script as Create". */
+  public async scriptAsCreate(): Promise<void> {
+    await Driver.createSQLTextDocument(buildDomainCreateDDL(this.domain));
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    const name = this.domain.DOMAIN_NAME ? this.domain.DOMAIN_NAME.trim() : "";
+    await Driver.createSQLTextDocument(dropDomainQuery(name));
   }
 }

@@ -1227,6 +1227,22 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* Generic "Script as Create" / "Script as Drop" — works regardless of the selected object's
+     type (table/view/procedure/trigger/generator/domain/role/exception/user/index), since each
+     node class implements scriptAsCreate()/scriptAsDrop() itself. */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.scriptAsCreate", (node: any) => {
+      if (typeof node?.scriptAsCreate !== "function") { return; }
+      node.scriptAsCreate().catch((err: any) => logger.error(err?.message ?? err));
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand("firebird.scriptAsDrop", (node: any) => {
+      if (typeof node?.scriptAsDrop !== "function") { return; }
+      node.scriptAsDrop().catch((err: any) => logger.error(err?.message ?? err));
+    })
+  );
+
   /* COMMAND: refresh history view */
   context.subscriptions.push(
     commands.registerCommand("firebird.history.refresh", () => {

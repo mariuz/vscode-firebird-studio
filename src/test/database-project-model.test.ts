@@ -39,6 +39,29 @@ suite('database-project-model – columnTypeToDDL()', function () {
   test('an unrecognized/UNKNOWN type falls back to VARCHAR(255)', function () {
     assert.strictEqual(columnTypeToDDL(column({ type: 'UNKNOWN' })), 'VARCHAR(255)');
   });
+
+  // subType 1 = NUMERIC, 2 = DECIMAL, scale is negative (decimal places = -scale) — confirmed
+  // directly against a live Firebird server, not assumed.
+  test('subType 1 (NUMERIC) with a precision/scale overrides the underlying INTEGER/BIGINT type', function () {
+    assert.strictEqual(columnTypeToDDL(column({ type: 'INTEGER', subType: 1, precision: 9, scale: -2 })), 'NUMERIC(9,2)');
+    assert.strictEqual(columnTypeToDDL(column({ type: 'INT64', subType: 1, precision: 18, scale: -4 })), 'NUMERIC(18,4)');
+  });
+
+  test('subType 2 (DECIMAL) with a precision/scale overrides the underlying type', function () {
+    assert.strictEqual(columnTypeToDDL(column({ type: 'INT64', subType: 2, precision: 10, scale: -3 })), 'DECIMAL(10,3)');
+  });
+
+  test('subType 0 (plain, non-fixed-point) is not treated as NUMERIC/DECIMAL', function () {
+    assert.strictEqual(columnTypeToDDL(column({ type: 'INTEGER', subType: 0, precision: 0, scale: 0 })), 'INTEGER');
+  });
+
+  test('a DOUBLE column has no subType at all (Firebird only sets it for INTEGER/BIGINT-backed fixed-point types)', function () {
+    assert.strictEqual(columnTypeToDDL(column({ type: 'DOUBLE', subType: undefined, precision: undefined })), 'DOUBLE PRECISION');
+  });
+
+  test('a scale of 0 (whole-number NUMERIC, e.g. NUMERIC(9,0)) still works', function () {
+    assert.strictEqual(columnTypeToDDL(column({ type: 'INTEGER', subType: 1, precision: 9, scale: 0 })), 'NUMERIC(9,0)');
+  });
 });
 
 suite('database-project-model – buildTableCreateDDL()', function () {

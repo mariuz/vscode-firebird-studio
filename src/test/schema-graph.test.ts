@@ -115,6 +115,22 @@ suite('buildSchemaGraph', function () {
     assert.strictEqual(graph.tables[0].columns[0].dflt, undefined);
   });
 
+  test('carries FIELD_SUB_TYPE/PRECISION/SCALE through for a NUMERIC/DECIMAL column', function () {
+    const graph = buildSchemaGraph([columnRow({ FIELD_SUB_TYPE: 1, FIELD_PRECISION: 9, FIELD_SCALE: -2 })], []);
+    const col = graph.tables[0].columns[0];
+    assert.strictEqual(col.subType, 1);
+    assert.strictEqual(col.precision, 9);
+    assert.strictEqual(col.scale, -2);
+  });
+
+  test('leaves subType/precision/scale undefined when the row has none (a plain, non-fixed-point column)', function () {
+    const graph = buildSchemaGraph([columnRow()], []);
+    const col = graph.tables[0].columns[0];
+    assert.strictEqual(col.subType, undefined);
+    assert.strictEqual(col.precision, undefined);
+    assert.strictEqual(col.scale, undefined);
+  });
+
   test('builds a single relationship', function () {
     const graph = buildSchemaGraph([], [fkRow()]);
     assert.strictEqual(graph.relationships.length, 1);

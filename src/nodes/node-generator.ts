@@ -4,6 +4,7 @@ import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {dropGeneratorQuery, setGeneratorValueQuery, createGeneratorQuery} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
+import {buildGeneratorCreateDDL} from "../database-projects/project-model";
 
 export class NodeGenerator implements FirebirdTree {
   constructor(private readonly generatorName: string, private readonly dbDetails?: ConnectionOptions) {}
@@ -72,5 +73,15 @@ export class NodeGenerator implements FirebirdTree {
         logger.error(err);
         logger.showError(`Failed to set generator value: ${err}`);
       });
+  }
+
+  /** Generic "Script as Create". */
+  public async scriptAsCreate(): Promise<void> {
+    await Driver.createSQLTextDocument(buildGeneratorCreateDDL(this.generatorName.trim()));
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropGeneratorQuery(this.generatorName.trim()));
   }
 }

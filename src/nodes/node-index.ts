@@ -5,6 +5,7 @@ import {getIndexesQuery, createIndexQuery, dropIndexQuery} from "../shared/queri
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 import {NodeInfo} from "./node-info";
+import {buildIndexCreateDDL} from "../script-as/ddl-builders";
 
 /**
  * A table's "Indexes" folder — parallel to NodeCategoryFolder, but scoped to one table rather
@@ -102,5 +103,20 @@ export class NodeIndex implements FirebirdTree {
         logger.error(err);
         logger.showError(`Failed to drop index: ${err}`);
       });
+  }
+
+  /** Generic "Script as Create" — no ASC/DESC direction available from getIndexesQuery() today, so this always reconstructs an ascending index (a known, disclosed gap). */
+  public async scriptAsCreate(): Promise<void> {
+    await Driver.createSQLTextDocument(buildIndexCreateDDL({
+      name: this.getIndexName(),
+      table: this.table.trim(),
+      columns: this.index.COLUMNS ? String(this.index.COLUMNS).trim() : "",
+      unique: !!this.index.IS_UNIQUE,
+    }));
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropIndexQuery(this.getIndexName()));
   }
 }

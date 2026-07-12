@@ -4,6 +4,7 @@ import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {dropUserQuery, alterUserPasswordQuery, createUserQuery} from "../shared/queries";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
+import {buildUserCreatePlaceholderDDL} from "../script-as/ddl-builders";
 
 export class NodeUser implements FirebirdTree {
   constructor(private readonly userName: string, private readonly dbDetails?: ConnectionOptions) {}
@@ -81,5 +82,19 @@ export class NodeUser implements FirebirdTree {
     } finally {
       await Driver.client.detach(connection);
     }
+  }
+
+  /**
+   * Generic "Script as Create" — unlike every other object type, this can't be a genuine
+   * reconstruction: Firebird never exposes an existing user's password via SQL, and this
+   * extension never stores one in plaintext either. Opens a clearly-marked placeholder instead.
+   */
+  public async scriptAsCreate(): Promise<void> {
+    await Driver.createSQLTextDocument(buildUserCreatePlaceholderDDL(this.userName.trim()));
+  }
+
+  /** Generic "Script as Drop". */
+  public async scriptAsDrop(): Promise<void> {
+    await Driver.createSQLTextDocument(dropUserQuery(this.userName.trim()));
   }
 }
