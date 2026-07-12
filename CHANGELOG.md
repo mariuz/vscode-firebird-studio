@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.38 - 2026-07-12
+
+### Added
+
+- **Object Search** — right-click a database → **Search Objects...** to fuzzy-search every table, view, procedure, trigger, generator, and domain by name in one QuickPick, then jump straight to it: tables/views open their data, procedures/triggers/domains open for editing, and generators show their current value.
+
 ## 0.1.37 - 2026-07-12
 
 ### Added

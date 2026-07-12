@@ -12,6 +12,7 @@ import {
   getForeignKeysQuery,
   MAX_SOURCE_CAST_LENGTH,
   createGeneratorQuery,
+  generatorCurrentValueQuery,
   createViewScaffold,
   createProcedureScaffold,
   createTriggerScaffold,
@@ -214,6 +215,19 @@ suite('createGeneratorQuery', function () {
 
   test('rejects an unsafe generator name instead of interpolating it unescaped', function () {
     assert.throws(() => createGeneratorQuery('BAD; DROP TABLE X'), /Invalid generator name/);
+  });
+});
+
+suite('generatorCurrentValueQuery', function () {
+  test('reads the current value via GEN_ID(name, 0), never advancing it', function () {
+    assert.strictEqual(
+      generatorCurrentValueQuery('GEN_CUSTOMER_ID'),
+      'SELECT GEN_ID(GEN_CUSTOMER_ID, 0) AS CURRENT_VALUE FROM RDB$DATABASE;'
+    );
+  });
+
+  test('rejects an unsafe generator name instead of interpolating it unescaped', function () {
+    assert.throws(() => generatorCurrentValueQuery('BAD; DROP TABLE X'), /Invalid generator name/);
   });
 });
 

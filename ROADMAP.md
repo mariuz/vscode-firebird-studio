@@ -91,7 +91,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 
 - [x] Firebird Database Projects — schema-as-code project structure with extract/build/publish and generated migration scripts, built on the existing schema-diff engine ([design doc](docs/roadmap/database-projects.md))
 - [x] Create, rename, and drop whole databases from the connection tree (not just objects within one)
-- [ ] Object Search — fuzzy search for any object (table/view/procedure/trigger/etc.) by name across a connection
+- [x] Object Search — fuzzy search for any object (table/view/procedure/trigger/etc.) by name across a connection
 - [ ] Local Firebird container **creation** — provision a new Dockerized Firebird server from the extension, extending today's detect-existing-containers support
 - [ ] Connection dialog: color-coded connection groups, and paste a full connection string to prefill fields
 

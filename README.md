@@ -47,6 +47,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Data API Builder** — generate an OpenAPI 3.0 REST spec (one CRUD route set per table) from the connected schema
 - **Database Projects** — extract the connected schema into a folder of versioned `.sql` files, and build one back into a deployable script
 - **Create, rename, and drop whole databases** from the connection tree, not just objects within one
+- **Object Search** — fuzzy-search every table, view, procedure, trigger, generator, and domain by name in one connection
 
 ## Getting Started
 
@@ -175,6 +176,10 @@ Right-click a database → **Extract Database Project...**, pick a destination f
 ### Creating, Renaming, and Dropping Whole Databases
 
 Run **Create New Database...** from the Command Palette to walk through the same connection wizard used for **Add New Connection**, except it also creates the database file itself before adding it as a saved connection. From a database's right-click menu: **Rename Database...** renames its file on disk (embedded connections only — a network connection's file lives on the remote server, which this extension can't reach) and updates the saved connection to match; **Drop Database...** permanently deletes the database after a modal confirmation — there is no undo, and it also removes the now-dangling saved connection entry.
+
+### Object Search
+
+Right-click a database → **Search Objects...** and start typing to fuzzy-search every table, view, procedure, trigger, generator, and domain in that connection by name, in one list. Pick a result and it jumps straight to what you'd want to do with it: a table or view opens its data in the results grid, a procedure/trigger/domain opens an editable `ALTER` scaffold, and a generator shows its current value.
 
 ## Settings
 

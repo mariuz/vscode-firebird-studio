@@ -439,6 +439,12 @@ export function createGeneratorQuery(generatorName: string): string {
   return `CREATE SEQUENCE ${generatorName};`;
 }
 
+/** Read-only "peek" at a generator/sequence's current value — used by Object Search, since generators have no other non-destructive inspection action (unlike setGeneratorValue(), which prompts to overwrite it). */
+export function generatorCurrentValueQuery(generatorName: string): string {
+  assertValidIdentifier(generatorName, "generator name");
+  return `SELECT GEN_ID(${generatorName}, 0) AS CURRENT_VALUE FROM RDB$DATABASE;`;
+}
+
 /**
  * "Create new object" scaffolds — opened in a new SQL editor for the user to fill in and run
  * manually, the same way NodeProcedure#editProcedure()/NodeView#editView()/

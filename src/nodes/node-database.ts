@@ -15,6 +15,8 @@ import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
 import {runDataApiSpecGenerator} from "../data-api-builder";
 import {runExtractProject} from "../database-projects";
+import {runObjectSearch} from "../object-search";
+import QueryResultsView from "../result-view";
 import * as cp from 'node:child_process';
 
 
@@ -173,6 +175,11 @@ export class NodeDatabase implements FirebirdTree {
   // extract the connected schema into a folder of versioned .sql files (Database Projects)
   public async extractProject(): Promise<void> {
     return runExtractProject(this.dbDetails);
+  }
+
+  // fuzzy-search every table/view/procedure/trigger/generator/domain by name, then jump to it
+  public async searchObjects(firebirdQueryResults: QueryResultsView): Promise<void> {
+    return runObjectSearch(this.dbDetails, firebirdQueryResults);
   }
 
   /** Connection details with the password resolved from SecretStorage, for callers (e.g. the

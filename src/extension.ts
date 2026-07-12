@@ -726,6 +726,18 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB: fuzzy-search every object by name, then jump to its most useful action */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.searchObjects", (databaseNode: NodeDatabase) => {
+      databaseNode.searchObjects(firebirdQueryResults).catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Object Search failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
   /* DB: extract the connected schema into a Database Project folder */
   context.subscriptions.push(
     commands.registerCommand("firebird.project.extract", (databaseNode: NodeDatabase) => {
