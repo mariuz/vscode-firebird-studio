@@ -18,4 +18,8 @@ export interface ConnectionOptions {
   wireCrypt?: 'Required' | 'Enabled' | 'Disabled';
   /** Authentication plugin for Firebird 4.x/5.x (e.g. Srp256, Srp, Legacy_Auth). */
   authPlugin?: string;
+  /** True for connections sourced from a workspace's .vscode/firebird.json rather than globalState — never persisted there, and re-derived from disk on every tree refresh. */
+  workspace?: boolean;
+  /** Whether this workspace connection was marked "default": true — see workspace-config.ts. */
+  isDefault?: boolean;
 }

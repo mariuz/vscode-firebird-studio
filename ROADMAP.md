@@ -55,7 +55,7 @@ This document outlines the planned features and improvements for the **Firebird 
 - [x] Diff support for comparing database schemas
 - [x] SQL linting and error detection before execution
 - [x] Bookmarks for frequently used queries
-- [ ] Workspace-level database configuration (`.vscode/firebird.json`)
+- [x] Workspace-level database configuration (`.vscode/firebird.json`)
 
 ## Documentation and Community
 

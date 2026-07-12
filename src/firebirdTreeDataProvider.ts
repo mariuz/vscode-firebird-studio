@@ -6,6 +6,7 @@ import { connectionWizard } from "./shared/connection-wizard";
 import { Constants } from "./config/constants";
 import { Global } from "./shared/global";
 import { CredentialStore } from "./shared/credential-store";
+import { loadWorkspaceConnections } from "./shared/workspace-config";
 import { logger } from "./logger/logger";
 
 export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> {
@@ -77,10 +78,15 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
 
   private async getHostNodes(): Promise<NodeHost[]> {
     logger.debug("Get host nodes start.");
-    const connections = this.context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);
-    const nodeHosts = [];
+    const connections = { ...(this.context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey) ?? {}) };
 
-    if (connections) {
+    /* merge in connections declared by any open workspace folder's .vscode/firebird.json —
+       re-read from disk on every refresh, never persisted into globalState */
+    const workspaceConnections = await loadWorkspaceConnections();
+    workspaceConnections.forEach(conn => { connections[conn.id] = conn; });
+
+    const nodeHosts = [];
+    if (Object.keys(connections).length > 0) {
       const groupedConnections = this.groupedArray(connections);
 
       for (const key in groupedConnections) {

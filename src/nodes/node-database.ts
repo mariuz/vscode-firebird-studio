@@ -24,7 +24,9 @@ export class NodeDatabase implements FirebirdTree {
       label: getDatabaseFileName(this.dbDetails.database),
       collapsibleState: TreeItemCollapsibleState.Collapsed,
       contextValue: "database",
-      tooltip: `[DATABASE] ${this.dbDetails.database}`,
+      tooltip: this.dbDetails.workspace
+        ? `[DATABASE] ${this.dbDetails.database}\nFrom this workspace's .vscode/firebird.json`
+        : `[DATABASE] ${this.dbDetails.database}`,
       iconPath: {
         /* dark: join(__filename, "..", "..", "..", "resources", "icons", "dark", "db-dark.svg"),
         light: join(__filename, "..", "..", "..", "resources", "icons", "light", "db-light.svg") */
@@ -164,6 +166,14 @@ export class NodeDatabase implements FirebirdTree {
   public async removeDatabase(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider) {
     logger.info("Remove database start...");
 
+    if (this.dbDetails.workspace) {
+      // Sourced from .vscode/firebird.json, not globalState — re-derived from disk on every
+      // refresh, so deleting it here would just reappear (and would otherwise still wipe any
+      // password already stored for it via setPassword()).
+      logger.showInfo("This connection comes from this workspace's .vscode/firebird.json — edit or remove it there instead.");
+      return;
+    }
+
     const connections = context.globalState.get<{[key: string]: ConnectionOptions;}>(Constants.ConectionsKey);
 
     if (connections) {
@@ -180,6 +190,24 @@ export class NodeDatabase implements FirebirdTree {
   public async setActive(): Promise<void> {
     logger.info("Set active connection");
     Global.activeConnection = await this.resolvedDetails();
+  }
+
+  /**
+   * Stores/updates this connection's password in SecretStorage. The only way to set a password
+   * for a workspace-declared connection (.vscode/firebird.json never contains one), but works
+   * for any saved connection — there was previously no way to change one without removing and
+   * re-adding the whole connection.
+   */
+  public async setPassword(): Promise<void> {
+    const password = await window.showInputBox({
+      prompt: `New password for ${getDatabaseFileName(this.dbDetails.database)}`,
+      ignoreFocusOut: true,
+      password: true,
+      validateInput: v => v ? undefined : "Password is required"
+    });
+    if (password === undefined) { return; }
+    await CredentialStore.storePassword(this.dbDetails.id, password);
+    logger.showInfo("Password updated.");
   }
 
   // monitor active connections and I/O stats

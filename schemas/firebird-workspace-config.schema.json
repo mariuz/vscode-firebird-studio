@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Firebird Studio workspace connection configuration",
+  "description": "Declares Firebird connections for this workspace so opening the folder is enough to connect — no need for each teammate to add a connection manually. Never put a password here: it's entered once via the tree's \"Set Connection Password\" action and stored in VS Code's secure SecretStorage instead.",
+  "type": "object",
+  "required": ["connections"],
+  "additionalProperties": false,
+  "properties": {
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["database"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Optional label shown in log messages if this entry is invalid."
+          },
+          "host": {
+            "type": "string",
+            "description": "Required unless \"embedded\" is true."
+          },
+          "port": {
+            "type": "number",
+            "default": 3050
+          },
+          "database": {
+            "type": "string",
+            "description": "Path to the .fdb file. Relative paths are resolved against this workspace folder."
+          },
+          "user": {
+            "type": "string",
+            "default": "SYSDBA"
+          },
+          "role": {
+            "type": ["string", "null"]
+          },
+          "embedded": {
+            "type": "boolean",
+            "default": false,
+            "description": "Connect to a local embedded database file instead of a server — requires firebird.useNativeDriver."
+          },
+          "wireCrypt": {
+            "type": "string",
+            "enum": ["Required", "Enabled", "Disabled"],
+            "description": "Wire encryption mode for Firebird 4.x/5.x."
+          },
+          "authPlugin": {
+            "type": "string",
+            "description": "Authentication plugin override, e.g. Srp256, Srp, Legacy_Auth."
+          },
+          "default": {
+            "type": "boolean",
+            "default": false,
+            "description": "Auto-connect to this one when the workspace opens, if nothing else is already active."
+          }
+        }
+      }
+    }
+  }
+}

@@ -115,6 +115,34 @@ Pooling works with both the pure-JS and native drivers, and is off by default si
 
 ---
 
+## Workspace Configuration (`.vscode/firebird.json`)
+
+Share a project's database connection with your whole team by committing a `.vscode/firebird.json` file — anyone who opens the folder gets it in their DB Explorer automatically, with no manual "Add Connection" step:
+
+```json
+{
+  "connections": [
+    {
+      "name": "Local Dev",
+      "host": "localhost",
+      "port": 3050,
+      "database": "data/dev.fdb",
+      "user": "SYSDBA",
+      "default": true
+    }
+  ]
+}
+```
+
+- `database` may be a relative path — it's resolved against the workspace folder, so a project-local `.fdb` file can be committed and referenced portably.
+- **Never put a password in this file.** The first time you use the connection, right-click it and choose **Set Connection Password** — it's stored in VS Code's encrypted SecretStorage, the same as any manually-added connection, and each teammate enters their own.
+- Mark one connection `"default": true` (or just have exactly one) to have it auto-selected as the active database when the workspace opens, if nothing else is already active.
+- The file is re-read from disk on every tree refresh — it's never copied into VS Code's saved-connections list, so editing or deleting it takes effect immediately (no stale copy to clean up). Because of this, **Remove Database**/**Remove Host** don't apply to it — edit the file itself instead.
+- Editing the file gets JSON autocomplete/validation automatically (schema-backed).
+- Set `embedded: true` instead of `host`/`port` for a local embedded database file — see [Embedded Database](#embedded-database-fdb-file-without-a-server) above (requires the native driver).
+
+---
+
 ## Managing Connections
 
 ### Remove a Host

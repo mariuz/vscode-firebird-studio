@@ -24,6 +24,7 @@ import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-hist
 import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
 import {getConnectionLabel} from "./shared/utils";
+import {loadWorkspaceConnections} from "./shared/workspace-config";
 
 /** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -67,6 +68,33 @@ export function activate(context: ExtensionContext) {
   const firebirdLanguageServer = new LanguageServer();
   const firebirdDatabaseWords = new KeywordsDb();
   const firebirdTreeDataProvider = new FirebirdTreeDataProvider(context);
+
+  /* Workspace-level connections (.vscode/firebird.json): auto-activate the one marked "default"
+     (or the only one, if there's exactly one and nothing else is active yet), and keep the tree
+     in sync whenever the file is created/edited/removed. */
+  void activateDefaultWorkspaceConnection();
+  context.subscriptions.push(
+    workspace.onDidChangeWorkspaceFolders(() => {
+      commands.executeCommand("firebird.explorer.refresh");
+      void activateDefaultWorkspaceConnection();
+    })
+  );
+  const firebirdJsonWatcher = workspace.createFileSystemWatcher("**/.vscode/firebird.json");
+  context.subscriptions.push(firebirdJsonWatcher);
+  context.subscriptions.push(
+    firebirdJsonWatcher.onDidChange(() => commands.executeCommand("firebird.explorer.refresh")),
+    firebirdJsonWatcher.onDidCreate(() => commands.executeCommand("firebird.explorer.refresh")),
+    firebirdJsonWatcher.onDidDelete(() => commands.executeCommand("firebird.explorer.refresh"))
+  );
+
+  async function activateDefaultWorkspaceConnection(): Promise<void> {
+    if (Global.activeConnection) { return; }
+    const conns = await loadWorkspaceConnections();
+    const chosen = conns.find(c => c.isDefault) ?? (conns.length === 1 ? conns[0] : undefined);
+    if (!chosen || Global.activeConnection) { return; }
+    const password = await CredentialStore.getPassword(chosen.id);
+    Global.activeConnection = { ...chosen, password: password ?? "" };
+  }
   const firebirdMockData = new MockData(context.extensionPath);
   const firebirdQueryResults = new QueryResultsView(context.extensionPath);
   const firebirdTableDesigner = new TableDesigner(context.extensionPath);
@@ -160,6 +188,13 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.setActive", (databaseNode: NodeDatabase) => {
       databaseNode.setActive();
+    })
+  );
+
+  /* DB ITEM: set/update the stored password for this connection */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.setPassword", (databaseNode: NodeDatabase) => {
+      databaseNode.setPassword().catch(err => logger.error(err));
     })
   );
 

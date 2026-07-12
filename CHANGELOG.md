@@ -2,6 +2,13 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.25 - 2026-07-12
+
+### Added
+
+- **Workspace-level database configuration** — commit a `.vscode/firebird.json` declaring a project's connection(s) and everyone who opens the folder gets it in DB Explorer automatically, no manual setup required. Supports marking one connection `"default": true` to auto-activate on open, JSON schema-backed autocomplete/validation, and never stores passwords in the file (see `docs/connection-setup.md`)
+- **Set Connection Password** — new context-menu action on any database connection to set/update its stored password without removing and re-adding it; the only way to attach a password to a workspace connection, but works for manually-added ones too
+
 ## 0.1.24 - 2026-07-12
 
 ### Added

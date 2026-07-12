@@ -124,6 +124,14 @@ export const workspace = {
   onDidOpenTextDocument: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
   onDidChangeTextDocument: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
   onDidCloseTextDocument: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
+  onDidChangeWorkspaceFolders: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
+  createFileSystemWatcher: (_glob: string) => ({
+    onDidChange: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
+    onDidCreate: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
+    onDidDelete: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
+    dispose: () => { /* no-op */ },
+  }),
+  workspaceFolders: undefined as { name: string; uri: { fsPath: string } }[] | undefined,
   textDocuments: [] as any[],
   getConfiguration: (_section?: string) => ({
     get: (_key: string, defaultValue?: any) => defaultValue,
