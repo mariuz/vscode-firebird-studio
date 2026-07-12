@@ -7,10 +7,11 @@ import {Driver} from "../shared/driver";
 import {Global} from "../shared/global";
 import {CredentialStore} from "../shared/credential-store";
 import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
-import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getSystemTablesQuery, getUsersQuery, monitorConnectionsQuery} from "../shared/queries";
+import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getSystemTablesQuery, getUsersQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
 import {SchemaDesigner} from "../schema-designer";
+import {ProfilerView} from "../profiler";
 import * as cp from 'node:child_process';
 
 
@@ -210,17 +211,12 @@ export class NodeDatabase implements FirebirdTree {
     logger.showInfo("Password updated.");
   }
 
-  // monitor active connections and I/O stats
-  public async monitorDatabase() {
-    logger.info("Monitor Database: active connections");
+  // open the Live Profiler (polling connection/query activity) for this database
+  public async monitorDatabase(profilerView: ProfilerView): Promise<void> {
+    logger.info("Monitor Database: open Live Profiler");
     const resolved = await this.resolvedDetails();
     Global.activeConnection = resolved;
-    return Driver.runQuery(monitorConnectionsQuery, resolved)
-      .then(result => result)
-      .catch(err => {
-        logger.error(err);
-        return Promise.reject(err);
-      });
+    profilerView.open(resolved);
   }
 
   // backup database using gbak

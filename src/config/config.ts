@@ -19,7 +19,8 @@ export function getOptions() {
     dockerPath: _dockerPath(),
     enableConnectionPooling: _enableConnectionPooling(),
     connectionPoolMaxSize: _connectionPoolMaxSize(),
-    connectionPoolIdleTimeoutMs: _connectionPoolIdleTimeoutMs()
+    connectionPoolIdleTimeoutMs: _connectionPoolIdleTimeoutMs(),
+    profilerPollIntervalMs: _profilerPollIntervalMs()
   } as Options;
 }
 
@@ -146,6 +147,17 @@ function _connectionPoolIdleTimeoutMs(): number {
   if (typeof conf !== "number" || conf < 1) {
     logger.error("Invalid value detected in Connection Pool Idle Timeout settings. Fallback to default value.");
     return connectionPoolIdleTimeoutMs;
+  }
+  return conf;
+}
+
+function _profilerPollIntervalMs(): number {
+  const conf: any = getConfig().get("profiler.pollIntervalMs");
+  const profilerPollIntervalMs: number = properties["firebird.profiler.pollIntervalMs"]["default"];
+
+  if (typeof conf !== "number" || conf < 500) {
+    logger.error("Invalid value detected in Profiler Poll Interval settings. Fallback to default value.");
+    return profilerPollIntervalMs;
   }
   return conf;
 }

@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.29 - 2026-07-12
+
+### Added
+
+- **Live Profiler** — **Monitor Database** now opens a continuously-refreshing connection activity view instead of a one-time snapshot: see every connection's user, remote address, current statement, and live I/O rates (reads/writes/fetches per second), auto-updating on an interval (`firebird.profiler.pollIntervalMs`, default 3s) with Pause/Resume and manual refresh
+
 ## 0.1.28 - 2026-07-12
 
 ### Added

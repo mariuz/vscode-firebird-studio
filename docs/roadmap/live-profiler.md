@@ -4,37 +4,35 @@
 
 ## Current state in Firebird Studio
 
-`monitorConnectionsQuery` (`src/shared/queries.ts:478`) queries `MON$ATTACHMENTS` for a **single snapshot** of current connections — there's no auto-refresh, no history, and no per-statement activity feed. ROADMAP.md already lists "Database statistics and monitoring (connection/I-O monitoring via `MON$` tables)" as done, but that's this one-shot snapshot view, not a live profiler.
+**Phases 1 and 2 are done.** `src/profiler/` (`ProfilerView`) replaces the one-shot `MON$ATTACHMENTS` snapshot `NodeDatabase#monitorDatabase()` used to run (`monitorConnectionsQuery` is gone from `queries.ts` — superseded, not kept alongside) with a continuously polling activity table:
 
-Firebird has no Extended-Events equivalent, but it does expose a rich set of monitoring tables beyond `MON$ATTACHMENTS`:
+- `profilerActivityQuery()` (`src/shared/queries.ts`) — one row per connection (attachment-level, excluding the profiler's own dedicated connection and internal engine attachments), with cumulative page/record I-O counters and, if there is one, the most recently started active statement and transaction. **Verified directly against a real Firebird 3.0 server** (a scratch database, via `isql-fb`) before being written, the same way `plan-parser.ts`'s grammar was — see the query's doc comment for exactly what was checked (in particular, `MON$STAT_GROUP = 1` to select the attachment-level stat row for a given `MON$STAT_ID`, and picking the highest active `MON$STATEMENT_ID`/`MON$TRANSACTION_ID` per attachment rather than every combination, to keep the grain at one row per connection).
+- `ProfilerView` uses its **own dedicated connection** (created lazily on first poll, reused across polls, closed on dispose) rather than going through `Driver.runQuery()`'s per-call connect/detach, so repeated polling doesn't pay a fresh-connection cost every few seconds and never contends with the user's own query execution or the connection pool.
+- **Polling lives entirely in the webview** (a plain `setInterval` posting `refresh`), not the extension — this webview, like every other one in this extension, is created with `retainContextWhenHidden: false`, so VS Code tears down its script the moment the panel is hidden and re-runs it from scratch when shown again. That already gives "stop polling when not visible, resume when shown" for free, with zero extra lifecycle code (`onDidChangeViewState` etc.) needed.
+- **Delta/rate computation is also webview-side**: cumulative counters (page reads/writes/fetches, sequential/indexed record reads) are diffed against the previous poll's snapshot for that connection to show a rate (reads/sec, etc.), with a small defensive rule — a counter that goes *backwards* between polls (the attachment id was reused by a different, newer connection) shows "no data yet" rather than a nonsensical negative rate.
+- New `firebird.profiler.pollIntervalMs` setting (default 3000ms) controls the polling interval.
+- `firebird.database.monitorDatabase` (right-click a database → **Monitor Database**) — same command id, title, and menu placement as before — now opens this webview instead of running the old one-shot query into the regular results grid, the same repointing approach already used for the Schema Designer's three commands.
 
-- `MON$STATEMENTS` — currently executing/recently executed statements per attachment, with `MON$STATE`.
-- `MON$RECORD_STATS` / `MON$IO_STATS` / `MON$MEMORY_USAGE` — per-statement/transaction/attachment counters (reads, writes, fetches, marks, memory).
-- `MON$TRANSACTIONS` — open transactions, isolation level, oldest snapshot.
+### Explicitly deferred (not done)
 
-## Proposed feature
+- **Phase 3 — Filter/pin and kill/rollback**: no per-user filtering and no "force detach" action (`DELETE FROM MON$ATTACHMENTS ...`) yet. (A `killAttachmentQuery()` helper was drafted and then deliberately removed before committing — no UI called it yet, and this repo's convention is not to carry unused code "for later.")
+- **Phase 4 — Charted dashboard**: still a plain table, not the live line-chart view (grouped sections, time-range selector) vscode-pgsql's dashboard uses. The metrics this phase would chart (connections, cache hit ratio, block I/O) are exactly the ones already polled — charting is presentation on top of data this phase already fetches, not new data access.
+- **Phase 5 — Sessions/blocking view**: no dedicated blocking-tree view; `MON$TRANSACTIONS`' state is available in the query but not yet surfaced distinctly from the main activity row.
 
-A new webview/panel (`src/profiler/`) that polls these tables on an interval (there's no push/subscribe API in Firebird, so this has to be poll-based — unlike SQL Server's Extended Events which streams):
+### Testing
 
-1. **Activity list** — one row per active attachment/statement, refreshed every N seconds (configurable, e.g. `firebird.profiler.pollIntervalMs`), showing user, remote address, current statement text (truncated), state (idle/active), transaction isolation.
-2. **Delta stats** — since Firebird's `MON$*_STATS` counters are cumulative, the profiler needs to snapshot-and-diff between polls to show *rate* (reads/sec, fetches/sec) rather than raw cumulative counters — this is the main piece of new logic, not present anywhere in the codebase today.
-3. **Filter/pin** — let the user filter to their own connection's activity vs. all attachments (requires appropriate privileges — `MON$` tables restricted to SYSDBA/owner in some Firebird versions; the feature must handle a permission-denied query gracefully and say so, not crash).
-4. Optional: a "kill/rollback" action per row using `DELETE FROM MON$ATTACHMENTS WHERE MON$ATTACHMENT_ID = ?` (Firebird's documented mechanism for forcing a detach), gated behind a confirmation prompt given how destructive it is.
-5. **Charted dashboard, not just a table** — vscode-pgsql's dashboard renders each metric (active connections, cache hit ratio, block I/O, commits/rollbacks) as its own live-updating line chart, grouped under named section headers (Connections, Transactions, Cache, ...), with a time-range selector (1 hour/6 hours/1 day/...) above the charts. A meaningful chunk of that is genuinely Azure-Monitor-specific (server-level CPU/storage/IOPS metrics vscode-pgsql sources from the cloud provider, not the database itself — no Firebird equivalent exists, there's no hosting platform to ask) — but the metrics sourced from the database's own system views (connections, cache hit ratio, block I/O in vscode-pgsql's case) map directly onto polled `MON$*` deltas here. Scope this phase to charting exactly what's already planned above (activity/delta stats), not to inventing server-host metrics Firebird has no source for.
-6. **Top-queries drill-down** — a "Queries" section/tab ranking currently-known statements by a chosen metric (execution time, call count), sourced from `MON$STATEMENTS` (+ `MON$RECORD_STATS` for read/write counts per statement), mirroring vscode-pgsql's Queries tab. This is a different cut of the same `MON$STATEMENTS` data the activity list (item 1) already surfaces — a sortable summary view rather than a live per-row feed.
-7. **Sessions/blocking view** — Firebird doesn't expose a "wait event" taxonomy as rich as PostgreSQL's (no direct analog to vscode-pgsql's Waits tab), but it does expose lock/blocking information indirectly (a transaction waiting on another shows up via `MON$TRANSACTIONS`' state and Firebird's `RDB$GET_CONTEXT`-based lock inspection, or simply a query that hangs while another transaction holds a conflicting lock). A "Sessions" view listing transactions with their state and, where determinable, what they're blocked behind, is a reasonable scoped-down analog — don't try to build a full wait-event-category system that doesn't map onto Firebird's actual instrumentation.
+`src/test/queries.test.ts` covers `profilerActivityQuery()`'s SQL shape (the `CURRENT_CONNECTION` exclusion, the `MON$REMOTE_ADDRESS IS NOT NULL` filter, the `MON$STAT_GROUP = 1` scoping, the UTF8 statement-text cast, and the "most recent active" subqueries). The webview's inline JS (`src/profiler/htmlContent/js/app.js`) has no automated coverage, matching this repo's convention for webview inline JS — verified instead with a one-off Node harness (not committed) exercising two consecutive simulated polls with a controlled elapsed time, confirming: no rate on the first poll (nothing to diff against), a correct rate computed on the second poll, and stale-connection pruning when a connection disappears between polls.
 
 ## Technical notes
 
-- Reuse the existing polling/interval pattern if one already exists elsewhere in the codebase (check `src/logger` or status bar refresh logic in `src/shared/global.ts` before writing a new one from scratch).
-- This is a good candidate for a dedicated `Driver` connection (like the pattern already used for user-management actions that "bypass the extension's normal query-execution path" per the 0.1.19 changelog entry) so profiler polling doesn't interleave with — or get cancelled by — the user's own query execution.
-- Needs a clear stop/start lifecycle tied to the panel's visibility (`onDidChangeViewState` / dispose) so it doesn't keep polling a closed connection in the background.
-- No charting library is vendored in this extension today — `src/schema-designer/`'s canvas and the schema visualizer it replaced both hand-roll plain SVG rather than pulling in a charting dependency. A time-series line chart is simple enough (a handful of `<path>` elements plotting `(time, value)` points against fixed axes) to hand-roll the same way, consistent with this repo's existing preference for no new dependencies where a small amount of custom SVG code will do.
+- Reused the existing dedicated-connection pattern already established for user-management actions that "bypass the extension's normal query-execution path" (per the 0.1.19 changelog entry), rather than inventing a new one.
+- No charting library is vendored in this extension — if/when phase 4 is picked up, a hand-rolled SVG line chart (a handful of `<path>` elements against fixed axes) matches how `src/schema-designer/`'s canvas and `src/query-plan-view/`'s diagram both already avoid a charting dependency.
+- If you need to re-verify or extend `profilerActivityQuery()`, a Firebird 3.0 server is reachable in this environment via `isql-fb` — the query's doc comment documents the scratch-database setup used to validate it.
 
-## Suggested phases
+## Suggested phases (remaining)
 
-1. Static one-shot "Activity Snapshot" view (richer than today's `MON$ATTACHMENTS`-only query — add `MON$STATEMENTS` join) as a normal result grid, no polling yet.
-2. Add interval-based polling + delta-stat computation.
+1. ~~Static "Activity Snapshot" query, richer than the old one-shot `MON$ATTACHMENTS` query.~~ — **done** (`profilerActivityQuery()`).
+2. ~~Interval-based polling + delta-stat computation.~~ — **done**.
 3. Add filter/pin and the kill/rollback action.
-4. Add the charted dashboard view (line charts + time-range selector) over the same polled data, plus the Queries drill-down.
-5. (Stretch, scoped down per the note above) a Sessions/blocking view.
+4. Add the charted dashboard view (line charts + time-range selector) over the same polled data, plus a Queries drill-down ranking statements by a chosen metric.
+5. (Stretch, scoped down per the original note here) a Sessions/blocking view.

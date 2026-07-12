@@ -539,17 +539,61 @@ export function getForeignKeysQuery(): string {
         ORDER BY TABLE_NAME, CONSTRAINT_NAME, seg.RDB$FIELD_POSITION;`;
 }
 
-export const monitorConnectionsQuery: string = `
-  SELECT mon.MON$ATTACHMENT_ID AS ATTACHMENT_ID,
-         mon.MON$USER AS USER_NAME,
-         mon.MON$REMOTE_ADDRESS AS REMOTE_ADDRESS,
-         mon.MON$REMOTE_PROCESS AS CLIENT_PROCESS,
-         mon.MON$TIMESTAMP AS CONNECTED_AT,
-         stat.MON$PAGE_READS AS PAGE_READS,
-         stat.MON$PAGE_WRITES AS PAGE_WRITES,
-         stat.MON$PAGE_FETCHES AS PAGE_FETCHES
-    FROM MON$ATTACHMENTS mon
-    LEFT JOIN MON$IO_STATS stat ON stat.MON$STAT_ID = mon.MON$STAT_ID
-                               AND stat.MON$STAT_GROUP = 1
-   WHERE mon.MON$ATTACHMENT_ID <> CURRENT_CONNECTION
-   ORDER BY mon.MON$TIMESTAMP;`;
+/**
+ * Poll-friendly activity snapshot for the Live Profiler: one row per connection (excluding the
+ * profiler's own dedicated connection, and internal engine attachments like the garbage
+ * collector/cache writer, which have no MON$REMOTE_ADDRESS), each attachment's current
+ * page/record I-O counters (cumulative — the caller diffs successive polls into a rate), and,
+ * if there is one, its most recently started active statement and transaction. Supersedes the
+ * one-shot connection snapshot `NodeDatabase#monitorDatabase()` used to run directly.
+ *
+ * Verified directly against a real Firebird 3.0 server (a scratch database, via isql-fb) before
+ * being written into this file — MON$STAT_GROUP = 1 selects the *attachment*-level stat row for
+ * a given MON$STAT_ID (0 = database, 1 = attachment, 2 = transaction, 3 = statement); without
+ * it, a MON$STAT_ID could in principle join to the wrong "level" of stats.
+ *
+ * "Most recent active statement/transaction" is approximated as the highest MON$STATEMENT_ID /
+ * MON$TRANSACTION_ID currently in state 1 (active) for that attachment — ids are assigned
+ * sequentially, so the max id among active ones is the most recently started. An attachment can
+ * genuinely have more than one active statement or transaction at once; this only surfaces one,
+ * by design, to keep the activity grain at "one row per connection" rather than "one row per
+ * statement" (multiplying out every combination would be noisier, not more useful, for a
+ * connection-level activity view).
+ */
+export function profilerActivityQuery(): string {
+  return `SELECT a.MON$ATTACHMENT_ID AS ATTACHMENT_ID,
+                 a.MON$USER AS USER_NAME,
+                 a.MON$REMOTE_ADDRESS AS REMOTE_ADDRESS,
+                 a.MON$STATE AS ATTACHMENT_STATE,
+                 a.MON$TIMESTAMP AS CONNECTED_AT,
+                 io.MON$PAGE_READS AS PAGE_READS,
+                 io.MON$PAGE_WRITES AS PAGE_WRITES,
+                 io.MON$PAGE_FETCHES AS PAGE_FETCHES,
+                 io.MON$PAGE_MARKS AS PAGE_MARKS,
+                 rs.MON$RECORD_SEQ_READS AS SEQ_READS,
+                 rs.MON$RECORD_IDX_READS AS IDX_READS,
+                 stmt.MON$STATEMENT_ID AS STATEMENT_ID,
+                 CAST(stmt.MON$SQL_TEXT AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS SQL_TEXT,
+                 tx.MON$TRANSACTION_ID AS TRANSACTION_ID,
+                 tx.MON$ISOLATION_MODE AS ISOLATION_MODE
+            FROM MON$ATTACHMENTS a
+       LEFT JOIN MON$IO_STATS io ON io.MON$STAT_ID = a.MON$STAT_ID AND io.MON$STAT_GROUP = 1
+       LEFT JOIN MON$RECORD_STATS rs ON rs.MON$STAT_ID = a.MON$STAT_ID AND rs.MON$STAT_GROUP = 1
+       LEFT JOIN (
+                 SELECT MON$ATTACHMENT_ID, MAX(MON$STATEMENT_ID) AS MON$STATEMENT_ID
+                   FROM MON$STATEMENTS
+                  WHERE MON$STATE = 1
+               GROUP BY MON$ATTACHMENT_ID
+               ) active_stmt ON active_stmt.MON$ATTACHMENT_ID = a.MON$ATTACHMENT_ID
+       LEFT JOIN MON$STATEMENTS stmt ON stmt.MON$STATEMENT_ID = active_stmt.MON$STATEMENT_ID
+       LEFT JOIN (
+                 SELECT MON$ATTACHMENT_ID, MAX(MON$TRANSACTION_ID) AS MON$TRANSACTION_ID
+                   FROM MON$TRANSACTIONS
+                  WHERE MON$STATE = 1
+               GROUP BY MON$ATTACHMENT_ID
+               ) active_tx ON active_tx.MON$ATTACHMENT_ID = a.MON$ATTACHMENT_ID
+       LEFT JOIN MON$TRANSACTIONS tx ON tx.MON$TRANSACTION_ID = active_tx.MON$TRANSACTION_ID
+           WHERE a.MON$REMOTE_ADDRESS IS NOT NULL
+             AND a.MON$ATTACHMENT_ID <> CURRENT_CONNECTION
+        ORDER BY a.MON$ATTACHMENT_ID;`;
+}

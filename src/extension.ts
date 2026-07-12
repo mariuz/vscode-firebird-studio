@@ -13,6 +13,7 @@ import {KeywordsDb} from "./language-server/db-words.provider";
 import QueryResultsView from "./result-view";
 import {SchemaDesigner} from "./schema-designer";
 import {QueryPlanView} from "./query-plan-view";
+import {ProfilerView} from "./profiler";
 import MockData from "./mock-data/mock-data";
 import LanguageServer from "./language-server";
 import * as cp from 'node:child_process';
@@ -99,6 +100,7 @@ export function activate(context: ExtensionContext) {
   const firebirdQueryResults = new QueryResultsView(context.extensionPath);
   const firebirdSchemaDesigner = new SchemaDesigner(context.extensionPath);
   const firebirdQueryPlanView = new QueryPlanView(context.extensionPath);
+  const firebirdProfilerView = new ProfilerView(context.extensionPath);
 
   /* SQL linter */
   const sqlLinter = new SqlLinter();
@@ -129,6 +131,7 @@ export function activate(context: ExtensionContext) {
     firebirdQueryResults,
     firebirdSchemaDesigner,
     firebirdQueryPlanView,
+    firebirdProfilerView,
     firebirdLanguageServer,
     sqlLinter,
     bookmarkProvider,
@@ -637,14 +640,12 @@ export function activate(context: ExtensionContext) {
     })
   );
 
-  /* DB: monitor active connections */
+  /* DB: monitor active connections — opens the Live Profiler */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.monitorDatabase", (databaseNode: NodeDatabase) => {
-      databaseNode.monitorDatabase().then(result => {
-        firebirdQueryResults.display(result, config.recordsPerPage);
-      }).catch(err => {
+      databaseNode.monitorDatabase(firebirdProfilerView).catch(err => {
         logger.error(err.message ?? err);
-        logger.showError("Monitor query failed. Check logs for details.", ["Show Log Output"]).then(sel => {
+        logger.showError("Could not open the Live Profiler. Check logs for details.", ["Show Log Output"]).then(sel => {
           if (sel === "Show Log Output") { logger.showOutput(); }
         });
       });

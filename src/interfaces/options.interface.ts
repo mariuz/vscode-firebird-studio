@@ -18,4 +18,6 @@ export interface Options {
   connectionPoolMaxSize: number;
   /** How long (ms) an idle pooled connection is kept before being closed. */
   connectionPoolIdleTimeoutMs: number;
+  /** How often (ms) the Live Profiler polls MON$ activity while its panel is visible. */
+  profilerPollIntervalMs: number;
 }

@@ -14,6 +14,7 @@ import {
   createTriggerScaffold,
   createDomainScaffold,
   alterDomainScaffold,
+  profilerActivityQuery,
 } from '../shared/queries';
 
 // ── Source-fetching queries (procedure/trigger/view "edit source") ────────────
@@ -233,5 +234,41 @@ suite('createDomainScaffold / alterDomainScaffold', function () {
 
   test('alterDomainScaffold rejects an unsafe domain name', function () {
     assert.throws(() => alterDomainScaffold({ DOMAIN_NAME: 'BAD; DROP TABLE X', DOMAIN_TYPE: 'INTEGER' }), /Invalid domain name/);
+  });
+});
+
+// ── profilerActivityQuery ──────────────────────────────────────────────────────
+//
+// Verified directly against a real Firebird 3.0 server before being written (see the query's
+// own doc comment in queries.ts) — these tests just check the SQL shape, not live behavior.
+
+suite('profilerActivityQuery', function () {
+  const sql = profilerActivityQuery();
+
+  test('takes no parameters — one query covers every connection', function () {
+    assert.strictEqual(profilerActivityQuery.length, 0);
+  });
+
+  test('excludes the profiler\'s own dedicated connection', function () {
+    assert.ok(sql.includes('a.MON$ATTACHMENT_ID <> CURRENT_CONNECTION'), sql);
+  });
+
+  test('excludes internal engine attachments with no remote address', function () {
+    assert.ok(sql.includes('a.MON$REMOTE_ADDRESS IS NOT NULL'), sql);
+  });
+
+  test('scopes IO/record stats to the attachment-level stat group (1), not transaction/statement', function () {
+    assert.ok(sql.includes('io.MON$STAT_GROUP = 1'), sql);
+    assert.ok(sql.includes('rs.MON$STAT_GROUP = 1'), sql);
+  });
+
+  test('casts the active statement text with an explicit CHARACTER SET UTF8', function () {
+    assert.ok(sql.includes(`VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8`), sql);
+  });
+
+  test('picks only the most recently started active statement/transaction per attachment', function () {
+    assert.ok(sql.includes('MAX(MON$STATEMENT_ID)'), sql);
+    assert.ok(sql.includes('WHERE MON$STATE = 1'), sql);
+    assert.ok(sql.includes('MAX(MON$TRANSACTION_ID)'), sql);
   });
 });
