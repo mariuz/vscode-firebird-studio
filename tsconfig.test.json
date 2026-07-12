@@ -29,6 +29,7 @@
     "src/shared/utils.ts",
     "src/shared/credential-store.ts",
     "src/shared/flat-file-parser.ts",
+    "src/shared/notebook-render.ts",
     "src/logger/logger.ts",
     "src/schema-diff/schema-diff.ts",
     "src/bookmarks/bookmark-provider.ts",

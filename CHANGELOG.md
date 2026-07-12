@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.34 - 2026-07-12
+
+### Added
+
+- **SQL Notebooks** — a new `.fbnb` notebook type (**New Firebird SQL Notebook** command): mix markdown and SQL cells, run a cell to execute it against a picked connection and see rows rendered as a table, DDL/DML success messages, or errors, right below the cell.
+
 ## 0.1.33 - 2026-07-12
 
 ### Added

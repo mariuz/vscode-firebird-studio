@@ -26,6 +26,7 @@ import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
+import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
 
 /** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -122,6 +123,18 @@ export function activate(context: ExtensionContext) {
   if (typeof vscode.chat !== 'undefined') {
     registerCopilotChatParticipant(context, firebirdDatabaseWords);
   }
+
+  /* SQL Notebooks (.fbnb) — serializer + execution controller */
+  context.subscriptions.push(...registerSqlNotebook(context));
+  context.subscriptions.push(
+    commands.registerCommand("firebird.notebook.new", async () => {
+      const notebookData = new vscode.NotebookData([
+        new vscode.NotebookCellData(vscode.NotebookCellKind.Code, "", "sql"),
+      ]);
+      const notebookDocument = await workspace.openNotebookDocument(FIREBIRD_NOTEBOOK_TYPE, notebookData);
+      await window.showNotebookDocument(notebookDocument);
+    })
+  );
 
   context.subscriptions.push(
     window.registerTreeDataProvider(Constants.FirebirdExplorerViewId, firebirdTreeDataProvider),
