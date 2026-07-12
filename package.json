@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.47",
+  "version": "0.1.48",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -482,6 +482,16 @@
       {
         "command": "firebird.showPrivileges",
         "title": "Show Object Privileges",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.folder.setFilter",
+        "title": "Filter Objects...",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.folder.clearFilter",
+        "title": "Clear Filter",
         "category": "Firebird"
       },
       {
@@ -1184,6 +1194,106 @@
           "command": "firebird.scriptAsDrop",
           "when": "view == firebird-explorer && viewItem == index",
           "group": "script@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.tables",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.tables",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.views",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.views",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.procedures",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.procedures",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.triggers",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.triggers",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.generators",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.generators",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.domains",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.domains",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.roles",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.roles",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.exceptions",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.exceptions",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.users",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.users",
+          "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.setFilter",
+          "when": "view == firebird-explorer && viewItem == folder.systemTables",
+          "group": "filter@0"
+        },
+        {
+          "command": "firebird.folder.clearFilter",
+          "when": "view == firebird-explorer && viewItem == folder.systemTables",
+          "group": "filter@1"
         }
       ]
     },

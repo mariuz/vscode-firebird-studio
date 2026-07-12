@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.48 - 2026-07-12
+
+### Added
+
+- **Object Explorer Filters** — right-click a category folder (Tables, Views, Stored Procedures, Triggers, Generators, Domains, Roles, Exceptions, Users, System Tables) and choose **Filter Objects...** to narrow it to names containing a substring (case-insensitive); the folder's label shows the active filter, and **Clear Filter** removes it. Distinct from the existing Object Search command, which is a one-shot fuzzy lookup across every object type at once rather than narrowing what the tree itself shows.
+
 ## 0.1.47 - 2026-07-12
 
 ### Added

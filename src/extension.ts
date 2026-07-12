@@ -1,7 +1,7 @@
 import {ExtensionContext, window, commands, workspace} from "vscode";
 import {Constants, getOptions} from "./config";
 import {FirebirdTreeDataProvider} from "./firebirdTreeDataProvider";
-import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeUser, NodeIndex, NodeIndexFolder} from "./nodes";
+import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeUser, NodeIndex, NodeIndexFolder, NodeCategoryFolder} from "./nodes";
 import {Options, FirebirdTree, ConnectionOptions} from "./interfaces";
 import {connectionPicker} from "./shared/connection-picker";
 import {Driver} from "./shared/driver";
@@ -1299,6 +1299,20 @@ export function activate(context: ExtensionContext) {
           }
         })
         .catch((err: any) => logger.error(err?.message ?? err));
+    })
+  );
+
+  /* Object Explorer Filters — narrows a category folder's (Tables, Views, Procedures, ...)
+     children to objects whose name contains a substring, distinct from Object Search's one-shot
+     fuzzy lookup across every object type at once. */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.folder.setFilter", (node: NodeCategoryFolder) => {
+      node.setFilter().catch((err: any) => logger.error(err?.message ?? err));
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand("firebird.folder.clearFilter", (node: NodeCategoryFolder) => {
+      node.clearFilter().catch((err: any) => logger.error(err?.message ?? err));
     })
   );
 

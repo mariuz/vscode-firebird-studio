@@ -10,6 +10,7 @@ import {FirebirdTreeDataProvider} from "../firebirdTreeDataProvider";
 import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery, getTriggersQuery, getGeneratorsQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getSystemTablesQuery, getUsersQuery} from "../shared/queries";
 import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
+import {getObjectFilter, matchesObjectFilter} from "../shared/object-explorer-filter";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
@@ -71,65 +72,72 @@ export class NodeDatabase implements FirebirdTree {
     return children;
   }
 
+  /** Narrows rows to those matching this category's active object filter (if any), set via NodeCategoryFolder#setFilter(). */
+  private filterRows<T>(rows: T[], category: string, nameOf: (row: T) => string): T[] {
+    const filter = getObjectFilter(this.dbDetails.id, category);
+    if (!filter) { return rows; }
+    return rows.filter(row => matchesObjectFilter(nameOf(row), filter));
+  }
+
   private async getTableChildren(): Promise<FirebirdTree[]> {
     const tablesQry = getTablesQuery(getOptions().maxTablesCount);
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const tables = await Driver.client.queryPromise<any>(connection, tablesQry);
-    return tables.map<NodeTable>(table => new NodeTable(this.dbDetails, table.TABLE_NAME));
+    return this.filterRows(tables, "tables", t => t.TABLE_NAME).map<NodeTable>(table => new NodeTable(this.dbDetails, table.TABLE_NAME));
   }
 
   private async getViewChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const views = await Driver.client.queryPromise<any>(connection, getViewsQuery());
-    return views.map<NodeView>(view => new NodeView(this.dbDetails, view.VIEW_NAME));
+    return this.filterRows(views, "views", v => v.VIEW_NAME).map<NodeView>(view => new NodeView(this.dbDetails, view.VIEW_NAME));
   }
 
   private async getProcedureChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const procs = await Driver.client.queryPromise<any>(connection, getStoredProceduresQuery());
-    return procs.map<NodeProcedure>(proc => new NodeProcedure(this.dbDetails, proc.PROCEDURE_NAME));
+    return this.filterRows(procs, "procedures", p => p.PROCEDURE_NAME).map<NodeProcedure>(proc => new NodeProcedure(this.dbDetails, proc.PROCEDURE_NAME));
   }
 
   private async getTriggerChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const triggers = await Driver.client.queryPromise<any>(connection, getTriggersQuery());
-    return triggers.map<NodeTrigger>(trigger => new NodeTrigger(trigger, this.dbDetails));
+    return this.filterRows(triggers, "triggers", t => t.TRIGGER_NAME).map<NodeTrigger>(trigger => new NodeTrigger(trigger, this.dbDetails));
   }
 
   private async getGeneratorChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const generators = await Driver.client.queryPromise<any>(connection, getGeneratorsQuery());
-    return generators.map<NodeGenerator>(gen => new NodeGenerator(gen.GENERATOR_NAME, this.dbDetails));
+    return this.filterRows(generators, "generators", g => g.GENERATOR_NAME).map<NodeGenerator>(gen => new NodeGenerator(gen.GENERATOR_NAME, this.dbDetails));
   }
 
   private async getDomainChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const domains = await Driver.client.queryPromise<any>(connection, getDomainsQuery());
-    return domains.map<NodeDomain>(domain => new NodeDomain(domain, this.dbDetails));
+    return this.filterRows(domains, "domains", d => d.DOMAIN_NAME).map<NodeDomain>(domain => new NodeDomain(domain, this.dbDetails));
   }
 
   private async getRoleChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const roles = await Driver.client.queryPromise<any>(connection, getRolesQuery());
-    return roles.map<NodeRole>(role => new NodeRole(role.ROLE_NAME, this.dbDetails));
+    return this.filterRows(roles, "roles", r => r.ROLE_NAME).map<NodeRole>(role => new NodeRole(role.ROLE_NAME, this.dbDetails));
   }
 
   private async getExceptionChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const exceptions = await Driver.client.queryPromise<any>(connection, getExceptionsQuery());
-    return exceptions.map<NodeException>(exception => new NodeException(exception, this.dbDetails));
+    return this.filterRows(exceptions, "exceptions", e => e.EXCEPTION_NAME).map<NodeException>(exception => new NodeException(exception, this.dbDetails));
   }
 
   private async getSystemTableChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const tables = await Driver.client.queryPromise<any>(connection, getSystemTablesQuery());
-    return tables.map<NodeSystemTable>(table => new NodeSystemTable(this.dbDetails, table.TABLE_NAME));
+    return this.filterRows(tables, "systemTables", t => t.TABLE_NAME).map<NodeSystemTable>(table => new NodeSystemTable(this.dbDetails, table.TABLE_NAME));
   }
 
   private async getUserChildren(): Promise<FirebirdTree[]> {
     const connection = await Driver.client.createConnection(await this.resolvedDetails());
     const users = await Driver.client.queryPromise<any>(connection, getUsersQuery());
-    return users.map<NodeUser>(user => new NodeUser(user.USER_NAME, this.dbDetails));
+    return this.filterRows(users, "users", u => u.USER_NAME).map<NodeUser>(user => new NodeUser(user.USER_NAME, this.dbDetails));
   }
 
   //  run predefined sql query

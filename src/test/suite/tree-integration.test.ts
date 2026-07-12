@@ -14,6 +14,7 @@ import { Driver, NodeClient } from '../../shared/driver';
 import { NodeDatabase, NodeHost, NodeTable } from '../../nodes';
 import { FirebirdTree } from '../../interfaces';
 import { getTestConnectionOptions } from './firebird-test-env';
+import { setObjectFilter, clearObjectFilter } from '../../shared/object-explorer-filter';
 
 const EXTENSION_ID = 'AdrianMariusPopa.vscode-firebird-studio';
 
@@ -67,5 +68,50 @@ suite('Tree nodes – real Firebird integration (extension host)', function () {
     const productsTable = new NodeTable(getTestConnectionOptions(), 'PRODUCTS');
     const rows = await productsTable.selectAllRecords();
     assert.strictEqual(rows.length, 5);
+  });
+
+  suite('Object Explorer Filters', function () {
+    const connectionId = getTestConnectionOptions().id;
+
+    teardown(function () {
+      clearObjectFilter(connectionId, 'tables');
+    });
+
+    test('a matching filter narrows the Tables folder to only PRODUCTS', async function () {
+      setObjectFilter(connectionId, 'tables', 'PROD');
+      const db = new NodeDatabase(getTestConnectionOptions());
+      const [tablesFolder] = await db.getChildren();
+      const tables = await tablesFolder.getChildren();
+      const labels = await Promise.all(tables.map(async t => (await t.getTreeItem(fakeContext)).label));
+      assert.deepStrictEqual(labels, ['PRODUCTS']);
+    });
+
+    test('a non-matching filter empties the Tables folder', async function () {
+      setObjectFilter(connectionId, 'tables', 'NO_SUCH_TABLE_XYZ');
+      const db = new NodeDatabase(getTestConnectionOptions());
+      const [tablesFolder] = await db.getChildren();
+      const tables = await tablesFolder.getChildren();
+      assert.strictEqual(tables.length, 0);
+    });
+
+    test('the folder label reflects the active filter', async function () {
+      setObjectFilter(connectionId, 'tables', 'PROD');
+      const db = new NodeDatabase(getTestConnectionOptions());
+      const [tablesFolder] = await db.getChildren();
+      const item = await tablesFolder.getTreeItem(fakeContext);
+      assert.ok(String(item.label).includes('filtered: "PROD"'), String(item.label));
+    });
+
+    test('clearing the filter restores the unfiltered Tables folder', async function () {
+      setObjectFilter(connectionId, 'tables', 'PROD');
+      clearObjectFilter(connectionId, 'tables');
+      const db = new NodeDatabase(getTestConnectionOptions());
+      const [tablesFolder] = await db.getChildren();
+      const tables = await tablesFolder.getChildren();
+      const labels = await Promise.all(tables.map(async t => (await t.getTreeItem(fakeContext)).label));
+      assert.ok(labels.includes('PRODUCTS'), `expected PRODUCTS in ${JSON.stringify(labels)}`);
+      const item = await tablesFolder.getTreeItem(fakeContext);
+      assert.strictEqual(item.label, 'Tables');
+    });
   });
 });
