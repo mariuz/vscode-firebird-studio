@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.50 - 2026-07-13
+
+### Added
+
+- **Dev Container template** (`.devcontainer/`) — Node.js + a real `firebirdsql/firebird:5` server (the same image/config the CI workflows use), pre-seeded via `scripts/seed-test-db.js` on first create. Open the repo in VS Code and choose **Reopen in Container** for a working Firebird server with no local install, for quick-start/demo/contribution scenarios.
+
 ## 0.1.49 - 2026-07-13
 
 ### Added

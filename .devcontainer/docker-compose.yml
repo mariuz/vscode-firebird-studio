@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../..:/workspaces:cached
+    command: sleep infinity
+    environment:
+      FIREBIRD_HOST: firebird
+      FIREBIRD_PORT: "3050"
+      FIREBIRD_DATABASE: /var/lib/firebird/data/test.fdb
+      FIREBIRD_USER: sysdba
+      FIREBIRD_PASSWORD: masterkey
+    depends_on:
+      firebird:
+        condition: service_healthy
+
+  # Same image/config the CI workflows use (.github/workflows/vscode-host.yml, e2e.yml), so a
+  # query that works here works there too.
+  firebird:
+    image: firebirdsql/firebird:5
+    environment:
+      FIREBIRD_ROOT_PASSWORD: masterkey
+      FIREBIRD_DATABASE: test.fdb
+      FIREBIRD_CONF_WireCrypt: Disabled
+    ports:
+      - "3050:3050"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/3050'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

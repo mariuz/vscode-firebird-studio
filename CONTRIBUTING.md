@@ -54,6 +54,8 @@ Please be respectful and considerate in all interactions. We follow the standard
    git remote add upstream https://github.com/mariuz/vscode-firebird-studio.git
    ```
 
+> **Quick start with Dev Containers**: this repo ships a `.devcontainer/` config (Node.js + a real Firebird 5 server, pre-seeded) for [VS Code's Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers). Open the folder in VS Code and choose **Reopen in Container** — no local Firebird install needed, and it mirrors the same `firebirdsql/firebird:5` image the CI workflows use. Skip straight to [Build and Run](#build-and-run) once it's up.
+
 ### Install Dependencies
 
 ```bash

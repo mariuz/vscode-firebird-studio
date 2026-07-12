@@ -1,0 +1,28 @@
+{
+  "name": "Firebird Studio (Node + Firebird 5 server)",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [3050],
+  "portsAttributes": {
+    "3050": {
+      "label": "Firebird",
+      "onAutoForward": "silent"
+    }
+  },
+  // Waits for the Firebird service to actually accept connections (compose's
+  // depends_on/condition should already order this, but a container tool that ignores healthcheck
+  // ordering would otherwise race scripts/seed-test-db.js against a not-yet-ready server — the same
+  // failure mode .github/workflows/vscode-host.yml's own explicit wait step exists to avoid).
+  "postCreateCommand": "for i in $(seq 1 30); do bash -c 'cat < /dev/null > /dev/tcp/firebird/3050' 2>/dev/null && break; sleep 2; done && npm install && node scripts/seed-test-db.js",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "AdrianMariusPopa.vscode-firebird-studio",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "remoteUser": "node"
+}

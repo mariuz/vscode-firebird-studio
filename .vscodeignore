@@ -12,6 +12,7 @@ images
 out/test
 .claude
 .github
+.devcontainer
 docs
 scripts
 CLAUDE.md
