@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { KeywordsDb } from '../language-server/db-words.provider';
 import { buildSchemaContext } from './schema-context';
-import { systemPrompt, buildOptimizeMessages, buildExplainMessages } from './prompts';
+import { systemPrompt, buildOptimizeMessages, buildExplainMessages, buildMigrateMessages } from './prompts';
 import { logger } from '../logger/logger';
 
 const PARTICIPANT_ID = 'firebird-db-explorer.firebird';
@@ -14,6 +14,7 @@ const PARTICIPANT_ID = 'firebird-db-explorer.firebird';
  * - `/optimize`     – suggest optimisations for a given SQL query
  * - `/explain`      – explain what a SQL query does in plain English
  * - `/designSchema` – infer a Firebird table schema (DDL) from sample data
+ * - `/migrate`      – convert DDL from another database system to Firebird SQL
  */
 export function registerCopilotChatParticipant(
     context: vscode.ExtensionContext,
@@ -46,6 +47,8 @@ export function registerCopilotChatParticipant(
                 const messages: vscode.LanguageModelChatMessage[] = [vscode.LanguageModelChatMessage.User(systemPrompt(schema))];
                 return handleDesignSchema(request, messages, stream, token);
             }
+            case 'migrate':
+                return handleMigrate(request, schema, stream, token);
             default: {
                 const messages: vscode.LanguageModelChatMessage[] = [vscode.LanguageModelChatMessage.User(systemPrompt(schema))];
                 return handleDefault(request, messages, stream, token);
@@ -163,6 +166,30 @@ async function handleDesignSchema(
 }
 
 /* ------------------------------------------------------------------ */
+/*  /migrate – AI-assisted DDL conversion from other database systems  */
+/* ------------------------------------------------------------------ */
+
+async function handleMigrate(
+    request: vscode.ChatRequest,
+    schema: string,
+    stream: vscode.ChatResponseStream,
+    token: vscode.CancellationToken
+): Promise<vscode.ChatResult> {
+    const sourceDdl = request.prompt.trim() || getActiveEditorText();
+    if (!sourceDdl) {
+        stream.markdown(
+            'Please paste the DDL you want to convert (from MySQL, PostgreSQL, SQL Server, Oracle, ' +
+            'or legacy InterBase), or open a file containing it, and I\'ll convert it to Firebird SQL.\n\n' +
+            'Example:\n```sql\nCREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, name TEXT);\n```'
+        );
+        return {};
+    }
+
+    stream.progress('Converting DDL to Firebird SQL…');
+    return streamModelResponse(request, buildMigrateMessages(sourceDdl, schema), stream, token);
+}
+
+/* ------------------------------------------------------------------ */
 /*  default – general Firebird assistance                             */
 /* ------------------------------------------------------------------ */
 
@@ -178,7 +205,8 @@ async function handleDefault(
             '- `/query` — Generate SQL from a natural-language description\n' +
             '- `/optimize` — Get optimization suggestions for a SQL query\n' +
             '- `/explain` — Explain what a SQL query does\n' +
-            '- `/designSchema` — Infer a Firebird table schema from sample data\n'
+            '- `/designSchema` — Infer a Firebird table schema from sample data\n' +
+            '- `/migrate` — Convert DDL from another database system to Firebird SQL\n'
         );
         return {};
     }

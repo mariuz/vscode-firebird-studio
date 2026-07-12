@@ -49,6 +49,29 @@ export function buildExplainMessages(sql: string, schemaBlock: string): vscode.L
 }
 
 /**
+ * "AI-assisted DDL conversion from other databases" — the `@firebird` chat participant's
+ * `/migrate` slash command. Takes DDL from another RDBMS (MySQL, PostgreSQL, SQL Server, legacy
+ * InterBase) and asks for the Firebird-dialect equivalent, rather than a dedicated parsing engine
+ * for every source dialect — inspired by vscode-pgsql's AI-powered Oracle-to-PostgreSQL schema
+ * migration assistant.
+ */
+export function buildMigrateMessages(sourceDdl: string, schemaBlock: string): vscode.LanguageModelChatMessage[] {
+    return [
+        vscode.LanguageModelChatMessage.User(systemPrompt(schemaBlock)),
+        vscode.LanguageModelChatMessage.User(
+            'Convert the following DDL (from another database system — MySQL, PostgreSQL, SQL Server, ' +
+            'Oracle, or legacy InterBase — infer which one from its syntax) into equivalent Firebird SQL DDL. ' +
+            'Map data types to their closest Firebird equivalent (e.g. AUTO_INCREMENT/SERIAL/IDENTITY -> a ' +
+            'GENERATOR/SEQUENCE plus a trigger or IDENTITY column depending on the target Firebird version, ' +
+            'TEXT -> BLOB SUB_TYPE TEXT, BOOLEAN -> BOOLEAN or SMALLINT depending on version, ENUM -> a CHECK ' +
+            'constraint or DOMAIN). Output the converted DDL inside a fenced ```sql code block, followed by a ' +
+            'short list of the notable conversions/assumptions you made.\n\n' +
+            '```sql\n' + sourceDdl + '\n```'
+        ),
+    ];
+}
+
+/**
  * "AI analysis of query results" — summarizes/explains an already-executed query's result set
  * (not the SQL itself, that's buildExplainMessages()'s job). headers/rows are the same
  * already-rendered strings the results webview displays, reused here via renderTableAsMarkdown()

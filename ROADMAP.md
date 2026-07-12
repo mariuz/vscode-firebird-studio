@@ -111,7 +111,7 @@ The following features are adapted from Microsoft's [PostgreSQL extension for VS
 
 - [x] MCP Server — expose this extension's own connection/schema/query-execution tooling to *any* MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode), not just the `@firebird` chat participant, which only works inside this extension's own Copilot Chat integration ([design doc](docs/roadmap/mcp-server.md))
 - [x] AI Query Actions in the editor — right-click selected SQL for Explain/Optimize (reusing the existing `/explain`/`/optimize` chat logic) without first opening the chat panel
-- [ ] AI-assisted DDL conversion from other databases — a `/migrate` chat participant command that takes pasted DDL from another RDBMS (MySQL, PostgreSQL, SQL Server, legacy InterBase) and asks Copilot for the Firebird-dialect equivalent, reusing the existing `src/copilot/prompts.ts` system-prompt/message-builder pattern rather than a new parsing engine — inspired by vscode-pgsql's AI-powered Oracle-to-PostgreSQL schema migration assistant
+- [x] AI-assisted DDL conversion from other databases — a `/migrate` chat participant command that takes pasted DDL from another RDBMS (MySQL, PostgreSQL, SQL Server, legacy InterBase) and asks Copilot for the Firebird-dialect equivalent, reusing the existing `src/copilot/prompts.ts` system-prompt/message-builder pattern rather than a new parsing engine — inspired by vscode-pgsql's AI-powered Oracle-to-PostgreSQL schema migration assistant
 
 ### Query execution & results
 

@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.51 - 2026-07-13
+
+### Added
+
+- **`/migrate` Copilot chat command** — paste (or have open in the editor) DDL from MySQL, PostgreSQL, SQL Server, Oracle, or legacy InterBase and ask `@firebird /migrate` to convert it to Firebird SQL, mapping data types (AUTO_INCREMENT/SERIAL/IDENTITY, TEXT, BOOLEAN, ENUM, ...) to their closest Firebird equivalent.
+
 ## 0.1.50 - 2026-07-13
 
 ### Added
