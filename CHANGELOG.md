@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.49 - 2026-07-13
+
+### Added
+
+- **AI analysis of query results** — a **🤖 Analyze** button on each result grid (when the query that produced it is known, e.g. from **Run Firebird Query**) sends the result set to Copilot for a concise summary — notable patterns, outliers, counts worth mentioning — opened beside the editor. Reuses the same prompt-building pattern as `/explain`/`/optimize`.
+
 ## 0.1.48 - 2026-07-12
 
 ### Added

@@ -125,7 +125,7 @@ $(() => {
         $panel.append($("<div>").addClass("result-message").text(r.message));
       } else if (r.tableBody && r.tableBody.length) {
         const tableId = `batch-table-${i}`;
-        buildEditableTable($panel, tableId, r.tableHeader, r.tableBody, recordsPerPage, r.editableTable);
+        buildEditableTable($panel, tableId, r.tableHeader, r.tableBody, recordsPerPage, r.editableTable, r.fullSql);
         $batchDiv.append($panel);
         return; // don't fall through to append again
       } else {
@@ -160,7 +160,7 @@ $(() => {
 
   // ── Editable result table (shared by both single and batch views) ────────
 
-  function buildEditableTable($container, tableId, headers, tableBody, recordsPerPage, editableTable) {
+  function buildEditableTable($container, tableId, headers, tableBody, recordsPerPage, editableTable, sql) {
     const $wrapper = $("<div>").addClass("container batch-table-wrapper");
 
     const $editToolbar = $("<div>").addClass("edit-toolbar");
@@ -177,7 +177,25 @@ $(() => {
     const $copyInClause  = $("<button>").addClass("btn-grid-action btn-copy-in").text("Copy as IN (...)");
     const $chartToggle  = $("<button>").addClass("btn-grid-action btn-chart-toggle").text("📊 Chart");
     const $status       = $("<span>").addClass("edit-status");
-    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle, $status);
+    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle);
+
+    // "🤖 Analyze" only makes sense when we actually know the SQL that produced this result set
+    // (the single/legacy display() path — predefined actions like Show Table Info — doesn't track
+    // it, only batch results from firebird.runQuery do).
+    if (sql) {
+      const $analyzeBtn = $("<button>").addClass("btn-grid-action btn-analyze-results").text("🤖 Analyze");
+      $analyzeBtn.on("click", () => {
+        $analyzeBtn.prop("disabled", true).text("🤖 Analyzing…");
+        vscode.postMessage({
+          command: "analyzeResults",
+          data: { sql, headers: headers.map(h => h.title), rows: tableBody },
+        });
+        setTimeout(() => $analyzeBtn.prop("disabled", false).text("🤖 Analyze"), 3000);
+      });
+      $editToolbar.append($analyzeBtn);
+    }
+
+    $editToolbar.append($status);
 
     const $table = $("<table>")
       .attr("id", tableId)

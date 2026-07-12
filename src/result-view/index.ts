@@ -13,7 +13,10 @@ type ResultSet = Array<any>;
 
 /** Shape of a single result-set payload sent to the webview. */
 export interface PreparedResultSet {
+  /** Truncated to ~80 chars — display-only, used for the batch tab label. */
   sql: string;
+  /** Untruncated statement text, used by the "🤖 Analyze" button so a long query isn't cut off mid-clause for the AI prompt. */
+  fullSql: string;
   tableHeader: { title: string }[];
   tableBody: string[][];
   rowCount: number;
@@ -30,6 +33,13 @@ interface ApplyChangesRequest {
   tableName: string;
   columns: string[];
   changes: RowChange[];
+}
+
+/** Payload for the "analyzeResults" message sent from the webview's "🤖 Analyze" button. */
+export interface AnalyzeResultsRequest {
+  sql: string;
+  headers: string[];
+  rows: string[][];
 }
 
 export default class ResultView extends QueryResultsView implements Disposable {
@@ -83,6 +93,14 @@ export default class ResultView extends QueryResultsView implements Disposable {
 
     if (message.command === "applyChanges") {
       this.handleApplyChanges(message.data as ApplyChangesRequest);
+      return;
+    }
+
+    if (message.command === "analyzeResults") {
+      // Delegated to extension.ts (which owns the Copilot/schema-provider wiring) via this
+      // EventEmitter base class, the same way this whole class avoids depending on src/copilot
+      // directly.
+      this.emit("analyzeResults", message.data as AnalyzeResultsRequest);
       return;
     }
   }
@@ -196,19 +214,19 @@ export default class ResultView extends QueryResultsView implements Disposable {
   private prepareBatchResult(r: BatchResult): PreparedResultSet {
     const decoder = new TextDecoder();
     const editableTable = extractTableNames(r.sql)[0];
-    const label = r.sql.replace(/\s+/g, " ").trim();
-    const sql = label.length > 80 ? label.slice(0, 77) + "..." : label;
+    const fullSql = r.sql.replace(/\s+/g, " ").trim();
+    const sql = fullSql.length > 80 ? fullSql.slice(0, 77) + "..." : fullSql;
 
     if (r.error) {
-      return { sql, tableHeader: [], tableBody: [], rowCount: 0, durationMs: r.durationMs, error: r.error };
+      return { sql, fullSql, tableHeader: [], tableBody: [], rowCount: 0, durationMs: r.durationMs, error: r.error };
     }
     if (r.message || !r.rows || r.rows.length === 0) {
-      return { sql, tableHeader: [], tableBody: [], rowCount: 0, durationMs: r.durationMs, message: r.message };
+      return { sql, fullSql, tableHeader: [], tableBody: [], rowCount: 0, durationMs: r.durationMs, message: r.message };
     }
 
     const tableHeader = Object.keys(r.rows[0]).map(f => ({ title: f }));
     const tableBody = r.rows.map(row => encodeRow(row, decoder));
-    return { sql, tableHeader, tableBody, rowCount: r.rows.length, durationMs: r.durationMs, editableTable };
+    return { sql, fullSql, tableHeader, tableBody, rowCount: r.rows.length, durationMs: r.durationMs, editableTable };
   }
 }
 

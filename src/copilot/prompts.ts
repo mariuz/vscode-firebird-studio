@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { renderTableAsMarkdown } from '../shared/notebook-render';
 
 /**
  * Prompt-building shared between the `@firebird` chat participant's `/optimize`/`/explain` slash
@@ -43,6 +44,31 @@ export function buildExplainMessages(sql: string, schemaBlock: string): vscode.L
             'Explain the following Firebird SQL query in plain English. ' +
             'Break it down step by step so a beginner can understand it.\n\n' +
             '```sql\n' + sql + '\n```'
+        ),
+    ];
+}
+
+/**
+ * "AI analysis of query results" — summarizes/explains an already-executed query's result set
+ * (not the SQL itself, that's buildExplainMessages()'s job). headers/rows are the same
+ * already-rendered strings the results webview displays, reused here via renderTableAsMarkdown()
+ * rather than re-querying the database for the same data a second time.
+ */
+export function buildAnalyzeResultsMessages(
+    sql: string,
+    headers: string[],
+    rows: string[][],
+    schemaBlock: string
+): vscode.LanguageModelChatMessage[] {
+    const table = renderTableAsMarkdown(headers, rows);
+    return [
+        vscode.LanguageModelChatMessage.User(systemPrompt(schemaBlock)),
+        vscode.LanguageModelChatMessage.User(
+            'The user ran the following Firebird SQL query and got the result set below. ' +
+            'Summarize what the results show — notable patterns, outliers, totals or counts worth ' +
+            'mentioning, and anything that looks unexpected or worth a second look. ' +
+            'Be concise: a short paragraph or a few bullet points, not an exhaustive essay.\n\n' +
+            '```sql\n' + sql + '\n```\n\n' + table
         ),
     ];
 }

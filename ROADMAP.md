@@ -80,7 +80,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 - [x] Results grid: column freeze/show/hide, copy selection as an `INSERT` statement, copy selection as a SQL `IN (...)` clause
 - [x] Configurable keyboard shortcuts for query/result actions (a `firebird.shortcuts` setting, mirroring `mssql.shortcuts`)
 - [x] Per-session transaction isolation level, lock timeout, and other `SET`-option controls exposed as settings
-- [ ] AI analysis of query results in the results panel — reuse the existing `/explain`/`/optimize` chat-prompt-building pattern (`src/copilot/prompts.ts`) to summarize/explain a result set on request, mirroring mssql's own "future" roadmap item for Copilot-assisted result analysis
+- [x] AI analysis of query results in the results panel — reuse the existing `/explain`/`/optimize` chat-prompt-building pattern (`src/copilot/prompts.ts`) to summarize/explain a result set on request, mirroring mssql's own "future" roadmap item for Copilot-assisted result analysis
 
 ### Data import/export & integration
 

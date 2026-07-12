@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { KeywordsDb } from '../language-server/db-words.provider';
 import { buildSchemaContext } from './schema-context';
-import { buildOptimizeMessages, buildExplainMessages } from './prompts';
+import { buildOptimizeMessages, buildExplainMessages, buildAnalyzeResultsMessages } from './prompts';
 import { getActiveEditorSql } from './copilot-chat-participant';
 import { logger } from '../logger/logger';
 
@@ -23,29 +23,23 @@ export function registerAiQueryActions(context: vscode.ExtensionContext, schemaP
     );
 }
 
-async function runAiQueryAction(kind: ActionKind, schemaProvider: KeywordsDb): Promise<void> {
-    const sql = getActiveEditorSql();
-    if (!sql.trim()) {
-        logger.showError('Open a .sql file and select (or place your cursor in) a query first.');
-        return;
+async function getSchemaBlock(schemaProvider: KeywordsDb): Promise<string> {
+    try {
+        return buildSchemaContext(await schemaProvider.getSchema());
+    } catch {
+        logger.warn('Could not load database schema for AI Query Actions context.');
+        return '';
     }
+}
 
+/** Shared by every AI Query Action: select a model, run the request with a progress notification, open the streamed response beside the editor. */
+async function sendToModelAndShowResult(messages: vscode.LanguageModelChatMessage[], title: string): Promise<void> {
     const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
     if (models.length === 0) {
         logger.showError('No Copilot language model is available. Make sure GitHub Copilot Chat is installed and you\'re signed in.');
         return;
     }
     const model = models[0];
-
-    let schema = '';
-    try {
-        schema = buildSchemaContext(await schemaProvider.getSchema());
-    } catch {
-        logger.warn('Could not load database schema for AI Query Actions context.');
-    }
-
-    const messages = kind === 'optimize' ? buildOptimizeMessages(sql, schema) : buildExplainMessages(sql, schema);
-    const title = kind === 'optimize' ? 'Optimizing query…' : 'Explaining query…';
 
     await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title, cancellable: true },
@@ -63,6 +57,38 @@ async function runAiQueryAction(kind: ActionKind, schemaProvider: KeywordsDb): P
             }
         }
     );
+}
+
+async function runAiQueryAction(kind: ActionKind, schemaProvider: KeywordsDb): Promise<void> {
+    const sql = getActiveEditorSql();
+    if (!sql.trim()) {
+        logger.showError('Open a .sql file and select (or place your cursor in) a query first.');
+        return;
+    }
+
+    const schema = await getSchemaBlock(schemaProvider);
+    const messages = kind === 'optimize' ? buildOptimizeMessages(sql, schema) : buildExplainMessages(sql, schema);
+    const title = kind === 'optimize' ? 'Optimizing query…' : 'Explaining query…';
+    await sendToModelAndShowResult(messages, title);
+}
+
+/**
+ * "AI analysis of query results" — reachable from the results panel's "🤖 Analyze" button
+ * (src/result-view/index.ts emits "analyzeResults", wired up in extension.ts), not the editor.
+ * Reuses sendToModelAndShowResult() exactly like the Explain/Optimize actions above.
+ */
+export async function runAnalyzeResultsAction(
+    data: { sql: string; headers: string[]; rows: string[][] },
+    schemaProvider: KeywordsDb
+): Promise<void> {
+    if (!data.rows || data.rows.length === 0) {
+        logger.showError('No result rows to analyze.');
+        return;
+    }
+
+    const schema = await getSchemaBlock(schemaProvider);
+    const messages = buildAnalyzeResultsMessages(data.sql, data.headers, data.rows, schema);
+    await sendToModelAndShowResult(messages, 'Analyzing results…');
 }
 
 function handleModelError(err: unknown): void {

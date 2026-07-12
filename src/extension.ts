@@ -10,7 +10,7 @@ import {Global} from "./shared/global";
 import {CredentialStore} from "./shared/credential-store";
 import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
-import QueryResultsView from "./result-view";
+import QueryResultsView, {AnalyzeResultsRequest} from "./result-view";
 import {SchemaDesigner} from "./schema-designer";
 import {QueryPlanView} from "./query-plan-view";
 import {ProfilerView} from "./profiler";
@@ -26,7 +26,7 @@ import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
 import {fetchSchemaSnapshot, diffSchemas, renderDiffReport} from "./schema-diff/schema-diff";
 import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
 import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
-import {registerAiQueryActions} from "./copilot/ai-query-actions";
+import {registerAiQueryActions, runAnalyzeResultsAction} from "./copilot/ai-query-actions";
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
@@ -173,6 +173,12 @@ export function activate(context: ExtensionContext) {
 
   /* AI Query Actions in the editor (right-click SQL -> Explain/Optimize, no chat panel needed) */
   registerAiQueryActions(context, firebirdDatabaseWords);
+
+  /* AI analysis of query results — the results panel's own "🤖 Analyze" button, wired through
+     ResultView's EventEmitter base rather than a direct src/copilot import in result-view/. */
+  firebirdQueryResults.on("analyzeResults", (data: AnalyzeResultsRequest) => {
+    runAnalyzeResultsAction(data, firebirdDatabaseWords).catch((err: any) => logger.error(err?.message ?? err));
+  });
 
   /* SQL Notebooks (.fbnb) — serializer + execution controller */
   context.subscriptions.push(...registerSqlNotebook(context));
