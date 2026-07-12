@@ -13,7 +13,7 @@
 
 import * as assert from 'assert';
 import * as Firebird from 'node-firebird';
-import { Driver, ClientI, HistoryLogEntry, extractTableNames, toNodeFirebirdOptions } from '../shared/driver';
+import { Driver, ClientI, HistoryLogEntry, extractTableNames, toNodeFirebirdOptions, NodeClient } from '../shared/driver';
 import { ConnectionOptions } from '../interfaces';
 import { CredentialStore } from '../shared/credential-store';
 import { createMockContext } from './mocks/vscode';
@@ -169,6 +169,37 @@ suite('Driver – toNodeFirebirdOptions()', function () {
     const opts = toNodeFirebirdOptions(baseConnection({ embedded: true }));
     assert.strictEqual(opts.host, undefined);
     assert.strictEqual(opts.port, undefined);
+  });
+});
+
+// ── NodeClient.createConnection() — embedded guard ────────────────────────────
+//
+// node-firebird only ever speaks the wire protocol over TCP: with no host/port
+// it falls back to 127.0.0.1:3050 instead of opening the local file directly,
+// which would silently connect to the wrong database. NodeClient must refuse
+// embedded connections instead, directing the user to the native driver.
+
+suite('NodeClient.createConnection() – embedded connections', function () {
+  function baseConnection(overrides: Partial<ConnectionOptions> = {}): ConnectionOptions {
+    return {
+      id: 'test',
+      host: '',
+      port: null,
+      database: '/data/test.fdb',
+      user: 'sysdba',
+      password: 'masterkey',
+      role: null,
+      embedded: true,
+      ...overrides,
+    };
+  }
+
+  test('rejects with a message pointing at the native driver setting', async function () {
+    const client = new NodeClient();
+    await assert.rejects(
+      client.createConnection(baseConnection()),
+      /native driver/i
+    );
   });
 });
 

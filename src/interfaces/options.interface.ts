@@ -12,4 +12,10 @@ export interface Options {
   showSystemObjects: boolean;
   /** Explicit path to the docker executable; empty string means "search PATH". */
   dockerPath: string;
+  /** When true, idle connections are kept alive and reused instead of reconnecting per query. */
+  enableConnectionPooling: boolean;
+  /** Max idle connections retained per saved connection when pooling is enabled. */
+  connectionPoolMaxSize: number;
+  /** How long (ms) an idle pooled connection is kept before being closed. */
+  connectionPoolIdleTimeoutMs: number;
 }

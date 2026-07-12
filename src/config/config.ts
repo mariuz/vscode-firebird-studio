@@ -16,7 +16,10 @@ export function getOptions() {
     useNativeDriver: _useNativeDriver(),
     isqlPath: _isqlPath(),
     showSystemObjects: _showSystemObjects(),
-    dockerPath: _dockerPath()
+    dockerPath: _dockerPath(),
+    enableConnectionPooling: _enableConnectionPooling(),
+    connectionPoolMaxSize: _connectionPoolMaxSize(),
+    connectionPoolIdleTimeoutMs: _connectionPoolIdleTimeoutMs()
   } as Options;
 }
 
@@ -112,6 +115,39 @@ function _showSystemObjects(): boolean {
     return showSystemObjects;
   }
   return showSystemObjectsConf;
+}
+
+function _enableConnectionPooling(): boolean {
+  const conf: any = getConfig().get("enableConnectionPooling");
+  const enableConnectionPooling: boolean = properties["firebird.enableConnectionPooling"]["default"];
+
+  if (typeof conf !== "boolean") {
+    logger.error("Invalid value detected in Enable Connection Pooling settings. Fallback to default value.");
+    return enableConnectionPooling;
+  }
+  return conf;
+}
+
+function _connectionPoolMaxSize(): number {
+  const conf: any = getConfig().get("connectionPool.maxSize");
+  const connectionPoolMaxSize: number = properties["firebird.connectionPool.maxSize"]["default"];
+
+  if (typeof conf !== "number" || conf < 1) {
+    logger.error("Invalid value detected in Connection Pool Max Size settings. Fallback to default value.");
+    return connectionPoolMaxSize;
+  }
+  return conf;
+}
+
+function _connectionPoolIdleTimeoutMs(): number {
+  const conf: any = getConfig().get("connectionPool.idleTimeoutMs");
+  const connectionPoolIdleTimeoutMs: number = properties["firebird.connectionPool.idleTimeoutMs"]["default"];
+
+  if (typeof conf !== "number" || conf < 1) {
+    logger.error("Invalid value detected in Connection Pool Idle Timeout settings. Fallback to default value.");
+    return connectionPoolIdleTimeoutMs;
+  }
+  return conf;
 }
 
 function _recordsPerPage(): string {

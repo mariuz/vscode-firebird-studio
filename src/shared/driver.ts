@@ -7,6 +7,7 @@ import type { Attachment, Client, ResultSet} from 'node-firebird-driver-native';
 import {simpleCallbackToPromise, getConnectionLabel} from './utils';
 import {CredentialStore} from './credential-store';
 import {splitStatements} from './sql-splitter';
+import {PooledClient, ConnectionPoolOptions} from './connection-pool';
 import * as fs from 'fs';
 import path = require('path');
 
@@ -36,9 +37,24 @@ export interface HistoryLogEntry {
 
 export class Driver {
 
-  static setClient(useNativeDriver: boolean, context: ExtensionContext) {
+  static async setClient(
+    useNativeDriver: boolean,
+    context: ExtensionContext,
+    pooling?: ConnectionPoolOptions
+  ): Promise<void> {
     CredentialStore.setContext(context);
-    this.client = useNativeDriver ? new NativeClient(context.extensionUri.fsPath) : new NodeClient();
+    if (this.client instanceof PooledClient) {
+      await this.client.shutdown();
+    }
+    const rawClient: ClientI<any> = useNativeDriver ? new NativeClient(context.extensionUri.fsPath) : new NodeClient();
+    this.client = pooling ? new PooledClient(rawClient, pooling) : rawClient;
+  }
+
+  /** Closes any pooled idle connections. Call on extension deactivation. */
+  static async shutdown(): Promise<void> {
+    if (this.client instanceof PooledClient) {
+      await this.client.shutdown();
+    }
   }
 
   static client: ClientI<any>;
@@ -407,6 +423,14 @@ export class NodeClient implements ClientI<Firebird.Database> {
   }
 
   public async createConnection(connectionOptions: ConnectionOptions): Promise<Firebird.Database> {
+    if (connectionOptions.embedded) {
+      // node-firebird only ever speaks the wire protocol over TCP — it has no embedded-engine
+      // support, so without host/port it would silently fall back to 127.0.0.1:3050 instead of
+      // opening the local file directly. Fail loudly rather than connecting to the wrong thing.
+      throw new Error(
+        "Embedded database connections require the native driver. Enable \"firebird.useNativeDriver\" in settings to connect to this database."
+      );
+    }
     const opts = toNodeFirebirdOptions(connectionOptions);
     return await new Promise<Firebird.Database>((resolve, reject) => {
       Firebird.attach(opts, (err, db) => {

@@ -96,6 +96,25 @@ This compiles the native Node.js addon using `node-gyp`. Ensure you have a C++ b
 
 ---
 
+## Connection Pooling
+
+By default, every query opens a fresh connection and closes it afterward — simple and safe, but each round-trip pays the cost of a new Firebird attachment. Enable pooling to keep idle connections open and reuse them for the next query against the same saved connection:
+
+```json
+{
+  "firebird.enableConnectionPooling": true,
+  "firebird.connectionPool.maxSize": 5,
+  "firebird.connectionPool.idleTimeoutMs": 60000
+}
+```
+
+- `firebird.connectionPool.maxSize` — how many idle connections to keep per saved connection before extra ones are closed for real.
+- `firebird.connectionPool.idleTimeoutMs` — how long an idle connection is kept before being closed.
+
+Pooling works with both the pure-JS and native drivers, and is off by default since reusing connections changes when a physical Firebird attachment is opened/closed — most useful when running many queries back-to-back against the same database (e.g. exploring the tree, repeated ad hoc queries).
+
+---
+
 ## Managing Connections
 
 ### Remove a Host

@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -374,6 +374,21 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "[Experimental] Use native driver instead of the node based driver *Needs to have FireBird installed* (required for WireCrypt support)"
+        },
+        "firebird.enableConnectionPooling": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Keep idle connections open and reuse them for subsequent queries instead of reconnecting every time, improving performance on repeated queries against the same database."
+        },
+        "firebird.connectionPool.maxSize": {
+          "type": "number",
+          "default": 5,
+          "markdownDescription": "Maximum number of idle connections retained per saved connection when `#firebird.enableConnectionPooling#` is on."
+        },
+        "firebird.connectionPool.idleTimeoutMs": {
+          "type": "number",
+          "default": 60000,
+          "markdownDescription": "How long (in milliseconds) an idle pooled connection is kept before being closed, when `#firebird.enableConnectionPooling#` is on."
         },
         "firebird.isqlPath": {
           "type": "string",

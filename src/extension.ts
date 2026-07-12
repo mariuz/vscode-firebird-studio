@@ -28,6 +28,12 @@ import {getConnectionLabel} from "./shared/utils";
 /** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
+function poolingOptions(config: Options): { maxSize: number; idleTimeoutMs: number } | undefined {
+  return config.enableConnectionPooling
+    ? { maxSize: config.connectionPoolMaxSize, idleTimeoutMs: config.connectionPoolIdleTimeoutMs }
+    : undefined;
+}
+
 export function activate(context: ExtensionContext) {
   logger.info(`Activating extension ...`);
 
@@ -37,12 +43,12 @@ export function activate(context: ExtensionContext) {
   /* load configuration and reload every time it's changed */
   logger.info(`Loading configuration...`);
   let config: Options = getOptions();
-  Driver.setClient(config.useNativeDriver, context);
+  void Driver.setClient(config.useNativeDriver, context, poolingOptions(config));
   context.subscriptions.push(
     workspace.onDidChangeConfiguration(() => {
       logger.debug("Configuration changed. Reloading configuration...");
       config = getOptions();
-      Driver.setClient(config.useNativeDriver, context);
+      void Driver.setClient(config.useNativeDriver, context, poolingOptions(config));
       commands.executeCommand("firebird.explorer.refresh");
     })
   );
@@ -960,5 +966,9 @@ export function activate(context: ExtensionContext) {
       queryHistoryProvider.refresh();
     })
   );
+}
+
+export async function deactivate(): Promise<void> {
+  await Driver.shutdown();
 }
 

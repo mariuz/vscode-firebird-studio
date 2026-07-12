@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.22 - 2026-07-12
+
+### Added
+
+- **Connection pooling** — new `firebird.enableConnectionPooling` setting (off by default) keeps idle connections open and reuses them for subsequent queries against the same saved connection instead of reconnecting every time, with `firebird.connectionPool.maxSize` and `firebird.connectionPool.idleTimeoutMs` controlling pool size and idle lifetime. Works with both the native and pure-JS drivers.
+
+### Fixed
+
+- The pure-JS driver now fails loudly with a clear message when asked to open an "embedded" connection, instead of silently connecting to a Firebird server on `127.0.0.1:3050` — `node-firebird` has no embedded-engine support, so embedded databases require `firebird.useNativeDriver`
+
 ## 0.1.21 - 2026-07-12
 
 ### Added
