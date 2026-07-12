@@ -95,6 +95,23 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 - [ ] Local Firebird container **creation** — provision a new Dockerized Firebird server from the extension, extending today's detect-existing-containers support
 - [ ] Connection dialog: color-coded connection groups, and paste a full connection string to prefill fields
 
+## Inspired by vscode-pgsql
+
+The following features are adapted from Microsoft's [PostgreSQL extension for VS Code](https://marketplace.visualstudio.com/items?itemName=ms-ossdata.vscode-pgsql) (`ms-ossdata.vscode-pgsql`; see also its [overview docs](https://learn.microsoft.com/en-us/azure/postgresql/development/vs-code-extension/postgresql-extension-overview)), reviewed — including its demo GIFs, not just its written docs — for what's applicable to Firebird. Several of its features overlap with items already tracked above under "Inspired by vscode-mssql" (schema visualization, results export, connection groups, object search, container creation) and aren't repeated here; this section covers what's genuinely new.
+
+### AI & agent integration
+
+- [ ] MCP Server — expose this extension's own connection/schema/query-execution tooling to *any* MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode), not just the `@firebird` chat participant, which only works inside this extension's own Copilot Chat integration ([design doc](docs/roadmap/mcp-server.md))
+- [ ] AI Query Actions in the editor — right-click selected SQL for Explain/Optimize (reusing the existing `/explain`/`/optimize` chat logic) without first opening the chat panel
+
+### Query execution & results
+
+- [ ] Chart visualization for query results — render numeric result columns as line/bar/pie/scatter charts directly in the results panel, alongside the existing grid view
+
+### Object explorer
+
+- [ ] Generic "Script as Create" / "Script as Drop" — reverse-engineer any selected object's DDL from one tree action regardless of type, rather than only tables/procedures/views/triggers each having their own bespoke edit command
+
 ## Testing and CI
 
 - [x] E2E test matrix covering Firebird 3, 4, 5, and 6 (snapshot) across Node.js 24-26, mirroring [node-firebird's own CI](https://github.com/mariuz/node-firebird/blob/master/.github/workflows/node.js.yml) so driver-compatibility regressions surface before they reach users on older or newer servers
@@ -103,4 +120,4 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 
 > **Note**: This roadmap is subject to change based on community feedback and contributions. Feature requests and suggestions are welcome via [GitHub Issues](https://github.com/mariuz/vscode-firebird-studio/issues).
 >
-> Inspired by the features announced in [Microsoft's IDE for PostgreSQL in VS Code](https://techcommunity.microsoft.com/blog/adforpostgresql/announcing-a-new-ide-for-postgresql-in-vs-code-from-microsoft/4414648) and by [Microsoft's vscode-mssql extension](https://github.com/microsoft/vscode-mssql) for SQL Server.
+> Inspired by the features announced in [Microsoft's IDE for PostgreSQL in VS Code](https://techcommunity.microsoft.com/blog/adforpostgresql/announcing-a-new-ide-for-postgresql-in-vs-code-from-microsoft/4414648), by [Microsoft's vscode-mssql extension](https://github.com/microsoft/vscode-mssql) for SQL Server, and by [Microsoft's vscode-pgsql extension](https://marketplace.visualstudio.com/items?itemName=ms-ossdata.vscode-pgsql) for PostgreSQL.
