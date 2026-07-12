@@ -175,14 +175,43 @@ $(() => {
     const $freezeToggle  = $("<button>").addClass("btn-grid-action btn-freeze-col").text("❄ Freeze Column");
     const $copyInsert    = $("<button>").addClass("btn-grid-action btn-copy-insert").text("Copy as INSERT");
     const $copyInClause  = $("<button>").addClass("btn-grid-action btn-copy-in").text("Copy as IN (...)");
+    const $chartToggle  = $("<button>").addClass("btn-grid-action btn-chart-toggle").text("📊 Chart");
     const $status       = $("<span>").addClass("edit-status");
-    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $status);
+    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle, $status);
 
     const $table = $("<table>")
       .attr("id", tableId)
       .addClass("row-border order-column cell-border compact display")
       .css("width", "100%");
-    $wrapper.append($editToolbar, $table);
+
+    // ── Chart panel (hidden until "📊 Chart" is toggled) ──────────────────────
+    const $chartTypeSelect = $("<select>").addClass("chart-type-select").append(
+      $("<option>").val("bar").text("Bar"),
+      $("<option>").val("line").text("Line"),
+      $("<option>").val("pie").text("Pie"),
+      $("<option>").val("scatter").text("Scatter")
+    );
+    const $chartXSelect = $("<select>").addClass("chart-axis-select chart-x-select");
+    const $chartYSelect = $("<select>").addClass("chart-axis-select chart-y-select");
+    headers.forEach((h, i) => {
+      $chartXSelect.append($("<option>").val(i).text(h.title));
+      $chartYSelect.append($("<option>").val(i).text(h.title));
+    });
+    const $chartNote = $("<span>").addClass("chart-note");
+    const $chartConfig = $("<div>").addClass("chart-config").append(
+      $("<label>").text("Type ").append($chartTypeSelect),
+      $("<label>").text(" X-axis ").append($chartXSelect),
+      $("<label>").text(" Y-axis ").append($chartYSelect),
+      $chartNote
+    );
+    const $chartContainer = $("<div>").addClass("chart-container");
+    const $chartPanel = $("<div>").addClass("chart-panel").append($chartConfig, $chartContainer).hide();
+
+    // Default Y-axis to the first numeric column found, if any — usually what you want charted.
+    const numericColumns = detectNumericColumns(headers, tableBody);
+    if (numericColumns.length > 0) { $chartYSelect.val(String(numericColumns[0])); }
+
+    $wrapper.append($editToolbar, $table, $chartPanel);
     $container.append($wrapper);
 
     // A leading "actions" column (row-delete toggle) is always present but
@@ -473,6 +502,55 @@ $(() => {
       $status.text(`Copied an IN (...) clause with ${values.length} value(s) to the clipboard.`);
     });
 
+    // ── Chart panel ──────────────────────────────────────────────────────────
+    // Renders straight from the original tableBody/headers (not DataTables' current
+    // sort/filter/page state) — a deliberate scope cut for a first pass; capped to the
+    // first CHART_MAX_ROWS rows so a huge result set doesn't produce an unreadable chart.
+    const CHART_MAX_ROWS = 200;
+
+    function renderChart() {
+      const type = $chartTypeSelect.val();
+      const xIndex = parseInt($chartXSelect.val(), 10);
+      const yIndex = parseInt($chartYSelect.val(), 10);
+      const rows = tableBody.slice(0, CHART_MAX_ROWS);
+      const labels = rows.map(r => r[xIndex]);
+      const yValues = rows.map(r => Number(r[yIndex]));
+
+      if (yValues.some(v => Number.isNaN(v))) {
+        $chartContainer.html('<p class="chart-error">The selected Y-axis column isn\'t numeric.</p>');
+        $chartNote.text("");
+        return;
+      }
+
+      let svg;
+      if (type === "bar") {
+        svg = buildBarChartSvg(labels, yValues);
+      } else if (type === "line") {
+        svg = buildLineChartSvg(labels, yValues);
+      } else if (type === "pie") {
+        svg = buildPieChartSvg(labels, yValues);
+      } else {
+        const xValues = rows.map(r => Number(r[xIndex]));
+        if (xValues.some(v => Number.isNaN(v))) {
+          $chartContainer.html('<p class="chart-error">Scatter charts need a numeric X-axis column too.</p>');
+          $chartNote.text("");
+          return;
+        }
+        svg = buildScatterChartSvg(xValues, yValues);
+      }
+      $chartContainer.html(svg);
+      $chartNote.text(tableBody.length > CHART_MAX_ROWS ? `Showing first ${CHART_MAX_ROWS} of ${tableBody.length} rows.` : "");
+    }
+
+    $chartToggle.on("click", () => {
+      const shown = $chartPanel.toggle().is(":visible");
+      $chartToggle.toggleClass("active", shown);
+      if (shown) { renderChart(); }
+    });
+    $chartTypeSelect.on("change", renderChart);
+    $chartXSelect.on("change", renderChart);
+    $chartYSelect.on("change", renderChart);
+
     // Registered for firebird.shortcuts dispatch; first table built becomes the
     // default active one (tab 0), later ones only via an explicit tab click.
     tableActions[tableId] = {
@@ -593,6 +671,137 @@ $(() => {
       && !!event.metaKey === parsed.meta;
   }
 
+  // ── Chart rendering (pure — no DOM/jQuery; builds an SVG markup string) ─────
+  // Hand-rolled rather than a vendored charting library, matching this repo's convention
+  // (schema-designer's canvas, query-plan-view's diagram) of avoiding a new dependency for a
+  // few SVG shapes.
+
+  const CHART_WIDTH = 600;
+  const CHART_HEIGHT = 360;
+  const CHART_PADDING = 40;
+  const CHART_COLOR = "#4a90d9";
+  const CHART_PALETTE = ["#4a90d9", "#d94a4a", "#4ad97a", "#d9c94a", "#a94ad9", "#4ad9d0", "#d97a4a"];
+
+  function chartEscapeXml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  /** Returns the header titles of every column whose non-empty values are all numeric. */
+  function detectNumericColumns(headers, rows) {
+    const numericRe = /^-?\d+(\.\d+)?$/;
+    const indices = [];
+    headers.forEach((_h, colIndex) => {
+      const values = rows.map(r => r[colIndex]).filter(v => v !== undefined && v !== null && v !== "");
+      if (values.length > 0 && values.every(v => numericRe.test(String(v).trim()))) {
+        indices.push(colIndex);
+      }
+    });
+    return indices;
+  }
+
+  function chartAxes(width, height) {
+    return `<line x1="${CHART_PADDING}" y1="${CHART_PADDING}" x2="${CHART_PADDING}" y2="${height - CHART_PADDING}" stroke="currentColor" />` +
+      `<line x1="${CHART_PADDING}" y1="${height - CHART_PADDING}" x2="${width - CHART_PADDING}" y2="${height - CHART_PADDING}" stroke="currentColor" />`;
+  }
+
+  function buildBarChartSvg(labels, values, options) {
+    const width = (options && options.width) || CHART_WIDTH;
+    const height = (options && options.height) || CHART_HEIGHT;
+    const plotWidth = width - CHART_PADDING * 2;
+    const plotHeight = height - CHART_PADDING * 2;
+    const maxValue = Math.max(0, ...values) || 1;
+    const slot = values.length > 0 ? plotWidth / values.length : plotWidth;
+    const barWidth = slot * 0.7;
+
+    const bars = values.map((v, i) => {
+      const barHeight = (v / maxValue) * plotHeight;
+      const x = CHART_PADDING + i * slot + (slot - barWidth) / 2;
+      const y = CHART_PADDING + plotHeight - barHeight;
+      const label = chartEscapeXml(labels[i] != null ? labels[i] : "");
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" fill="${CHART_COLOR}"><title>${label}: ${v}</title></rect>`;
+    }).join("");
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%">${chartAxes(width, height)}${bars}</svg>`;
+  }
+
+  function buildLineChartSvg(labels, values, options) {
+    const width = (options && options.width) || CHART_WIDTH;
+    const height = (options && options.height) || CHART_HEIGHT;
+    const plotWidth = width - CHART_PADDING * 2;
+    const plotHeight = height - CHART_PADDING * 2;
+    const maxValue = Math.max(0, ...values);
+    const minValue = Math.min(0, ...values);
+    const range = (maxValue - minValue) || 1;
+    const step = values.length > 1 ? plotWidth / (values.length - 1) : 0;
+
+    const points = values.map((v, i) => {
+      const x = CHART_PADDING + i * step;
+      const y = CHART_PADDING + plotHeight - ((v - minValue) / range) * plotHeight;
+      return { x, y, label: labels[i], value: v };
+    });
+    const path = "M " + points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L ");
+    const circles = points.map(p => {
+      const label = chartEscapeXml(p.label != null ? p.label : "");
+      return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${CHART_COLOR}"><title>${label}: ${p.value}</title></circle>`;
+    }).join("");
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%">${chartAxes(width, height)}` +
+      `<path d="${path}" fill="none" stroke="${CHART_COLOR}" stroke-width="2" />${circles}</svg>`;
+  }
+
+  function buildPieChartSvg(labels, values, options) {
+    const width = (options && options.width) || CHART_WIDTH;
+    const height = (options && options.height) || CHART_HEIGHT;
+    const cx = width / 2;
+    const cy = height / 2;
+    const radius = Math.min(width, height) / 2 - CHART_PADDING;
+    const total = values.reduce((a, b) => a + b, 0) || 1;
+
+    let angle = -Math.PI / 2; // 12 o'clock
+    const slices = values.map((v, i) => {
+      const sliceAngle = (v / total) * Math.PI * 2;
+      const x1 = cx + radius * Math.cos(angle);
+      const y1 = cy + radius * Math.sin(angle);
+      const endAngle = angle + sliceAngle;
+      const x2 = cx + radius * Math.cos(endAngle);
+      const y2 = cy + radius * Math.sin(endAngle);
+      const largeArc = sliceAngle > Math.PI ? 1 : 0;
+      const path = `M ${cx.toFixed(1)},${cy.toFixed(1)} L ${x1.toFixed(2)},${y1.toFixed(2)} A ${radius.toFixed(1)},${radius.toFixed(1)} 0 ${largeArc} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z`;
+      angle = endAngle;
+      const color = CHART_PALETTE[i % CHART_PALETTE.length];
+      const label = chartEscapeXml(labels[i] != null ? labels[i] : "");
+      return `<path d="${path}" fill="${color}"><title>${label}: ${v}</title></path>`;
+    }).join("");
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%">${slices}</svg>`;
+  }
+
+  function buildScatterChartSvg(xValues, yValues, options) {
+    const width = (options && options.width) || CHART_WIDTH;
+    const height = (options && options.height) || CHART_HEIGHT;
+    const plotWidth = width - CHART_PADDING * 2;
+    const plotHeight = height - CHART_PADDING * 2;
+    const minX = Math.min(...xValues);
+    const maxX = Math.max(...xValues);
+    const minY = Math.min(...yValues);
+    const maxY = Math.max(...yValues);
+    const rangeX = (maxX - minX) || 1;
+    const rangeY = (maxY - minY) || 1;
+
+    const points = xValues.map((x, i) => {
+      const y = yValues[i];
+      const px = CHART_PADDING + ((x - minX) / rangeX) * plotWidth;
+      const py = CHART_PADDING + plotHeight - ((y - minY) / rangeY) * plotHeight;
+      return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3" fill="${CHART_COLOR}"><title>(${x}, ${y})</title></circle>`;
+    }).join("");
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%">${chartAxes(width, height)}${points}</svg>`;
+  }
+
   function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
@@ -613,6 +822,7 @@ $(() => {
     module.exports.__test__ = {
       sqlLiteral, buildInsertStatement, buildInClause, selectionRange,
       parseShortcut, matchesShortcut,
+      detectNumericColumns, buildBarChartSvg, buildLineChartSvg, buildPieChartSvg, buildScatterChartSvg,
     };
   }
 });

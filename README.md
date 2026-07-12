@@ -52,6 +52,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Color-coded connection groups**, and paste a full connection string to prefill the "Add New Connection" wizard
 - **MCP Server** — expose opted-in connections' schema to any MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode)
 - **AI Query Actions in the editor** — right-click SQL for Explain/Optimize without opening the Copilot Chat panel first
+- **Chart visualization for query results** — Bar/Line/Pie/Scatter charts alongside the results grid
 
 ## Getting Started
 
@@ -170,6 +171,8 @@ Right-click a database → **Monitor Database** opens a continuously-refreshing 
 ### Results Grid: Freeze, Show/Hide, and Copy as SQL
 
 Every result grid has a **Columns** button (show/hide any column) and a **❄ Freeze Column** toggle (pins the first column while you scroll a wide result horizontally). Click a cell, then shift-click another to select a rectangular range, and use **Copy as INSERT** or **Copy as IN (...)** to copy ready-to-paste SQL built from the selection — handy for turning a few rows you spotted into a repro `INSERT` or a `WHERE id IN (...)` filter elsewhere. All of these (plus **Enable Editing**, **+ Add Row**, and **Apply Changes**) also have configurable keyboard shortcuts — see `firebird.shortcuts` below.
+
+Click **📊 Chart** to reveal a chart alongside the grid: pick Bar, Line, Pie, or Scatter, and which column is the X-axis and which (numeric) column is the Y-axis — a numeric column is picked for you by default. Renders straight from the loaded result set, capped to the first 200 rows for readability.
 
 ### Flat File Import Wizard
 

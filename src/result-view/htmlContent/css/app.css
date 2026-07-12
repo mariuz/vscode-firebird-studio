@@ -409,3 +409,46 @@ body.vscode-high-contrast table.dataTable thead .sorting_desc {
 body.vscode-high-contrast table.dataTable thead .sorting {
   background-image: url("data:image/svg+xml,%3C%3Fxml version='1.0' encoding='utf-8'%3F%3E%3C!-- Generator: Adobe Illustrator 21.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0) --%3E%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 128 128' width='16' height='16' style='enable-background:new 0 0 128 128;' xml:space='preserve'%3E%3Cstyle type='text/css'%3E .st0%7Bfill:%237F8C8D;%7D %3C/style%3E%3Cpath class='st0' d='M41.5,70.3h44.9c4,0,6.1,5.1,3.2,8.1l-22.5,23.5c-1.8,1.9-4.6,1.9-6.4,0L38.3,78.4 C35.5,75.4,37.5,70.3,41.5,70.3z M89.7,49.6L67.2,26.1c-1.8-1.9-4.6-1.9-6.4,0L38.3,49.6c-2.8,3-0.8,8.1,3.2,8.1h44.9 C90.5,57.7,92.5,52.6,89.7,49.6z'/%3E%3C/svg%3E%0A");
 }
+
+/* ── Chart panel ──────────────────────────────────────────────────────────── */
+.chart-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--vscode-tab-border, #444);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, #252526);
+}
+.chart-config {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.chart-config select {
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+.chart-note {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+.chart-container {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.chart-container svg {
+  color: var(--vscode-editor-foreground, #ccc);
+  max-width: 100%;
+}
+.chart-error {
+  color: var(--vscode-errorForeground, #f44);
+  font-size: 12px;
+}
+.btn-chart-toggle.active {
+  background: var(--vscode-statusBarItem-prominentBackground, #00457a);
+}

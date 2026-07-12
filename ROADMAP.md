@@ -106,7 +106,7 @@ The following features are adapted from Microsoft's [PostgreSQL extension for VS
 
 ### Query execution & results
 
-- [ ] Chart visualization for query results — render numeric result columns as line/bar/pie/scatter charts directly in the results panel, alongside the existing grid view
+- [x] Chart visualization for query results — render numeric result columns as line/bar/pie/scatter charts directly in the results panel, alongside the existing grid view
 
 ### Object explorer
 

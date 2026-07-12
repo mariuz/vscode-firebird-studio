@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.43 - 2026-07-12
+
+### Added
+
+- **Chart visualization for query results** — a new **📊 Chart** button on every result grid reveals a Bar/Line/Pie/Scatter chart alongside the grid, picking any column as the X-axis and a numeric column as the Y-axis (auto-detected). Hand-rolled SVG, no new charting dependency.
+
 ## 0.1.42 - 2026-07-12
 
 ### Added
