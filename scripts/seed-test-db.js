@@ -8,21 +8,27 @@
  *
  * Environment variables (all optional, match the E2E workflow defaults):
  *   FIREBIRD_HOST, FIREBIRD_PORT, FIREBIRD_DATABASE,
- *   FIREBIRD_USER, FIREBIRD_PASSWORD
+ *   FIREBIRD_USER, FIREBIRD_PASSWORD, FIREBIRD_WIRE_CRYPT
  */
 
 'use strict';
 
 const Firebird = require('node-firebird');
 
+// Firebird 5 defaults to WireCrypt=Enabled; CI's container is explicitly
+// configured with WireCrypt=Disabled (see .github/workflows/vscode-host.yml
+// and e2e.yml), so that's kept as the default here too. Overridable via
+// FIREBIRD_WIRE_CRYPT=Enabled for a server that enforces encryption, where
+// 'Disabled' fails wire-protocol negotiation outright — node-firebird only
+// exposes an ENABLE/DISABLE client toggle (mirrors src/shared/driver.ts's own
+// 'Disabled' -> WIRE_CRYPT_DISABLE, anything else -> WIRE_CRYPT_ENABLE mapping).
 const options = {
   host:      process.env.FIREBIRD_HOST     || 'localhost',
   port:      Number(process.env.FIREBIRD_PORT || '3050'),
   database:  process.env.FIREBIRD_DATABASE || '/var/lib/firebird/data/test.fdb',
   user:      process.env.FIREBIRD_USER     || 'sysdba',
   password:  process.env.FIREBIRD_PASSWORD || 'masterkey',
-  // Firebird 5 defaults to WireCrypt=Enabled; disable for CI test connections
-  wireCrypt: Firebird.WIRE_CRYPT_DISABLE,
+  wireCrypt: process.env.FIREBIRD_WIRE_CRYPT === 'Enabled' ? Firebird.WIRE_CRYPT_ENABLE : Firebird.WIRE_CRYPT_DISABLE,
 };
 
 function attach(opts) {
