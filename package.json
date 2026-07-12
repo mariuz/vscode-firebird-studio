@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.44",
+  "version": "0.1.45",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -477,6 +477,11 @@
       {
         "command": "firebird.scriptAsDrop",
         "title": "Script as Drop",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.showPrivileges",
+        "title": "Show Object Privileges",
         "category": "Firebird"
       },
       {
@@ -1071,6 +1076,11 @@
           "group": "script@1"
         },
         {
+          "command": "firebird.showPrivileges",
+          "when": "view == firebird-explorer && viewItem == table",
+          "group": "script@2"
+        },
+        {
           "command": "firebird.scriptAsCreate",
           "when": "view == firebird-explorer && viewItem == view",
           "group": "script@0"
@@ -1081,6 +1091,11 @@
           "group": "script@1"
         },
         {
+          "command": "firebird.showPrivileges",
+          "when": "view == firebird-explorer && viewItem == view",
+          "group": "script@2"
+        },
+        {
           "command": "firebird.scriptAsCreate",
           "when": "view == firebird-explorer && viewItem == procedure",
           "group": "script@0"
@@ -1089,6 +1104,11 @@
           "command": "firebird.scriptAsDrop",
           "when": "view == firebird-explorer && viewItem == procedure",
           "group": "script@1"
+        },
+        {
+          "command": "firebird.showPrivileges",
+          "when": "view == firebird-explorer && viewItem == procedure",
+          "group": "script@2"
         },
         {
           "command": "firebird.scriptAsCreate",
@@ -1129,6 +1149,11 @@
           "command": "firebird.scriptAsDrop",
           "when": "view == firebird-explorer && viewItem == role",
           "group": "script@1"
+        },
+        {
+          "command": "firebird.showPrivileges",
+          "when": "view == firebird-explorer && viewItem == role",
+          "group": "script@2"
         },
         {
           "command": "firebird.scriptAsCreate",

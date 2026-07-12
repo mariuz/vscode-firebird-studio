@@ -2,7 +2,7 @@ import {TreeItem, TreeItemCollapsibleState, commands, Uri, ExtensionContext} fro
 import {join} from "path";
 import {NodeField, NodeInfo, NodeIndexFolder} from ".";
 import {ConnectionOptions, FirebirdTree, Options} from "../interfaces";
-import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery, getForeignKeysQuery} from "../shared/queries";
+import {selectAllRecordsQuery, tableInfoQuery, dropTableQuery, getForeignKeysQuery, getObjectPrivilegesQuery} from "../shared/queries";
 import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
@@ -135,6 +135,18 @@ export class NodeTable implements FirebirdTree {
   /** Generic "Script as Drop". */
   public async scriptAsDrop(): Promise<void> {
     await Driver.createSQLTextDocument(dropTableQuery(this.table.trim()));
+  }
+
+  /** Shows this table's grants (RDB$USER_PRIVILEGES) in the results grid. */
+  public async showPrivileges() {
+    logger.info("Custom Query: Show Object Privileges");
+    Global.activeConnection = this.dbDetails;
+    return Driver.runQuery(getObjectPrivilegesQuery(this.table.trim()), this.dbDetails)
+      .then(result => result)
+      .catch(err => {
+        logger.error(err);
+        logger.showError(`Failed to fetch privileges: ${err}`);
+      });
   }
 
   public async generateMockData(firebirdMockData: MockData, config: Options) {

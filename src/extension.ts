@@ -1243,6 +1243,22 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* Generic "Show Object Privileges" — works for any node type implementing showPrivileges()
+     (table/view/procedure/role), showing that object's grants in the results grid. */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.showPrivileges", (node: any) => {
+      if (typeof node?.showPrivileges !== "function") { return; }
+      node
+        .showPrivileges()
+        .then((result: any) => {
+          if (result) {
+            firebirdQueryResults.display(result, config.recordsPerPage);
+          }
+        })
+        .catch((err: any) => logger.error(err?.message ?? err));
+    })
+  );
+
   /* COMMAND: refresh history view */
   context.subscriptions.push(
     commands.registerCommand("firebird.history.refresh", () => {

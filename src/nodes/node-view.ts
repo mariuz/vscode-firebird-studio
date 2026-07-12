@@ -1,7 +1,7 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {viewColumnsQuery, selectAllRecordsQuery, getViewDefinitionQuery, dropViewQuery, createViewScaffold} from "../shared/queries";
+import {viewColumnsQuery, selectAllRecordsQuery, getViewDefinitionQuery, dropViewQuery, createViewScaffold, getObjectPrivilegesQuery} from "../shared/queries";
 import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
@@ -103,6 +103,18 @@ export class NodeView implements FirebirdTree {
   /** Generic "Script as Drop". */
   public async scriptAsDrop(): Promise<void> {
     await Driver.createSQLTextDocument(dropViewQuery(this.viewName.trim()));
+  }
+
+  /** Shows this view's grants (RDB$USER_PRIVILEGES) in the results grid. */
+  public async showPrivileges() {
+    logger.info("Custom Query: Show Object Privileges");
+    Global.activeConnection = this.dbDetails;
+    return Driver.runQuery(getObjectPrivilegesQuery(this.viewName.trim()), this.dbDetails)
+      .then(result => result)
+      .catch(err => {
+        logger.error(err);
+        logger.showError(`Failed to fetch privileges: ${err}`);
+      });
   }
 }
 

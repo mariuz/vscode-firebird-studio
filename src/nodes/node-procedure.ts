@@ -1,7 +1,8 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {procedureParametersQuery, getProcedureBodyQuery, dropProcedureQuery, createProcedureScaffold} from "../shared/queries";
+import {procedureParametersQuery, getProcedureBodyQuery, dropProcedureQuery, createProcedureScaffold, getObjectPrivilegesQuery} from "../shared/queries";
+import {Global} from "../shared/global";
 import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
@@ -87,6 +88,18 @@ export class NodeProcedure implements FirebirdTree {
   /** Generic "Script as Drop". */
   public async scriptAsDrop(): Promise<void> {
     await Driver.createSQLTextDocument(dropProcedureQuery(this.procedureName.trim()));
+  }
+
+  /** Shows this procedure's grants (RDB$USER_PRIVILEGES) in the results grid. */
+  public async showPrivileges() {
+    logger.info("Custom Query: Show Object Privileges");
+    Global.activeConnection = this.dbDetails;
+    return Driver.runQuery(getObjectPrivilegesQuery(this.procedureName.trim()), this.dbDetails)
+      .then(result => result)
+      .catch(err => {
+        logger.error(err);
+        logger.showError(`Failed to fetch privileges: ${err}`);
+      });
   }
 }
 

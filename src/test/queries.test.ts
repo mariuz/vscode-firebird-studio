@@ -19,6 +19,7 @@ import {
   createDomainScaffold,
   alterDomainScaffold,
   profilerActivityQuery,
+  getObjectPrivilegesQuery,
 } from '../shared/queries';
 
 // ── Source-fetching queries (procedure/trigger/view "edit source") ────────────
@@ -244,6 +245,25 @@ suite('generatorCurrentValueQuery', function () {
 
   test('rejects an unsafe generator name instead of interpolating it unescaped', function () {
     assert.throws(() => generatorCurrentValueQuery('BAD; DROP TABLE X'), /Invalid generator name/);
+  });
+});
+
+suite('getObjectPrivilegesQuery', function () {
+  test('reads RDB$USER_PRIVILEGES filtered by object name', function () {
+    const sql = getObjectPrivilegesQuery('CUSTOMERS');
+    assert.ok(sql.includes('FROM RDB$USER_PRIVILEGES'), sql);
+    assert.ok(sql.includes("TRIM(p.RDB$RELATION_NAME) = 'CUSTOMERS'"), sql);
+  });
+
+  test('maps single-letter privilege codes to friendly names', function () {
+    const sql = getObjectPrivilegesQuery('CUSTOMERS');
+    assert.ok(sql.includes("WHEN 'S' THEN 'SELECT'"), sql);
+    assert.ok(sql.includes("WHEN 'X' THEN 'EXECUTE'"), sql);
+    assert.ok(sql.includes("WHEN 'M' THEN 'MEMBER OF'"), sql);
+  });
+
+  test('rejects an unsafe object name instead of interpolating it unescaped', function () {
+    assert.throws(() => getObjectPrivilegesQuery('BAD; DROP TABLE X'), /Invalid object name/);
   });
 });
 

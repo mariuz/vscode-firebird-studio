@@ -1,8 +1,9 @@
 import {ExtensionContext, TreeItem, TreeItemCollapsibleState, commands, Uri} from "vscode";
 import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
-import {dropRoleQuery, createRoleQuery} from "../shared/queries";
+import {dropRoleQuery, createRoleQuery, getObjectPrivilegesQuery} from "../shared/queries";
 import {Driver} from "../shared/driver";
+import {Global} from "../shared/global";
 import {logger} from "../logger/logger";
 
 export class NodeRole implements FirebirdTree {
@@ -64,5 +65,18 @@ export class NodeRole implements FirebirdTree {
   /** Generic "Script as Drop". */
   public async scriptAsDrop(): Promise<void> {
     await Driver.createSQLTextDocument(dropRoleQuery(this.roleName.trim()));
+  }
+
+  /** Shows this role's grants (RDB$USER_PRIVILEGES) — who's a member, and what it's been granted access to — in the results grid. */
+  public async showPrivileges() {
+    if (!this.dbDetails) { return; }
+    logger.info("Custom Query: Show Object Privileges");
+    Global.activeConnection = this.dbDetails;
+    return Driver.runQuery(getObjectPrivilegesQuery(this.roleName.trim()), this.dbDetails)
+      .then(result => result)
+      .catch(err => {
+        logger.error(err);
+        logger.showError(`Failed to fetch privileges: ${err}`);
+      });
   }
 }

@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.45 - 2026-07-12
+
+### Added
+
+- **Object privileges/grants viewer** — right-click a table, view, procedure, or role for a new **Show Object Privileges** command, listing its grants (grantee, privilege, grant-option, and column for column-level grants) read from `RDB$USER_PRIVILEGES`, in the results grid.
+
 ## 0.1.44 - 2026-07-12
 
 ### Added

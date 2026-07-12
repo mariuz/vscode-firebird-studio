@@ -448,6 +448,35 @@ export function generatorCurrentValueQuery(generatorName: string): string {
 }
 
 /**
+ * Grants recorded against a table/view/procedure/role, read from RDB$USER_PRIVILEGES — confirmed
+ * directly against a live Firebird server that RDB$RELATION_NAME (despite its name) holds the
+ * securable object's name for all of these object types, not just relations, so one query by name
+ * works regardless of which kind of object it is. RDB$PRIVILEGE is a single-letter code (S=SELECT,
+ * I=INSERT, U=UPDATE, D=DELETE, R=REFERENCES, X=EXECUTE, M=role membership) mapped here to a
+ * friendly name; RDB$FIELD_NAME is only non-null for a column-level grant (e.g. UPDATE on one column).
+ */
+export function getObjectPrivilegesQuery(objectName: string): string {
+  assertValidIdentifier(objectName, "object name");
+  return `SELECT TRIM(p.RDB$USER) AS GRANTEE,
+                 TRIM(p.RDB$GRANTOR) AS GRANTOR,
+                 CASE p.RDB$PRIVILEGE
+                   WHEN 'S' THEN 'SELECT'
+                   WHEN 'I' THEN 'INSERT'
+                   WHEN 'U' THEN 'UPDATE'
+                   WHEN 'D' THEN 'DELETE'
+                   WHEN 'R' THEN 'REFERENCES'
+                   WHEN 'X' THEN 'EXECUTE'
+                   WHEN 'M' THEN 'MEMBER OF'
+                   ELSE p.RDB$PRIVILEGE
+                 END AS PRIVILEGE,
+                 CASE WHEN p.RDB$GRANT_OPTION = 1 THEN 'YES' ELSE 'NO' END AS GRANT_OPTION,
+                 TRIM(p.RDB$FIELD_NAME) AS COLUMN_NAME
+            FROM RDB$USER_PRIVILEGES p
+           WHERE TRIM(p.RDB$RELATION_NAME) = '${objectName}'
+        ORDER BY GRANTEE, PRIVILEGE, COLUMN_NAME;`;
+}
+
+/**
  * "Create new object" scaffolds — opened in a new SQL editor for the user to fill in and run
  * manually, the same way NodeProcedure#editProcedure()/NodeView#editView()/
  * NodeTrigger#editTrigger() open an ALTER scaffold for an existing object. Names come from user
