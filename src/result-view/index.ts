@@ -7,6 +7,7 @@ import { BatchResult, Driver, extractTableNames } from "../shared/driver";
 import { getPrimaryKeyColumnsQuery } from "../shared/queries";
 import { RowChange, buildStatementForChange } from "../shared/row-edit";
 import { logger } from "../logger/logger";
+import { getOptions } from "../config";
 
 type ResultSet = Array<any>;
 
@@ -60,15 +61,16 @@ export default class ResultView extends QueryResultsView implements Disposable {
 
   handleMessage(message: Message): void {
     if (message.command === "getData") {
+      const shortcuts = getOptions().shortcuts;
       if (this.batchResults) {
         this.send({
           command: "batchData",
-          data: { results: this.batchResults, recordsPerPage: this.recordsPerPage },
+          data: { results: this.batchResults, recordsPerPage: this.recordsPerPage, shortcuts },
         });
       } else {
         const data = this.resultSet
-          ? { ...this.getPreparedResults(), editableTable: this.resultTableName }
-          : { tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage };
+          ? { ...this.getPreparedResults(), editableTable: this.resultTableName, shortcuts }
+          : { tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage, shortcuts };
         this.send({ command: "message", data });
       }
       return;

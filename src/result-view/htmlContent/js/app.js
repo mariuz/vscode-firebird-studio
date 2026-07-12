@@ -27,10 +27,40 @@ $(() => {
     }
   }
 
+  // ── Configurable shortcuts (firebird.shortcuts, mirroring vscode-mssql) ────
+  // Handled entirely here in the webview, not via VS Code's own keybindings
+  // contribution mechanism, which can't reach into webview content.
+
+  let shortcuts = {};
+  let activeTableId = null;
+  const tableActions = {}; // tableId -> { toggleEdit, addRow, apply, freeze, copyInsert, copyIn }
+
+  $(document).on("keydown", event => {
+    if (!activeTableId || !tableActions[activeTableId]) { return; }
+    const actions = tableActions[activeTableId];
+    const bindings = [
+      ["event.toggleEditing", actions.toggleEdit],
+      ["event.addRow", actions.addRow],
+      ["event.applyChanges", actions.apply],
+      ["event.toggleFreezeColumn", actions.freeze],
+      ["event.copyAsInsert", actions.copyInsert],
+      ["event.copyAsInClause", actions.copyIn],
+    ];
+    for (const [name, fn] of bindings) {
+      if (matchesShortcut(event, parseShortcut(shortcuts[name]))) {
+        event.preventDefault();
+        fn();
+        return;
+      }
+    }
+  });
+
   window.addEventListener("message", event => {
     const msg = event.data;
 
     if (msg.command === "batchData") {
+      shortcuts = msg.data.shortcuts || {};
+      activeTableId = null;
       renderBatch(msg.data.results, msg.data.recordsPerPage);
       $("body").addClass("loaded");
       return;
@@ -38,6 +68,8 @@ $(() => {
 
     if (msg.command === "message") {
       const data = msg.data;
+      shortcuts = data.shortcuts || {};
+      activeTableId = null;
       if (data.tableBody && data.tableBody.length) {
         $("#zero-results").hide();
         showData(data);
@@ -110,6 +142,7 @@ $(() => {
       $(this).addClass("active");
       $(".batch-panel").hide();
       $(`#panel-${idx}`).show();
+      activeTableId = `batch-table-${idx}`;
     });
 
     $tabBar.show();
@@ -439,6 +472,18 @@ $(() => {
       copyToClipboard(buildInClause(values));
       $status.text(`Copied an IN (...) clause with ${values.length} value(s) to the clipboard.`);
     });
+
+    // Registered for firebird.shortcuts dispatch; first table built becomes the
+    // default active one (tab 0), later ones only via an explicit tab click.
+    tableActions[tableId] = {
+      toggleEdit: () => $toggleEdit.trigger("click"),
+      addRow: () => { if (editing) { $addRow.trigger("click"); } },
+      apply: () => { if (editing) { $apply.trigger("click"); } },
+      freeze: () => $freezeToggle.trigger("click"),
+      copyInsert: () => $copyInsert.trigger("click"),
+      copyIn: () => $copyInClause.trigger("click"),
+    };
+    if (!activeTableId) { activeTableId = tableId; }
   }
 
   // ── Shared helpers ────────────────────────────────────────────────────────
@@ -511,6 +556,43 @@ $(() => {
     };
   }
 
+  // ── Shortcut parsing (pure — no DOM/jQuery) ─────────────────────────────────
+  // Combo syntax mirrors vscode-mssql's own "mssql.shortcuts", not VS Code's
+  // keybindings.json syntax: "+"-joined modifiers, "ctrlcmd" meaning Ctrl on
+  // Windows/Linux and Cmd on macOS.
+
+  function parseShortcut(combo) {
+    if (!combo || typeof combo !== "string") { return null; }
+    const parts = combo.toLowerCase().split("+").map(p => p.trim()).filter(Boolean);
+    if (parts.length === 0) { return null; }
+    const key = parts[parts.length - 1];
+    const isMac = typeof navigator !== "undefined" && /mac|iphone|ipad|ipod/i.test(navigator.platform || "");
+    const parsed = { key, ctrl: false, alt: false, shift: false, meta: false };
+    parts.slice(0, -1).forEach(mod => {
+      if (mod === "ctrlcmd") {
+        if (isMac) { parsed.meta = true; } else { parsed.ctrl = true; }
+      } else if (mod === "ctrl" || mod === "control") {
+        parsed.ctrl = true;
+      } else if (mod === "cmd" || mod === "command" || mod === "meta" || mod === "win") {
+        parsed.meta = true;
+      } else if (mod === "alt" || mod === "option") {
+        parsed.alt = true;
+      } else if (mod === "shift") {
+        parsed.shift = true;
+      }
+    });
+    return parsed;
+  }
+
+  function matchesShortcut(event, parsed) {
+    if (!parsed) { return false; }
+    return (event.key || "").toLowerCase() === parsed.key
+      && !!event.ctrlKey === parsed.ctrl
+      && !!event.altKey === parsed.alt
+      && !!event.shiftKey === parsed.shift
+      && !!event.metaKey === parsed.meta;
+  }
+
   function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
@@ -528,6 +610,9 @@ $(() => {
 
   // Test-only hook: no-op in a real webview (there is no `module` global there).
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports.__test__ = { sqlLiteral, buildInsertStatement, buildInClause, selectionRange };
+    module.exports.__test__ = {
+      sqlLiteral, buildInsertStatement, buildInClause, selectionRange,
+      parseShortcut, matchesShortcut,
+    };
   }
 });

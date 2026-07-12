@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.31 - 2026-07-12
+
+### Added
+
+- **Configurable results-grid shortcuts** — a new `firebird.shortcuts` setting (mirroring vscode-mssql's `mssql.shortcuts`) lets you rebind the keyboard shortcuts for toggling edit mode, adding a row, applying changes, freezing the first column, and copying a selection as `INSERT`/`IN (...)`, all scoped to whichever result grid has focus
+
 ## 0.1.30 - 2026-07-12
 
 ### Added

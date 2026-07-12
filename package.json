@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -434,6 +434,14 @@
           "type": "number",
           "default": 3000,
           "markdownDescription": "How often (in milliseconds) the Live Profiler re-polls connection activity while its panel is open and visible."
+        },
+        "firebird.shortcuts": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Keyboard shortcuts for actions inside the **Query Results** webview (grid editing, freeze column, copy selection as SQL) — mirroring vscode-mssql's `mssql.shortcuts`. These only take effect while a result grid has focus, and use `ctrlcmd`/`+`-joined combo syntax (e.g. `\"ctrlcmd+alt+i\"`, where `ctrlcmd` means Ctrl on Windows/Linux and Cmd on macOS), not VS Code's own keybindings.json syntax. Omitted keys keep their default combo; set a key to `\"\"` to disable it. Available keys and their defaults:\n- `event.toggleEditing`: `ctrlcmd+alt+g`\n- `event.addRow`: `ctrlcmd+alt+n`\n- `event.applyChanges`: `ctrlcmd+alt+s`\n- `event.toggleFreezeColumn`: `ctrlcmd+alt+z`\n- `event.copyAsInsert`: `ctrlcmd+alt+i`\n- `event.copyAsInClause`: `ctrlcmd+alt+k`",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "firebird.isqlPath": {
           "type": "string",

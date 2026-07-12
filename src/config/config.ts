@@ -20,9 +20,26 @@ export function getOptions() {
     enableConnectionPooling: _enableConnectionPooling(),
     connectionPoolMaxSize: _connectionPoolMaxSize(),
     connectionPoolIdleTimeoutMs: _connectionPoolIdleTimeoutMs(),
-    profilerPollIntervalMs: _profilerPollIntervalMs()
+    profilerPollIntervalMs: _profilerPollIntervalMs(),
+    shortcuts: _shortcuts()
   } as Options;
 }
+
+/**
+ * Result-view webview shortcuts, mirroring vscode-mssql's `mssql.shortcuts`: these are handled
+ * entirely inside the webview's own keydown listener (a VS Code `contributes.keybindings` entry
+ * can't reach into webview content), so combos use vscode-mssql's own syntax rather than VS Code's
+ * keybindings.json syntax — "ctrlcmd" for Ctrl on Windows/Linux and Cmd on macOS, "+"-joined
+ * modifiers, e.g. "ctrlcmd+alt+i". Setting a value to "" disables that shortcut.
+ */
+export const DEFAULT_SHORTCUTS: Record<string, string> = {
+  "event.toggleEditing": "ctrlcmd+alt+g",
+  "event.addRow": "ctrlcmd+alt+n",
+  "event.applyChanges": "ctrlcmd+alt+s",
+  "event.toggleFreezeColumn": "ctrlcmd+alt+z",
+  "event.copyAsInsert": "ctrlcmd+alt+i",
+  "event.copyAsInClause": "ctrlcmd+alt+k",
+};
 
 function getConfig(): WorkspaceConfiguration {
   return workspace.getConfiguration("firebird");
@@ -160,6 +177,19 @@ function _profilerPollIntervalMs(): number {
     return profilerPollIntervalMs;
   }
   return conf;
+}
+
+function _shortcuts(): Record<string, string> {
+  const conf: any = getConfig().get("shortcuts");
+  const merged: Record<string, string> = { ...DEFAULT_SHORTCUTS };
+  if (conf && typeof conf === "object") {
+    for (const key of Object.keys(DEFAULT_SHORTCUTS)) {
+      if (typeof conf[key] === "string") {
+        merged[key] = conf[key];
+      }
+    }
+  }
+  return merged;
 }
 
 function _recordsPerPage(): string {
