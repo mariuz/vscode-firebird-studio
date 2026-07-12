@@ -23,6 +23,7 @@ import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
 import {fetchSchemaSnapshot, diffSchemas, renderDiffReport} from "./schema-diff/schema-diff";
 import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
 import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
+import {registerAiQueryActions} from "./copilot/ai-query-actions";
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
@@ -126,6 +127,9 @@ export function activate(context: ExtensionContext) {
   if (typeof vscode.chat !== 'undefined') {
     registerCopilotChatParticipant(context, firebirdDatabaseWords);
   }
+
+  /* AI Query Actions in the editor (right-click SQL -> Explain/Optimize, no chat panel needed) */
+  registerAiQueryActions(context, firebirdDatabaseWords);
 
   /* SQL Notebooks (.fbnb) — serializer + execution controller */
   context.subscriptions.push(...registerSqlNotebook(context));

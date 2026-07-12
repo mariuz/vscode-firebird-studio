@@ -1,26 +1,10 @@
 import * as vscode from 'vscode';
 import { KeywordsDb } from '../language-server/db-words.provider';
 import { buildSchemaContext } from './schema-context';
+import { systemPrompt, buildOptimizeMessages, buildExplainMessages } from './prompts';
 import { logger } from '../logger/logger';
 
 const PARTICIPANT_ID = 'firebird-db-explorer.firebird';
-
-/** System prompt shared across all commands. */
-function systemPrompt(schemaBlock: string): string {
-    const base =
-        'You are a Firebird SQL database expert assistant integrated into VS Code. ' +
-        'You help users write, understand, and optimize Firebird SQL queries. ' +
-        'Always use Firebird SQL dialect and syntax. ' +
-        'When generating SQL, output it inside a fenced ```sql code block.';
-    if (schemaBlock) {
-        return (
-            base +
-            '\n\nThe user is connected to a Firebird database with the following schema:\n' +
-            schemaBlock
-        );
-    }
-    return base;
-}
 
 /**
  * Registers the `@firebird` Copilot Chat participant.
@@ -49,21 +33,23 @@ export function registerCopilotChatParticipant(
             logger.warn('Could not load database schema for Copilot context.');
         }
 
-        const messages: vscode.LanguageModelChatMessage[] = [
-            vscode.LanguageModelChatMessage.User(systemPrompt(schema)),
-        ];
-
         switch (request.command) {
-            case 'query':
+            case 'query': {
+                const messages: vscode.LanguageModelChatMessage[] = [vscode.LanguageModelChatMessage.User(systemPrompt(schema))];
                 return handleQuery(request, messages, stream, token);
+            }
             case 'optimize':
-                return handleOptimize(request, messages, stream, token);
+                return handleOptimize(request, schema, stream, token);
             case 'explain':
-                return handleExplain(request, messages, stream, token);
-            case 'designSchema':
+                return handleExplain(request, schema, stream, token);
+            case 'designSchema': {
+                const messages: vscode.LanguageModelChatMessage[] = [vscode.LanguageModelChatMessage.User(systemPrompt(schema))];
                 return handleDesignSchema(request, messages, stream, token);
-            default:
+            }
+            default: {
+                const messages: vscode.LanguageModelChatMessage[] = [vscode.LanguageModelChatMessage.User(systemPrompt(schema))];
                 return handleDefault(request, messages, stream, token);
+            }
         }
     };
 
@@ -107,7 +93,7 @@ async function handleQuery(
 
 async function handleOptimize(
     request: vscode.ChatRequest,
-    messages: vscode.LanguageModelChatMessage[],
+    schema: string,
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
@@ -118,16 +104,7 @@ async function handleOptimize(
     }
 
     stream.progress('Analyzing query for optimization…');
-    messages.push(
-        vscode.LanguageModelChatMessage.User(
-            'Analyze the following Firebird SQL query and suggest optimizations. ' +
-            'Consider indexing, query structure, and Firebird-specific best practices. ' +
-            'Present the optimized query in a fenced ```sql code block and explain the changes.\n\n' +
-            '```sql\n' + sql + '\n```'
-        )
-    );
-
-    return streamModelResponse(request, messages, stream, token);
+    return streamModelResponse(request, buildOptimizeMessages(sql, schema), stream, token);
 }
 
 /* ------------------------------------------------------------------ */
@@ -136,7 +113,7 @@ async function handleOptimize(
 
 async function handleExplain(
     request: vscode.ChatRequest,
-    messages: vscode.LanguageModelChatMessage[],
+    schema: string,
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
@@ -147,15 +124,7 @@ async function handleExplain(
     }
 
     stream.progress('Explaining query…');
-    messages.push(
-        vscode.LanguageModelChatMessage.User(
-            'Explain the following Firebird SQL query in plain English. ' +
-            'Break it down step by step so a beginner can understand it.\n\n' +
-            '```sql\n' + sql + '\n```'
-        )
-    );
-
-    return streamModelResponse(request, messages, stream, token);
+    return streamModelResponse(request, buildExplainMessages(sql, schema), stream, token);
 }
 
 /* ------------------------------------------------------------------ */
@@ -262,7 +231,7 @@ function handleModelError(err: unknown, stream: vscode.ChatResponseStream): void
 }
 
 /** Returns the text (or selection) from the active SQL editor, if any. */
-function getActiveEditorSql(): string {
+export function getActiveEditorSql(): string {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'sql') {
         return '';

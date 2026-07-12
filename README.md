@@ -51,6 +51,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Create Local Firebird Container** — provision a brand-new Dockerized Firebird server from the extension
 - **Color-coded connection groups**, and paste a full connection string to prefill the "Add New Connection" wizard
 - **MCP Server** — expose opted-in connections' schema to any MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode)
+- **AI Query Actions in the editor** — right-click SQL for Explain/Optimize without opening the Copilot Chat panel first
 
 ## Getting Started
 
@@ -78,6 +79,10 @@ For advanced options (native driver, WireCrypt) see **[docs/connection-setup.md]
 ### MCP Server
 
 Turn on `firebird.mcp.enabled`, then right-click a database → **Toggle MCP Server Exposure** for each connection you want reachable — nothing is exposed by default even with the setting on. Any MCP-compatible AI client (Claude Desktop, Cursor, VS Code's own Copilot in Agent mode) can then call `list_connections` and `get_schema` to inspect an opted-in connection's schema, independent of this extension's own `@firebird` Copilot Chat participant. This is read-only schema inspection only — there's no query-execution tool yet, and passwords never reach the MCP client, only the schema data it asks for.
+
+### AI Query Actions in the Editor
+
+Select a query (or just place your cursor in one) and right-click → **AI: Explain Query** or **AI: Optimize Query** — the same prompts the `@firebird` chat participant's `/explain`/`/optimize` slash commands use, but without opening the Copilot Chat panel first. The response opens in a new document beside your editor. Requires GitHub Copilot Chat installed and signed in.
 
 ### Explore Database Contents
 

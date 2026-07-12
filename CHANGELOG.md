@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.42 - 2026-07-12
+
+### Added
+
+- **AI Query Actions in the editor** — right-click SQL (or select part of it) → **AI: Explain Query** / **AI: Optimize Query** to get Copilot's analysis without opening the Chat panel first, opened in a new document beside your editor. Reuses the exact same prompts as the `@firebird` chat participant's `/explain`/`/optimize` slash commands.
+
 ## 0.1.41 - 2026-07-12
 
 ### Added

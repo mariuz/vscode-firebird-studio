@@ -278,6 +278,22 @@ export enum CompletionTriggerKind {
   TriggerForIncompleteCompletions = 2,
 }
 
+// ── LanguageModelChatMessage ──────────────────────────────────────────────────
+export enum LanguageModelChatMessageRole {
+  User = 1,
+  Assistant = 2,
+}
+
+export class LanguageModelChatMessage {
+  constructor(public role: LanguageModelChatMessageRole, public content: string, public name?: string) {}
+  static User(content: string, name?: string): LanguageModelChatMessage {
+    return new LanguageModelChatMessage(LanguageModelChatMessageRole.User, content, name);
+  }
+  static Assistant(content: string, name?: string): LanguageModelChatMessage {
+    return new LanguageModelChatMessage(LanguageModelChatMessageRole.Assistant, content, name);
+  }
+}
+
 /** Creates a minimal ExtensionContext mock with an in-memory globalState and SecretStorage. */
 export function createMockContext() {
   const store = new Map<string, any>();
