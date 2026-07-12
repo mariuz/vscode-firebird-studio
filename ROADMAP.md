@@ -70,7 +70,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 ### Visual design & schema tools
 
 - [x] Visual multi-table Schema Designer — drag-and-drop ER modeling, auto-layout, and consolidated DDL generation, replacing/merging today's read-only schema visualizer and single-table designer ([design doc](docs/roadmap/visual-schema-designer.md))
-- [ ] Copilot-assisted schema editing inside the Schema Designer — natural-language edits applied to an open diagram, not just one-shot DDL generation (see design doc above)
+- [x] Copilot-assisted schema editing inside the Schema Designer — natural-language edits applied to an open diagram, not just one-shot DDL generation (see design doc above)
 - [x] Extend the Table Designer to alter existing tables, not just create new ones (see design doc above)
 
 ### Query execution & analysis

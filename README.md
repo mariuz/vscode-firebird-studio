@@ -83,6 +83,7 @@ Right-click a database node → **Visualize Schema** (or a table → **Create Ta
 - **Pan**: drag an empty area of the canvas. **Zoom**: scroll wheel, or the **+**/**−** buttons.
 - **Fit to View** zooms and centers so every table is visible; the **minimap** in the corner shows your position in a large schema, and is clickable to jump around.
 - Click a table to open its column editor in the side panel — add/remove/edit columns, change the primary key. **+ Add Table** creates a new one; drag from a column's right edge to another table's column to draw a foreign key, and click an edge + <kbd>Delete</kbd> to remove one.
+- **Ask Copilot** — describe a change in plain English (e.g. "add an ORDERS table linked to CUSTOMERS") and it edits the diagram for you, the same as if you'd made the change by hand.
 - **Generate DDL in Editor** / **Execute DDL** produce the `CREATE`/`ALTER TABLE` statements needed to apply your changes — always reviewable before running.
 - Dropping an existing table isn't done here — use **Drop Table** from the tree instead.
 - The diagram doesn't update automatically after schema changes made elsewhere — use **Refresh** to reload it (this discards any unsaved edits on the canvas, after a confirmation).

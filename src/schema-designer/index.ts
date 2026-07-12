@@ -1,4 +1,4 @@
-import { Disposable } from "vscode";
+import * as vscode from "vscode";
 import { join } from "path";
 import { QueryResultsView, Message } from "../result-view/queryResultsView";
 import { ConnectionOptions } from "../interfaces";
@@ -14,7 +14,7 @@ import { logger } from "../logger/logger";
  * always loading the full schema graph regardless of entry point (Firebird schemas here are
  * modest in size, and the visualizer this replaces already always loaded everything in one go).
  */
-export class SchemaDesigner extends QueryResultsView implements Disposable {
+export class SchemaDesigner extends QueryResultsView implements vscode.Disposable {
   private dbDetails?: ConnectionOptions;
   /**
    * The webview can't reliably receive a postMessage() sent immediately after show() — its
@@ -22,6 +22,8 @@ export class SchemaDesigner extends QueryResultsView implements Disposable {
    * focus once the schema loads is held here and flushed from handleMessage() on "ready".
    */
   private pendingInit: Message | undefined;
+  /** Cancels a stale "Ask Copilot" request if a new one comes in (or the panel closes) before it resolves. */
+  private copilotRequestCts?: vscode.CancellationTokenSource;
 
   constructor(private readonly extensionPath: string) {
     super("schemadesigner", "Firebird Schema Designer");
@@ -53,7 +55,7 @@ export class SchemaDesigner extends QueryResultsView implements Disposable {
   }
 
   handleMessage(message: Message): void {
-    const { command, data } = message as Message & { data: { ddl?: string } };
+    const { command, data } = message as Message & { data: { ddl?: string; instruction?: string; schemaSummary?: string } };
     if (command === "ready") {
       if (this.pendingInit) {
         this.send(this.pendingInit);
@@ -71,6 +73,72 @@ export class SchemaDesigner extends QueryResultsView implements Disposable {
     }
     if (command === "executeDDL") {
       this.executeDDL(data.ddl ?? "");
+      return;
+    }
+    if (command === "askCopilot") {
+      this.handleAskCopilot(data.instruction ?? "", data.schemaSummary ?? "").catch(err => logger.error(err));
+    }
+  }
+
+  dispose(): void {
+    this.copilotRequestCts?.cancel();
+    super.dispose();
+  }
+
+  /**
+   * Sends the user's free-text schema-change request, plus a plain-text summary of the current
+   * draft (tables/columns/relationships, including ones added this session but not yet in the
+   * database), to the language model. Deliberately asks for a small structured JSON edit
+   * (add/modify/remove tables, columns, relationships) rather than raw DDL: the webview already
+   * has a proven, rename-safe diff engine that turns draft-state edits into correct ALTER/CREATE
+   * statements (see buildDDL() in htmlContent/js/app.js) — applying the model's response as
+   * ordinary draft edits reuses that entirely, rather than asking the model to get Firebird DDL
+   * syntax and statement ordering right itself.
+   */
+  private async handleAskCopilot(instruction: string, schemaSummary: string): Promise<void> {
+    this.copilotRequestCts?.cancel();
+    const cts = new vscode.CancellationTokenSource();
+    this.copilotRequestCts = cts;
+
+    if (!instruction.trim()) {
+      this.send({ command: "copilotSchemaEdit", data: { error: "Describe the schema change you'd like." } });
+      return;
+    }
+
+    try {
+      const models = await vscode.lm.selectChatModels({ vendor: "copilot" });
+      const model = models[0];
+      if (!model) {
+        this.send({
+          command: "copilotSchemaEdit",
+          data: { error: "No Copilot language model is available. Make sure GitHub Copilot Chat is installed and signed in." }
+        });
+        return;
+      }
+
+      const messages = [
+        vscode.LanguageModelChatMessage.User(copilotSystemPrompt(schemaSummary, instruction))
+      ];
+      const response = await model.sendRequest(messages, {}, cts.token);
+      let text = "";
+      for await (const fragment of response.text) {
+        text += fragment;
+      }
+
+      let edit: unknown;
+      try {
+        edit = JSON.parse(extractJson(text));
+      } catch {
+        throw new Error(`Copilot didn't return valid JSON. Raw response:\n${text.slice(0, 500)}`);
+      }
+      this.send({ command: "copilotSchemaEdit", data: { edit } });
+    } catch (err: any) {
+      if (err instanceof vscode.CancellationError) {
+        return;
+      }
+      const message = err?.message ?? String(err);
+      logger.error(`Schema Designer Copilot edit failed: ${message}`);
+      this.send({ command: "copilotSchemaEdit", data: { error: message } });
     }
   }
 
@@ -143,4 +211,54 @@ function summarizeBatchResults(results: BatchResult[]): string {
     lines.push(`  ERROR (${snippet}): ${r.error}`);
   });
   return lines.join("\n");
+}
+
+/**
+ * Strips a ```json ... ``` (or bare ```) fence from a model response, if present — models
+ * asked for "JSON only" still sometimes wrap it in a markdown code fence anyway.
+ */
+function extractJson(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : trimmed;
+}
+
+/** The JSON edit schema the model is asked to return — see handleAskCopilot()'s doc comment. */
+function copilotSystemPrompt(schemaSummary: string, instruction: string): string {
+  return [
+    "You are a Firebird database schema design assistant integrated into a visual schema designer.",
+    "The user is editing a database schema on a canvas and has asked you to make a change.",
+    "",
+    "Respond with ONLY a JSON object — no markdown code fences, no text outside the JSON — matching exactly this shape:",
+    "",
+    "{",
+    '  "tables": [',
+    "    {",
+    '      "name": "TABLE_NAME",',
+    '      "action": "add" | "modify",',
+    '      "columns": [',
+    '        { "name": "COLUMN_NAME", "action": "add" | "modify" | "remove", "type": "VARCHAR" | "CHAR" | "INTEGER" | "SMALLINT" | "INT64" | "FLOAT" | "DOUBLE" | "DATE" | "TIME" | "TIMESTAMP" | "BLOB" | "BOOLEAN", "length": 0, "notNull": false, "isPrimaryKey": false, "dflt": null }',
+    "      ]",
+    "    }",
+    "  ],",
+    '  "relationships": [',
+    '    { "action": "add" | "remove", "fromTable": "TABLE_NAME", "fromColumn": "COLUMN_NAME", "toTable": "TABLE_NAME", "toColumn": "COLUMN_NAME" }',
+    "  ],",
+    '  "explanation": "One or two sentences describing what you changed and why."',
+    "}",
+    "",
+    "Rules:",
+    '- Only include tables/columns/relationships that are actually being added, modified, or removed — omit anything unchanged.',
+    '- "modify" on a column changes its type/length/notNull/isPrimaryKey/dflt; include only the fields that should change, plus "name" and "action".',
+    "- Use uppercase identifiers, consistent with Firebird's default identifier casing.",
+    '- "length" only matters for VARCHAR/CHAR — omit or set to 0 for other types.',
+    "- Never reference a table/column that doesn't exist in the current schema below or in a table you're adding in this same response.",
+    '- If the request doesn\'t require any schema change (e.g. it\'s a question), return empty "tables"/"relationships" arrays and put your answer in "explanation".',
+    "",
+    "Current schema:",
+    schemaSummary,
+    "",
+    "Requested change:",
+    instruction,
+  ].join("\n");
 }

@@ -63,6 +63,40 @@ body {
   color: var(--vscode-descriptionForeground, #999);
 }
 
+/* ── Ask Copilot panel ────────────────────────────────────────────────────── */
+#copilot-panel {
+  flex: 0 0 auto;
+  padding: 8px;
+  border-bottom: 1px solid var(--vscode-widget-border, #444);
+  background: var(--vscode-editorWidget-background, #252526);
+}
+#copilot-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 50px;
+  resize: vertical;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, #555);
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: inherit;
+  border-radius: 2px;
+}
+.copilot-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+#copilot-status {
+  margin-top: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+#copilot-status.error {
+  color: var(--vscode-errorForeground, #f44);
+}
+
 /* ── Main layout: canvas + inspector side panel ──────────────────────────── */
 #main {
   flex: 1 1 auto;

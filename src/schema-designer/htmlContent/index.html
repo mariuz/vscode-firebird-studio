@@ -19,8 +19,18 @@
     <span class="hint">Drag from a column's right edge to draw a relationship. Click an edge + Delete to remove it.</span>
     <span class="toolbar-spacer"></span>
     <span id="status"></span>
+    <button id="btn-ask-copilot" class="secondary" title="Describe a schema change in plain English">Ask Copilot</button>
     <button id="generateBtn">Generate DDL in Editor</button>
     <button id="executeBtn">Execute DDL</button>
+  </div>
+
+  <div id="copilot-panel" style="display:none;">
+    <textarea id="copilot-instruction" placeholder="Describe a schema change, e.g. &quot;add an ORDERS table linked to CUSTOMERS&quot;"></textarea>
+    <div class="copilot-actions">
+      <button id="copilot-send">Send</button>
+      <button class="secondary" id="copilot-close">Close</button>
+    </div>
+    <div id="copilot-status"></div>
   </div>
 
   <div id="main">

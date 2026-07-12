@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.27 - 2026-07-12
+
+### Added
+
+- **Ask Copilot** in the Schema Designer — describe a schema change in plain English ("add an ORDERS table linked to CUSTOMERS") and it edits the open diagram directly: adds/modifies tables and columns, draws relationships, then lets you review and generate/execute the resulting DDL exactly like a manual edit would
+
 ## 0.1.26 - 2026-07-12
 
 ### Added

@@ -29,6 +29,12 @@
     columnsBody: document.getElementById("columnsBody"),
     addColumnBtn: document.getElementById("addColumnBtn"),
     closeInspectorBtn: document.getElementById("closeInspectorBtn"),
+    btnAskCopilot: document.getElementById("btn-ask-copilot"),
+    copilotPanel: document.getElementById("copilot-panel"),
+    copilotInstruction: document.getElementById("copilot-instruction"),
+    copilotSend: document.getElementById("copilot-send"),
+    copilotClose: document.getElementById("copilot-close"),
+    copilotStatus: document.getElementById("copilot-status"),
   };
 
   const ROW_HEIGHT = 18;
@@ -81,6 +87,7 @@
     if (msg.command === "schemaData") { handleSchemaData(msg.data); return; }
     if (msg.command === "result") { appendResult(msg.data.text); return; }
     if (msg.command === "init") { pendingInit = msg.data; return; }
+    if (msg.command === "copilotSchemaEdit") { handleCopilotSchemaEdit(msg.data); return; }
   });
 
   vscode.postMessage({ command: "ready" });
@@ -1024,12 +1031,157 @@
     el.ddlOutput.textContent = (el.ddlOutput.textContent || '') + '\n-- ' + text;
   }
 
+  // ── Ask Copilot (schema editing via natural language) ────────────────────
+  //
+  // Deliberately asks the model for a small structured JSON edit (add/modify/remove tables,
+  // columns, relationships) rather than raw DDL: applying it as ordinary draftGraph mutations
+  // reuses the exact same rename-safe diff engine (buildDDL() above) real edits already go
+  // through, instead of asking the model to get Firebird DDL syntax/statement-ordering right.
+
+  let copilotBusy = false;
+
+  el.btnAskCopilot.addEventListener("click", () => {
+    const isOpen = el.copilotPanel.style.display !== "none";
+    el.copilotPanel.style.display = isOpen ? "none" : "block";
+    if (!isOpen) { el.copilotInstruction.focus(); }
+  });
+
+  el.copilotClose.addEventListener("click", () => {
+    el.copilotPanel.style.display = "none";
+  });
+
+  el.copilotSend.addEventListener("click", () => {
+    if (copilotBusy) { return; }
+    const instruction = el.copilotInstruction.value.trim();
+    if (!instruction) { return; }
+    copilotBusy = true;
+    el.copilotSend.textContent = "Thinking…";
+    el.copilotStatus.classList.remove("error");
+    el.copilotStatus.textContent = "";
+    vscode.postMessage({ command: "askCopilot", instruction, schemaSummary: serializeSchemaSummary() });
+  });
+
+  function serializeSchemaSummary() {
+    const lines = [];
+    draftGraph.tables.forEach(table => {
+      lines.push(`Table ${table.name}${table.isNew ? ' (not yet created)' : ''}:`);
+      table.columns.forEach(col => {
+        const bits = [col.type];
+        if (col.length && SIZED_TYPES.includes(col.type)) { bits.push(`(${col.length})`); }
+        if (col.notNull) { bits.push('NOT NULL'); }
+        if (col.isPrimaryKey) { bits.push('PK'); }
+        if (col.dflt) { bits.push(`DEFAULT ${col.dflt}`); }
+        lines.push(`  ${col.name} ${bits.join(' ')}`);
+      });
+    });
+    if (draftGraph.relationships.length > 0) {
+      lines.push('Relationships:');
+      draftGraph.relationships.forEach(r => {
+        const fromTable = draftGraph.tables.find(t => t.id === r.fromTableId);
+        const toTable = draftGraph.tables.find(t => t.id === r.toTableId);
+        if (fromTable && toTable) {
+          lines.push(`  ${fromTable.name}.${r.fromColumn.name} -> ${toTable.name}.${r.toColumn.name}`);
+        }
+      });
+    }
+    return lines.length > 0 ? lines.join('\n') : '(empty schema)';
+  }
+
+  function handleCopilotSchemaEdit(data) {
+    copilotBusy = false;
+    el.copilotSend.textContent = "Send";
+    if (data.error) {
+      el.copilotStatus.classList.add("error");
+      el.copilotStatus.textContent = data.error;
+      return;
+    }
+    el.copilotStatus.classList.remove("error");
+    applyCopilotEdit(data.edit);
+    el.copilotStatus.textContent = (data.edit && data.edit.explanation) ? data.edit.explanation : "Done.";
+    el.copilotInstruction.value = "";
+  }
+
+  /**
+   * Applies the model's proposed edit to draftGraph exactly like a user edit would — whether a
+   * table/column is "new" is decided by whether it already exists in the draft, not by trusting
+   * the model's self-reported "action" field (defensive: a model that mislabels an edit still
+   * produces the correct result here).
+   */
+  function applyCopilotEdit(edit) {
+    if (!edit) { return; }
+
+    (edit.tables || []).forEach(t => {
+      if (!t || !t.name) { return; }
+      const name = String(t.name).trim().toUpperCase();
+      let table = draftGraph.tables.find(tt => tt.name === name);
+      if (!table) {
+        const id = 't' + (nextTableId++);
+        table = { id, name, isNew: true, columns: [], originalColumns: [] };
+        draftGraph.tables.push(table);
+        const canvasWidth = el.canvas.clientWidth || 800;
+        const canvasHeight = el.canvas.clientHeight || 600;
+        const centerX = (canvasWidth / 2 - view.x) / view.scale;
+        const centerY = (canvasHeight / 2 - view.y) / view.scale;
+        const jitter = (Math.random() - 0.5) * 80;
+        positions[id] = { x: centerX - 90 + jitter, y: centerY - 30 + jitter, width: MIN_NODE_WIDTH, height: HEADER_HEIGHT + ROW_HEIGHT };
+      }
+
+      (t.columns || []).forEach(c => {
+        if (!c || !c.name) { return; }
+        const colName = String(c.name).trim().toUpperCase();
+        const existing = table.columns.find(cc => cc.name === colName);
+        if (c.action === 'remove') {
+          if (existing) {
+            draftGraph.relationships = draftGraph.relationships.filter(r => r.fromColumn !== existing && r.toColumn !== existing);
+            table.columns.splice(table.columns.indexOf(existing), 1);
+          }
+          return;
+        }
+        if (existing) {
+          if (c.type) { existing.type = c.type; }
+          if (typeof c.length === 'number') { existing.length = c.length; }
+          if (typeof c.notNull === 'boolean') { existing.notNull = c.notNull; }
+          if (typeof c.isPrimaryKey === 'boolean') { existing.isPrimaryKey = c.isPrimaryKey; }
+          if ('dflt' in c) { existing.dflt = c.dflt || undefined; }
+        } else {
+          table.columns.push({
+            name: colName,
+            type: c.type || 'VARCHAR',
+            length: typeof c.length === 'number' ? c.length : 0,
+            notNull: !!c.notNull,
+            isPrimaryKey: !!c.isPrimaryKey,
+            dflt: c.dflt || undefined,
+          });
+        }
+      });
+    });
+
+    (edit.relationships || []).forEach(r => {
+      if (!r) { return; }
+      const fromTable = draftGraph.tables.find(t => t.name === String(r.fromTable || '').trim().toUpperCase());
+      const toTable = draftGraph.tables.find(t => t.name === String(r.toTable || '').trim().toUpperCase());
+      if (!fromTable || !toTable) { return; }
+      const fromColumn = fromTable.columns.find(c => c.name === String(r.fromColumn || '').trim().toUpperCase());
+      const toColumn = toTable.columns.find(c => c.name === String(r.toColumn || '').trim().toUpperCase());
+      if (!fromColumn || !toColumn) { return; }
+      if (r.action === 'remove') {
+        draftGraph.relationships = draftGraph.relationships.filter(rel => !(rel.fromColumn === fromColumn && rel.toColumn === toColumn));
+        return;
+      }
+      addRelationship(fromTable.id, fromColumn, toTable.id, toColumn);
+    });
+
+    measureAll();
+    render();
+  }
+
   // Test-only hook: no-op in a real webview (there is no `module` global there), lets a
   // Node-based verification harness drive this script's internal state directly rather than
   // simulating raw mouse/SVG events for every interaction.
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.__test__ = {
       handleSchemaData, buildDDL, addTable, addRelationship, measureAll, render,
+      applyCopilotEdit, serializeSchemaSummary,
       getDraftGraph: () => draftGraph,
     };
   }
