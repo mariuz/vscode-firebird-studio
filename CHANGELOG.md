@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.33 - 2026-07-12
+
+### Added
+
+- **Flat File Import Wizard** — right-click a database → **Import Flat File...** to import a CSV, TSV, or JSON file into a new table: it sniffs a Firebird column type per column (INTEGER/BIGINT/NUMERIC/BOOLEAN/DATE/TIMESTAMP/VARCHAR), lets you review/edit the generated `CREATE TABLE` before it runs, then batch-inserts every row with a progress notification.
+
 ## 0.1.32 - 2026-07-12
 
 ### Added

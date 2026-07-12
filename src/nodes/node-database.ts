@@ -12,6 +12,7 @@ import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
+import {runFlatFileImportWizard} from "../flat-file-import";
 import * as cp from 'node:child_process';
 
 
@@ -155,6 +156,11 @@ export class NodeDatabase implements FirebirdTree {
   // open the Schema Designer (whole-database ER diagram, editable) for this database
   public openSchemaDesigner(schemaDesigner: SchemaDesigner): void {
     schemaDesigner.openFullSchema(this.dbDetails);
+  }
+
+  // guided CSV/TSV/JSON -> new table import wizard
+  public async importFlatFile(): Promise<void> {
+    return runFlatFileImportWizard(this.dbDetails);
   }
 
   /** Connection details with the password resolved from SecretStorage, for callers (e.g. the

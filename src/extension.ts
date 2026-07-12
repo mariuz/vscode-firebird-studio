@@ -652,6 +652,18 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB: guided flat-file (CSV/TSV/JSON) import wizard */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.importFlatFile", (databaseNode: NodeDatabase) => {
+      databaseNode.importFlatFile().catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Flat file import failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
   /* DB: backup database */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.backupDatabase", (databaseNode: NodeDatabase) => {
