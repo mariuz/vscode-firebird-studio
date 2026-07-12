@@ -116,7 +116,7 @@ The following features are adapted from Microsoft's [PostgreSQL extension for VS
 ### Query execution & results
 
 - [x] Chart visualization for query results — render numeric result columns as line/bar/pie/scatter charts directly in the results panel, alongside the existing grid view
-- [ ] Parameterized query execution — write a query with named/typed placeholders (e.g. `:paramName`) and fill in bound values through a form before running, distinct from today's plain-text-only execution; reuses `node-firebird`'s existing parameterized-query support (already used internally, e.g. by the result grid's row-edit path) but exposes it as an authoring feature rather than an internal-only mechanism
+- [x] Parameterized query execution — write a query with named/typed placeholders (e.g. `:paramName`) and fill in bound values (with a type) through a sequence of prompts before running, distinct from today's plain-text-only execution; rewrites named placeholders to `node-firebird`'s positional `?` binding, previously only used internally in one place (`Driver.getQueryPlan()`'s index-metadata fallback query) and, discovered while implementing this, silently dropped by the native driver client — both now fixed
 
 ### Object explorer
 

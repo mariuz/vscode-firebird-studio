@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.52 - 2026-07-13
+
+### Added
+
+- **Parameterized query execution** — a new **Run Parameterized Query** command (`Ctrl+Alt+Shift+Q`) for `.sql` files containing named placeholders like `:customerId`. Prompts for each distinct placeholder's type (String/Integer/Float/Date/Boolean/NULL) and value, rewrites them to Firebird's positional `?` binding, and runs the query with real bound parameters rather than inlined text.
+
+### Fixed
+
+- The native driver (`firebird.useNativeDriver`) silently ignored any query parameters passed to it — `NativeClient.queryPromise()` never forwarded its `args` through to `connection.executeQuery()`. Only exposed once something in this codebase actually tried to bind parameters through the native driver path; fixed alongside Parameterized Query Execution.
+
 ## 0.1.51 - 2026-07-13
 
 ### Added

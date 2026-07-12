@@ -18,6 +18,7 @@ import * as assert from 'assert';
 import { Driver, NodeClient } from '../../shared/driver';
 import { getProcedureBodyQuery, getTriggerBodyQuery, getViewDefinitionQuery } from '../../shared/queries';
 import { getTestConnectionOptions } from './firebird-test-env';
+import { extractNamedParameters, rewriteNamedParametersToPositional, coerceParamValue } from '../../shared/parameterized-query';
 
 suite('Driver – real Firebird integration (extension host)', function () {
   this.timeout(20000);
@@ -81,6 +82,29 @@ suite('Driver – real Firebird integration (extension host)', function () {
   test('getQueryPlan (NodeClient fallback) returns index metadata for PRODUCTS', async function () {
     const plan = await Driver.getQueryPlan('SELECT * FROM PRODUCTS WHERE ID = 1', getTestConnectionOptions());
     assert.ok(plan.includes('PRODUCTS'));
+  });
+
+  test('runQuery binds a positional ? parameter against the live seeded PRODUCTS table', async function () {
+    const rows = await Driver.runQuery('SELECT NAME FROM PRODUCTS WHERE ID = ?', getTestConnectionOptions(), [1]);
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].NAME.trim(), 'Widget A');
+  });
+
+  test('a full :namedParam query (Object Explorer Filters-style) round-trips end-to-end', async function () {
+    // Mirrors exactly what firebird.runParameterizedQuery does: extract names, prompt (simulated
+    // here by coerceParamValue directly), rewrite to positional ?, then run through Driver.runQuery.
+    const sql = 'SELECT NAME, PRICE FROM PRODUCTS WHERE ID = :productId';
+    const names = extractNamedParameters(sql);
+    assert.deepStrictEqual(names, ['productId']);
+
+    const { sql: positionalSql, paramNames } = rewriteNamedParametersToPositional(sql);
+    assert.strictEqual(positionalSql, 'SELECT NAME, PRICE FROM PRODUCTS WHERE ID = ?');
+
+    const params = paramNames.map(() => coerceParamValue('integer', '1'));
+    const rows = await Driver.runQuery(positionalSql, getTestConnectionOptions(), params);
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].NAME.trim(), 'Widget A');
+    assert.strictEqual(Number(rows[0].PRICE), 9.99);
   });
 
   // ── Batch execution of PSQL blocks (SET TERM) ──────────────────────────────

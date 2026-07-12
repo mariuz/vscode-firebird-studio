@@ -20,6 +20,7 @@ import * as cp from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {extractChangelogEntry, summarizeChangelogEntry} from "./shared/changelog-notice";
+import {extractNamedParameters, rewriteNamedParametersToPositional, coerceParamValue, ParamType} from "./shared/parameterized-query";
 import {formatSQL} from "./shared/sql-formatter";
 import {SqlLinter} from "./shared/sql-linter";
 import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
@@ -429,6 +430,80 @@ export function activate(context: ExtensionContext) {
                 }
               });
           }
+        });
+    })
+  );
+
+  /* COMMAND: run the current query with named :paramName placeholders, prompting for each
+     value's type and value before rewriting them to positional ? placeholders and binding them
+     through Driver.runQuery()'s params argument. */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.runParameterizedQuery", async () => {
+      const editor = window.activeTextEditor;
+      if (!editor || editor.document.languageId !== "sql") {
+        logger.showError("Open a .sql file and select (or place your cursor in) a query first.");
+        return;
+      }
+      const sql = editor.selection.isEmpty ? editor.document.getText() : editor.document.getText(editor.selection);
+      if (!sql.trim()) {
+        logger.showError("No SQL found to run.");
+        return;
+      }
+
+      const paramNames = extractNamedParameters(sql);
+      if (paramNames.length === 0) {
+        logger.showError("No :namedParameters found in this query. Use \"Run Firebird Query\" for a plain query.");
+        return;
+      }
+      if (!Global.activeConnection) {
+        logger.showError("No Firebird database selected!");
+        return;
+      }
+
+      const typeItems: {label: string; value: ParamType}[] = [
+        {label: "String", value: "string"},
+        {label: "Integer", value: "integer"},
+        {label: "Float", value: "float"},
+        {label: "Date/Timestamp", value: "date"},
+        {label: "Boolean", value: "boolean"},
+        {label: "NULL", value: "null"},
+      ];
+
+      const valuesByName = new Map<string, any>();
+      for (const name of paramNames) {
+        const typeChoice = await window.showQuickPick(typeItems, {
+          title: `Parameter :${name} — select its type (${paramNames.indexOf(name) + 1}/${paramNames.length})`,
+          ignoreFocusOut: true,
+        });
+        if (!typeChoice) { return; }
+
+        let raw: string | undefined;
+        if (typeChoice.value !== "null") {
+          raw = await window.showInputBox({
+            title: `Parameter :${name} — enter a ${typeChoice.label} value`,
+            ignoreFocusOut: true,
+          });
+          if (raw === undefined) { return; }
+        }
+
+        try {
+          valuesByName.set(name, coerceParamValue(typeChoice.value, raw));
+        } catch (err: any) {
+          logger.showError(err?.message ?? String(err));
+          return;
+        }
+      }
+
+      const {sql: positionalSql, paramNames: bindOrder} = rewriteNamedParametersToPositional(sql);
+      const params = bindOrder.map(name => valuesByName.get(name));
+
+      Driver.runQuery(positionalSql, Global.activeConnection, params)
+        .then(result => {
+          firebirdQueryResults.display(result, config.recordsPerPage);
+        })
+        .catch((err: any) => {
+          logger.error(err?.message ?? err);
+          logger.showError(`Query failed: ${err?.message ?? err}`);
         });
     })
   );

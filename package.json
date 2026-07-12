@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.51",
+  "version": "0.1.52",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -150,6 +150,11 @@
       {
         "command": "firebird.runQuery",
         "title": "Run Firebird Query",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.runParameterizedQuery",
+        "title": "Run Parameterized Query (:paramName)",
         "category": "Firebird"
       },
       {
@@ -682,6 +687,12 @@
         "when": "editorLangId == sql"
       },
       {
+        "command": "firebird.runParameterizedQuery",
+        "key": "ctrl+alt+shift+q",
+        "mac": "cmd+alt+shift+q",
+        "when": "editorLangId == sql"
+      },
+      {
         "command": "firebird.formatSql",
         "key": "ctrl+alt+f",
         "when": "editorLangId == sql"
@@ -708,6 +719,11 @@
       "editor/context": [
         {
           "command": "firebird.runQuery",
+          "when": "editorLangId == sql",
+          "group": "navigation"
+        },
+        {
+          "command": "firebird.runParameterizedQuery",
           "when": "editorLangId == sql",
           "group": "navigation"
         },

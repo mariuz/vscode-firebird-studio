@@ -235,7 +235,7 @@ export class Driver {
     return { ...connectionOptions, password: stored ?? "" };
   }
 
-  public static async runQuery(sql?: string, connectionOptions?: ConnectionOptions): Promise<any> {
+  public static async runQuery(sql?: string, connectionOptions?: ConnectionOptions, params?: any[]): Promise<any> {
     logger.debug("Run Query start...");
 
     if (!sql && !window.activeTextEditor) {
@@ -287,7 +287,7 @@ export class Driver {
     const connection = await this.client.createConnection(connectionOptions);
     const txOptions = buildTransactionOptions(getOptions());
     try {
-      const result = await this.client.queryPromise(connection, sql, undefined, txOptions);
+      const result = await this.client.queryPromise(connection, sql, params, txOptions);
       const durationMs = Date.now() - start;
 
       if (result !== undefined) {
@@ -639,14 +639,14 @@ export class NativeClient implements ClientI<Attachment> {
     }
   }
 
-  public async queryPromise<T extends object>(connection: Attachment, sql: string, _args?: any[], txOptions?: TransactionRequestOptions): Promise<T[]> {
+  public async queryPromise<T extends object>(connection: Attachment, sql: string, args?: any[], txOptions?: TransactionRequestOptions): Promise<T[]> {
     if (!connection?.isValid) {
       throw new Error("Invalid Connection");
     }
     const trans = await connection.startTransaction(toNativeTransactionOptions(txOptions));
     let res: ResultSet | undefined;
     try {
-      res = await connection.executeQuery(trans, sql);
+      res = await connection.executeQuery(trans, sql, args);
       const result = await res.fetchAsObject<T>();
       await res.close();
       await trans.commit();
