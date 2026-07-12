@@ -1,15 +1,121 @@
 import {TextEditor, workspace, window, ViewColumn, ExtensionContext, commands} from "vscode";
 import * as Firebird from "node-firebird";
 import {Global} from "./global";
-import {ConnectionOptions} from "../interfaces";
+import {ConnectionOptions, Options} from "../interfaces";
 import {logger} from "../logger/logger";
 import type { Attachment, Client, ResultSet} from 'node-firebird-driver-native';
+import { TransactionIsolation, TransactionOptions as NativeTransactionOptions } from 'node-firebird-driver';
 import {simpleCallbackToPromise, getConnectionLabel} from './utils';
 import {CredentialStore} from './credential-store';
 import {splitStatements} from './sql-splitter';
 import {PooledClient, ConnectionPoolOptions} from './connection-pool';
+import {getOptions} from '../config';
 import * as fs from 'fs';
 import path = require('path');
+
+/**
+ * Driver-agnostic transaction request, built once per runQuery()/runBatch() call from the
+ * firebird.transaction.* settings and passed down to whichever client is active. Only the fields
+ * actually overridden by settings are populated, so an unset field falls through to the
+ * underlying driver's own default rather than this module hard-coding one.
+ */
+export type TransactionIsolationLevel = Exclude<Options["transactionIsolationLevel"], "">;
+
+export interface TransactionRequestOptions {
+  isolation?: TransactionIsolationLevel;
+  readOnly?: boolean;
+  wait?: boolean;
+  /** Lock wait timeout in seconds. Only honored by NodeClient — see toNativeTransactionOptions(). */
+  lockTimeoutSec?: number;
+}
+
+/** Builds a TransactionRequestOptions from the firebird.transaction.* settings. Exported for unit testing. */
+export function buildTransactionOptions(options: Pick<Options,
+  "transactionIsolationLevel" | "transactionLockTimeoutSec" | "transactionReadOnly" | "transactionWaitMode"
+>): TransactionRequestOptions {
+  const txOptions: TransactionRequestOptions = {};
+  if (options.transactionIsolationLevel) {
+    txOptions.isolation = options.transactionIsolationLevel;
+  }
+  if (options.transactionReadOnly) {
+    txOptions.readOnly = true;
+  }
+  if (options.transactionWaitMode) {
+    txOptions.wait = options.transactionWaitMode === "WAIT";
+  }
+  if (options.transactionLockTimeoutSec) {
+    txOptions.lockTimeoutSec = options.transactionLockTimeoutSec;
+  }
+  return txOptions;
+}
+
+/**
+ * Maps our driver-agnostic isolation name to node-firebird's own TPB constants. node-firebird
+ * names these confusingly: ISOLATION_READ_UNCOMMITTED is NOT a dirty-read isolation (Firebird has
+ * no such thing) — it's read_committed+rec_version, i.e. real "Read Committed (Record Version)".
+ * We expose the correct Firebird terminology in settings and translate it here instead.
+ */
+const NODE_FIREBIRD_ISOLATION_MAP: Record<string, Firebird.Isolation> = {
+  READ_COMMITTED_RECORD_VERSION: Firebird.ISOLATION_READ_UNCOMMITTED,
+  READ_COMMITTED_NO_RECORD_VERSION: Firebird.ISOLATION_READ_COMMITTED,
+  SNAPSHOT: Firebird.ISOLATION_REPEATABLE_READ,
+  SNAPSHOT_TABLE_STABILITY: Firebird.ISOLATION_SERIALIZABLE,
+};
+
+/** Exported for unit testing. */
+export function toNodeFirebirdTransactionOptions(txOptions?: TransactionRequestOptions): Firebird.TransactionOptions {
+  if (!txOptions) {
+    return {};
+  }
+  const opts: Firebird.TransactionOptions = {};
+  if (txOptions.isolation) {
+    opts.isolation = NODE_FIREBIRD_ISOLATION_MAP[txOptions.isolation];
+  }
+  if (txOptions.readOnly !== undefined) {
+    opts.readOnly = txOptions.readOnly;
+  }
+  if (txOptions.wait !== undefined) {
+    opts.wait = txOptions.wait;
+  }
+  if (txOptions.lockTimeoutSec !== undefined) {
+    opts.waitTimeout = txOptions.lockTimeoutSec;
+  }
+  return opts;
+}
+
+const NATIVE_ISOLATION_MAP: Record<string, TransactionIsolation> = {
+  READ_COMMITTED_RECORD_VERSION: TransactionIsolation.READ_COMMITTED,
+  READ_COMMITTED_NO_RECORD_VERSION: TransactionIsolation.READ_COMMITTED,
+  SNAPSHOT: TransactionIsolation.SNAPSHOT,
+  SNAPSHOT_TABLE_STABILITY: TransactionIsolation.CONSISTENCY,
+};
+
+/**
+ * Exported for unit testing. lockTimeoutSec has no equivalent in node-firebird-driver's
+ * TransactionOptions (no numeric lock-timeout TPB item, only a wait/no-wait toggle) — it is
+ * silently not applied here; only NodeClient can honor it.
+ */
+export function toNativeTransactionOptions(txOptions?: TransactionRequestOptions): NativeTransactionOptions {
+  if (!txOptions) {
+    return {};
+  }
+  const opts: NativeTransactionOptions = {};
+  if (txOptions.isolation) {
+    opts.isolation = NATIVE_ISOLATION_MAP[txOptions.isolation];
+    if (txOptions.isolation === "READ_COMMITTED_RECORD_VERSION") {
+      opts.readCommittedMode = "RECORD_VERSION";
+    } else if (txOptions.isolation === "READ_COMMITTED_NO_RECORD_VERSION") {
+      opts.readCommittedMode = "NO_RECORD_VERSION";
+    }
+  }
+  if (txOptions.readOnly !== undefined) {
+    opts.accessMode = txOptions.readOnly ? "READ_ONLY" : "READ_WRITE";
+  }
+  if (txOptions.wait !== undefined) {
+    opts.waitMode = txOptions.wait ? "WAIT" : "NO_WAIT";
+  }
+  return opts;
+}
 
 /** Result of a single SQL statement within a batch run. */
 export interface BatchResult {
@@ -179,8 +285,9 @@ export class Driver {
 
     const start = Date.now();
     const connection = await this.client.createConnection(connectionOptions);
+    const txOptions = buildTransactionOptions(getOptions());
     try {
-      const result = await this.client.queryPromise(connection, sql);
+      const result = await this.client.queryPromise(connection, sql, undefined, txOptions);
       const durationMs = Date.now() - start;
 
       if (result !== undefined) {
@@ -265,13 +372,14 @@ export class Driver {
     logger.info(`Batch: executing ${statements.length} statement(s)...`);
 
     const connection = await this.client.createConnection(resolved.connectionOptions);
+    const txOptions = buildTransactionOptions(getOptions());
     const results: BatchResult[] = [];
 
     try {
       for (const stmt of statements) {
         const start = Date.now();
         try {
-          const rows = await this.client.queryPromise(connection, stmt);
+          const rows = await this.client.queryPromise(connection, stmt, undefined, txOptions);
           const durationMs = Date.now() - start;
 
           if (rows !== undefined) {
@@ -373,7 +481,7 @@ export class Driver {
 }
 
 export interface ClientI<K extends Firebird.Database | Attachment> {
-  queryPromise<T extends object>(connection: K, sql: string): Promise<T[]>;
+  queryPromise<T extends object>(connection: K, sql: string, args?: any[], txOptions?: TransactionRequestOptions): Promise<T[]>;
   createConnection(connectionOptions: ConnectionOptions): Promise<K>;
   detach(connection: K): Promise<void>;
 }
@@ -410,14 +518,31 @@ export function toNodeFirebirdOptions(connectionOptions: ConnectionOptions): Fir
 }
 
 export class NodeClient implements ClientI<Firebird.Database> {
-  public queryPromise<T>(connection: Firebird.Database, sql: string, args: any[] = []): Promise<T[]> {
+  /**
+   * Runs `sql` in its own transaction, built manually (rather than the simpler `connection.query()`)
+   * so firebird.transaction.* settings can be applied — `Database.query()`/`execute()` always call
+   * `startTransaction()` with no options, hard-coding the driver's defaults.
+   */
+  public queryPromise<T>(connection: Firebird.Database, sql: string, args: any[] = [], txOptions?: TransactionRequestOptions): Promise<T[]> {
     return new Promise((resolve, reject) => {
-      connection.query(sql, args, (err: any, rows: any) => {
-        if (err) {
-          reject("Error queryPromise: " + err.message);
-        } else {
-          resolve(rows);
+      connection.transaction(toNodeFirebirdTransactionOptions(txOptions), (txErr: any, transaction: Firebird.Transaction) => {
+        if (txErr) {
+          reject("Error queryPromise: " + txErr.message);
+          return;
         }
+        transaction.query(sql, args, (err: any, rows: any) => {
+          if (err) {
+            transaction.rollback(() => reject("Error queryPromise: " + err.message));
+            return;
+          }
+          transaction.commit((commitErr: any) => {
+            if (commitErr) {
+              reject("Error queryPromise: " + commitErr.message);
+              return;
+            }
+            resolve(rows);
+          });
+        });
       });
     });
   }
@@ -459,11 +584,11 @@ export class NativeClient implements ClientI<Attachment> {
     }
   }
 
-  public async queryPromise<T extends object>(connection: Attachment, sql: string): Promise<T[]> {
+  public async queryPromise<T extends object>(connection: Attachment, sql: string, _args?: any[], txOptions?: TransactionRequestOptions): Promise<T[]> {
     if (!connection?.isValid) {
       throw new Error("Invalid Connection");
     }
-    const trans = await connection.startTransaction();
+    const trans = await connection.startTransaction(toNativeTransactionOptions(txOptions));
     let res: ResultSet | undefined;
     try {
       res = await connection.executeQuery(trans, sql);

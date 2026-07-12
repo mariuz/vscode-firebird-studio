@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -434,6 +434,40 @@
           "type": "number",
           "default": 3000,
           "markdownDescription": "How often (in milliseconds) the Live Profiler re-polls connection activity while its panel is open and visible."
+        },
+        "firebird.transaction.isolationLevel": {
+          "type": "string",
+          "enum": ["", "READ_COMMITTED_RECORD_VERSION", "READ_COMMITTED_NO_RECORD_VERSION", "SNAPSHOT", "SNAPSHOT_TABLE_STABILITY"],
+          "enumDescriptions": [
+            "Use the driver's default (Read Committed, No Record Version).",
+            "Read Committed: see the latest committed version of a row a concurrent transaction is updating, instead of waiting on or conflicting with it.",
+            "Read Committed: wait on (or conflict with) a concurrent transaction updating a row, instead of reading its prior committed version.",
+            "Snapshot (Concurrency): the whole transaction sees a consistent snapshot of the database as of its start.",
+            "Snapshot Table Stability (Consistency): like Snapshot, but takes a protected lock on every table it touches."
+          ],
+          "default": "",
+          "markdownDescription": "Transaction isolation level for every query/batch Firebird Studio runs. Leave empty to use the driver's own default."
+        },
+        "firebird.transaction.lockTimeoutSec": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Lock wait timeout, in seconds, before a query blocked on a row/table lock gives up (`0` = wait indefinitely, Firebird's default). Only honored by the pure-JS driver (`firebird.useNativeDriver: false`) — the native driver's transaction API has no equivalent numeric option, only wait/no-wait (see `firebird.transaction.waitMode`)."
+        },
+        "firebird.transaction.readOnly": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Open every query's transaction as READ ONLY, rejecting any statement that tries to modify data."
+        },
+        "firebird.transaction.waitMode": {
+          "type": "string",
+          "enum": ["", "WAIT", "NO_WAIT"],
+          "enumDescriptions": [
+            "Use the driver's default (WAIT).",
+            "Wait for a conflicting lock to clear, optionally bounded by firebird.transaction.lockTimeoutSec.",
+            "Fail immediately instead of waiting for a conflicting lock."
+          ],
+          "default": "",
+          "markdownDescription": "Whether a query that hits a lock conflict waits or fails immediately."
         },
         "firebird.shortcuts": {
           "type": "object",

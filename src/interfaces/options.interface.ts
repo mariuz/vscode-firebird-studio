@@ -22,4 +22,15 @@ export interface Options {
   profilerPollIntervalMs: number;
   /** Query-results webview key combos (event name -> combo string), overriding `DEFAULT_SHORTCUTS`. */
   shortcuts: Record<string, string>;
+  /**
+   * Transaction isolation level applied to every query/batch this extension runs.
+   * `''` means "use the driver's own default" (Read Committed, No Record Version).
+   */
+  transactionIsolationLevel: '' | 'READ_COMMITTED_RECORD_VERSION' | 'READ_COMMITTED_NO_RECORD_VERSION' | 'SNAPSHOT' | 'SNAPSHOT_TABLE_STABILITY';
+  /** Lock wait timeout in seconds (`0` = wait indefinitely). Only honored by the pure-JS driver. */
+  transactionLockTimeoutSec: number;
+  /** Opens every query's transaction as READ ONLY. */
+  transactionReadOnly: boolean;
+  /** Whether a lock conflict waits or fails immediately. `''` means "use the driver's default (WAIT)". */
+  transactionWaitMode: '' | 'WAIT' | 'NO_WAIT';
 }

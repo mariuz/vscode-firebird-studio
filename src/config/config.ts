@@ -21,7 +21,11 @@ export function getOptions() {
     connectionPoolMaxSize: _connectionPoolMaxSize(),
     connectionPoolIdleTimeoutMs: _connectionPoolIdleTimeoutMs(),
     profilerPollIntervalMs: _profilerPollIntervalMs(),
-    shortcuts: _shortcuts()
+    shortcuts: _shortcuts(),
+    transactionIsolationLevel: _transactionIsolationLevel(),
+    transactionLockTimeoutSec: _transactionLockTimeoutSec(),
+    transactionReadOnly: _transactionReadOnly(),
+    transactionWaitMode: _transactionWaitMode()
   } as Options;
 }
 
@@ -190,6 +194,49 @@ function _shortcuts(): Record<string, string> {
     }
   }
   return merged;
+}
+
+const VALID_ISOLATION_LEVELS = ["", "READ_COMMITTED_RECORD_VERSION", "READ_COMMITTED_NO_RECORD_VERSION", "SNAPSHOT", "SNAPSHOT_TABLE_STABILITY"];
+
+function _transactionIsolationLevel(): Options["transactionIsolationLevel"] {
+  const conf: any = getConfig().get("transaction.isolationLevel");
+  if (typeof conf === "string" && VALID_ISOLATION_LEVELS.includes(conf)) {
+    return conf as Options["transactionIsolationLevel"];
+  }
+  logger.error("Invalid value detected in Transaction Isolation Level settings. Fallback to default value.");
+  return "";
+}
+
+function _transactionLockTimeoutSec(): number {
+  const conf: any = getConfig().get("transaction.lockTimeoutSec");
+  const def: number = properties["firebird.transaction.lockTimeoutSec"]["default"];
+
+  if (typeof conf !== "number" || conf < 0) {
+    logger.error("Invalid value detected in Transaction Lock Timeout settings. Fallback to default value.");
+    return def;
+  }
+  return conf;
+}
+
+function _transactionReadOnly(): boolean {
+  const conf: any = getConfig().get("transaction.readOnly");
+  const def: boolean = properties["firebird.transaction.readOnly"]["default"];
+
+  if (typeof conf !== "boolean") {
+    return def;
+  }
+  return conf;
+}
+
+const VALID_WAIT_MODES = ["", "WAIT", "NO_WAIT"];
+
+function _transactionWaitMode(): Options["transactionWaitMode"] {
+  const conf: any = getConfig().get("transaction.waitMode");
+  if (typeof conf === "string" && VALID_WAIT_MODES.includes(conf)) {
+    return conf as Options["transactionWaitMode"];
+  }
+  logger.error("Invalid value detected in Transaction Wait Mode settings. Fallback to default value.");
+  return "";
 }
 
 function _recordsPerPage(): string {

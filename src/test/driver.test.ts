@@ -13,8 +13,12 @@
 
 import * as assert from 'assert';
 import * as Firebird from 'node-firebird';
-import { Driver, ClientI, HistoryLogEntry, extractTableNames, toNodeFirebirdOptions, NodeClient } from '../shared/driver';
-import { ConnectionOptions } from '../interfaces';
+import { TransactionIsolation } from 'node-firebird-driver';
+import {
+  Driver, ClientI, HistoryLogEntry, extractTableNames, toNodeFirebirdOptions, NodeClient,
+  buildTransactionOptions, toNodeFirebirdTransactionOptions, toNativeTransactionOptions,
+} from '../shared/driver';
+import { ConnectionOptions, Options } from '../interfaces';
 import { CredentialStore } from '../shared/credential-store';
 import { createMockContext } from './mocks/vscode';
 
@@ -169,6 +173,220 @@ suite('Driver – toNodeFirebirdOptions()', function () {
     const opts = toNodeFirebirdOptions(baseConnection({ embedded: true }));
     assert.strictEqual(opts.host, undefined);
     assert.strictEqual(opts.port, undefined);
+  });
+});
+
+// ── firebird.transaction.* option builders ──────────────────────────────────
+//
+// buildTransactionOptions() reads the driver-agnostic settings; toNodeFirebirdTransactionOptions()/
+// toNativeTransactionOptions() translate that into each client's own shape. All three are pure
+// (no DB connection needed).
+
+suite('Driver – buildTransactionOptions()', function () {
+  function settings(overrides: Partial<Options> = {}): Pick<Options,
+    'transactionIsolationLevel' | 'transactionLockTimeoutSec' | 'transactionReadOnly' | 'transactionWaitMode'
+  > {
+    return {
+      transactionIsolationLevel: '',
+      transactionLockTimeoutSec: 0,
+      transactionReadOnly: false,
+      transactionWaitMode: '',
+      ...overrides,
+    };
+  }
+
+  test('returns an empty object when nothing is configured', function () {
+    assert.deepStrictEqual(buildTransactionOptions(settings()), {});
+  });
+
+  test('carries isolation through when set', function () {
+    const opts = buildTransactionOptions(settings({ transactionIsolationLevel: 'SNAPSHOT' }));
+    assert.deepStrictEqual(opts, { isolation: 'SNAPSHOT' });
+  });
+
+  test('carries readOnly through only when true (false stays unset, driver default)', function () {
+    assert.deepStrictEqual(buildTransactionOptions(settings({ transactionReadOnly: true })), { readOnly: true });
+    assert.deepStrictEqual(buildTransactionOptions(settings({ transactionReadOnly: false })), {});
+  });
+
+  test('translates waitMode "NO_WAIT" to wait: false and "WAIT" to wait: true', function () {
+    assert.deepStrictEqual(buildTransactionOptions(settings({ transactionWaitMode: 'NO_WAIT' })), { wait: false });
+    assert.deepStrictEqual(buildTransactionOptions(settings({ transactionWaitMode: 'WAIT' })), { wait: true });
+  });
+
+  test('carries a nonzero lock timeout through; a zero timeout stays unset (driver default: wait indefinitely)', function () {
+    assert.deepStrictEqual(buildTransactionOptions(settings({ transactionLockTimeoutSec: 30 })), { lockTimeoutSec: 30 });
+    assert.deepStrictEqual(buildTransactionOptions(settings({ transactionLockTimeoutSec: 0 })), {});
+  });
+
+  test('combines every override at once', function () {
+    const opts = buildTransactionOptions(settings({
+      transactionIsolationLevel: 'READ_COMMITTED_NO_RECORD_VERSION',
+      transactionReadOnly: true,
+      transactionWaitMode: 'NO_WAIT',
+      transactionLockTimeoutSec: 5,
+    }));
+    assert.deepStrictEqual(opts, {
+      isolation: 'READ_COMMITTED_NO_RECORD_VERSION',
+      readOnly: true,
+      wait: false,
+      lockTimeoutSec: 5,
+    });
+  });
+});
+
+suite('Driver – toNodeFirebirdTransactionOptions()', function () {
+  test('returns an empty object for undefined input', function () {
+    assert.deepStrictEqual(toNodeFirebirdTransactionOptions(undefined), {});
+  });
+
+  test('maps each isolation name to node-firebird\'s own (confusingly named) TPB constant', function () {
+    assert.strictEqual(
+      toNodeFirebirdTransactionOptions({ isolation: 'READ_COMMITTED_RECORD_VERSION' }).isolation,
+      Firebird.ISOLATION_READ_UNCOMMITTED,
+      'node-firebird names real "Read Committed (Record Version)" ISOLATION_READ_UNCOMMITTED — Firebird has no true dirty-read isolation'
+    );
+    assert.strictEqual(
+      toNodeFirebirdTransactionOptions({ isolation: 'READ_COMMITTED_NO_RECORD_VERSION' }).isolation,
+      Firebird.ISOLATION_READ_COMMITTED
+    );
+    assert.strictEqual(
+      toNodeFirebirdTransactionOptions({ isolation: 'SNAPSHOT' }).isolation,
+      Firebird.ISOLATION_REPEATABLE_READ
+    );
+    assert.strictEqual(
+      toNodeFirebirdTransactionOptions({ isolation: 'SNAPSHOT_TABLE_STABILITY' }).isolation,
+      Firebird.ISOLATION_SERIALIZABLE
+    );
+  });
+
+  test('maps lockTimeoutSec to waitTimeout', function () {
+    assert.strictEqual(toNodeFirebirdTransactionOptions({ lockTimeoutSec: 15 }).waitTimeout, 15);
+  });
+
+  test('passes readOnly and wait through unchanged', function () {
+    assert.deepStrictEqual(
+      toNodeFirebirdTransactionOptions({ readOnly: true, wait: false }),
+      { readOnly: true, wait: false }
+    );
+  });
+});
+
+suite('Driver – toNativeTransactionOptions()', function () {
+  test('returns an empty object for undefined input', function () {
+    assert.deepStrictEqual(toNativeTransactionOptions(undefined), {});
+  });
+
+  test('maps the two read-committed submodes to READ_COMMITTED + the matching readCommittedMode', function () {
+    assert.deepStrictEqual(
+      toNativeTransactionOptions({ isolation: 'READ_COMMITTED_RECORD_VERSION' }),
+      { isolation: TransactionIsolation.READ_COMMITTED, readCommittedMode: 'RECORD_VERSION' }
+    );
+    assert.deepStrictEqual(
+      toNativeTransactionOptions({ isolation: 'READ_COMMITTED_NO_RECORD_VERSION' }),
+      { isolation: TransactionIsolation.READ_COMMITTED, readCommittedMode: 'NO_RECORD_VERSION' }
+    );
+  });
+
+  test('maps SNAPSHOT and SNAPSHOT_TABLE_STABILITY to their native enum values, with no readCommittedMode', function () {
+    assert.deepStrictEqual(toNativeTransactionOptions({ isolation: 'SNAPSHOT' }), { isolation: TransactionIsolation.SNAPSHOT });
+    assert.deepStrictEqual(
+      toNativeTransactionOptions({ isolation: 'SNAPSHOT_TABLE_STABILITY' }),
+      { isolation: TransactionIsolation.CONSISTENCY }
+    );
+  });
+
+  test('maps readOnly to accessMode and wait to waitMode', function () {
+    assert.deepStrictEqual(
+      toNativeTransactionOptions({ readOnly: true, wait: false }),
+      { accessMode: 'READ_ONLY', waitMode: 'NO_WAIT' }
+    );
+    assert.deepStrictEqual(
+      toNativeTransactionOptions({ readOnly: false, wait: true }),
+      { accessMode: 'READ_WRITE', waitMode: 'WAIT' }
+    );
+  });
+
+  test('silently drops lockTimeoutSec — no numeric lock-timeout TPB item in this driver\'s TransactionOptions', function () {
+    const opts = toNativeTransactionOptions({ lockTimeoutSec: 30 });
+    assert.deepStrictEqual(opts, {});
+  });
+});
+
+// ── NodeClient.queryPromise() — manual transaction lifecycle ────────────────
+//
+// Regression coverage for switching from connection.query() (which always calls
+// startTransaction() with no options) to a manually built connection.transaction(options, ...)
+// + transaction.query()/.commit()/.rollback(), so firebird.transaction.* settings actually apply.
+
+suite('NodeClient.queryPromise()', function () {
+  function fakeTransaction(overrides: Partial<Firebird.Transaction> = {}): Firebird.Transaction & { committed: boolean; rolledBack: boolean } {
+    const trans: any = {
+      committed: false,
+      rolledBack: false,
+      query(_sql: string, _params: any[], cb: any) {
+        cb(undefined, [{ ONE: 1 }]);
+      },
+      commit(cb?: any) {
+        trans.committed = true;
+        if (cb) { cb(); }
+      },
+      rollback(cb?: any) {
+        trans.rolledBack = true;
+        if (cb) { cb(); }
+      },
+      ...overrides,
+    };
+    return trans;
+  }
+
+  function fakeDatabase(trans: Firebird.Transaction, capturedOptions: { value?: Firebird.TransactionOptions }): Firebird.Database {
+    return {
+      transaction(options: any, callback: any) {
+        capturedOptions.value = options;
+        callback(undefined, trans);
+        return this;
+      },
+    } as any;
+  }
+
+  test('opens the transaction with the TransactionOptions built from txOptions', async function () {
+    const trans = fakeTransaction();
+    const captured: { value?: Firebird.TransactionOptions } = {};
+    const db = fakeDatabase(trans, captured);
+
+    const client = new NodeClient();
+    const rows = await client.queryPromise(db, 'SELECT 1 AS ONE FROM RDB$DATABASE', [], { readOnly: true, lockTimeoutSec: 10 });
+
+    assert.deepStrictEqual(rows, [{ ONE: 1 }]);
+    assert.strictEqual(captured.value?.readOnly, true);
+    assert.strictEqual(captured.value?.waitTimeout, 10);
+    assert.strictEqual(trans.committed, true, 'a successful query should commit its transaction');
+    assert.strictEqual(trans.rolledBack, false);
+  });
+
+  test('rolls back (never commits) when the query fails', async function () {
+    const trans = fakeTransaction({
+      query(_sql: string, _params: any[], cb: any) { cb(new Error('boom')); },
+    } as any);
+    const captured: { value?: Firebird.TransactionOptions } = {};
+    const db = fakeDatabase(trans, captured);
+
+    const client = new NodeClient();
+    await assert.rejects(client.queryPromise(db, 'SELECT 1', []), /boom/);
+    assert.strictEqual(trans.rolledBack, true);
+    assert.strictEqual(trans.committed, false);
+  });
+
+  test('builds an empty (driver-default) TransactionOptions when no txOptions is passed', async function () {
+    const trans = fakeTransaction();
+    const captured: { value?: Firebird.TransactionOptions } = {};
+    const db = fakeDatabase(trans, captured);
+
+    const client = new NodeClient();
+    await client.queryPromise(db, 'SELECT 1', []);
+
+    assert.deepStrictEqual(captured.value, {});
   });
 });
 

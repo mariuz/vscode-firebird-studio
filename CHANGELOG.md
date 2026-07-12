@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.32 - 2026-07-12
+
+### Added
+
+- **Transaction settings** — four new settings (`firebird.transaction.isolationLevel`, `.lockTimeoutSec`, `.readOnly`, `.waitMode`) apply to every transaction Firebird Studio opens to run a query or batch, letting you set e.g. Snapshot isolation or a lock-wait timeout without editing SQL. `lockTimeoutSec` is honored by the pure-JS driver only — the native driver's transaction API has no numeric lock-timeout option, only wait/no-wait.
+
 ## 0.1.31 - 2026-07-12
 
 ### Added
