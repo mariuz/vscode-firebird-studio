@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.39 - 2026-07-12
+
+### Added
+
+- **Create Local Firebird Container** — provisions a brand-new Firebird server as a Docker container (pick a version, port, SYSDBA password, database name, and ephemeral-vs-persistent-volume storage), waits for it to accept connections, then adds it as a saved connection automatically. Extends the existing "Add New Connection" Docker option's container *detection* with container *creation*.
+
 ## 0.1.38 - 2026-07-12
 
 ### Added

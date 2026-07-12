@@ -28,6 +28,7 @@ import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
 import {runBuildProject} from "./database-projects";
+import {runContainerProvisionWizard} from "./container-provisioning";
 
 /** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -179,6 +180,18 @@ export function activate(context: ExtensionContext) {
     commands.registerCommand("firebird.explorer.createDatabase", () => {
       firebirdTreeDataProvider.createDatabase().catch(err => {
         logger.error(err);
+      });
+    })
+  );
+
+  /* EXPLORER TOOLBAR: provision a brand-new local Firebird server in Docker, then add it as a connection */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.explorer.createContainer", () => {
+      runContainerProvisionWizard(firebirdTreeDataProvider).catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Create Firebird Container failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
       });
     })
   );

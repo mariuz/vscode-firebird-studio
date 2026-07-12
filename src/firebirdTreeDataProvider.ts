@@ -61,6 +61,15 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
   }
 
   /**
+   * Saves an already-fully-specified ConnectionOptions (e.g. one this extension just provisioned
+   * itself, such as a freshly created Docker container) as a connection, without running the
+   * interactive wizard — everything needed is already known.
+   */
+  public async addKnownConnection(newOptions: ConnectionOptions): Promise<void> {
+    await this.saveNewConnection(newOptions);
+  }
+
+  /**
    * Persists a freshly-collected ConnectionOptions (from the wizard) as a saved connection:
    * generates its id, stores the password in SecretStorage (never in globalState), writes the
    * rest to globalState, sets it active, and refreshes the tree. Shared by addConnection() and

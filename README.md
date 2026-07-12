@@ -48,6 +48,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Database Projects** — extract the connected schema into a folder of versioned `.sql` files, and build one back into a deployable script
 - **Create, rename, and drop whole databases** from the connection tree, not just objects within one
 - **Object Search** — fuzzy-search every table, view, procedure, trigger, generator, and domain by name in one connection
+- **Create Local Firebird Container** — provision a brand-new Dockerized Firebird server from the extension
 
 ## Getting Started
 
@@ -180,6 +181,10 @@ Run **Create New Database...** from the Command Palette to walk through the same
 ### Object Search
 
 Right-click a database → **Search Objects...** and start typing to fuzzy-search every table, view, procedure, trigger, generator, and domain in that connection by name, in one list. Pick a result and it jumps straight to what you'd want to do with it: a table or view opens its data in the results grid, a procedure/trigger/domain opens an editable `ALTER` scaffold, and a generator shows its current value.
+
+### Create Local Firebird Container
+
+Run **Create Local Firebird Container...** from the Command Palette — Docker's "Add New Connection" option already detects Firebird containers that are already running; this creates a brand-new one. Pick a Firebird version (5.0/4.0/3.0, or a custom image), a container name, host port, SYSDBA password, database name, and whether its data should be ephemeral or kept in a persistent Docker volume. The extension runs `docker run`, waits for the server to actually accept connections (not just for the port to open), and adds it as a saved connection once it's ready.
 
 ## Settings
 
