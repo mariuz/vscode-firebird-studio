@@ -464,6 +464,18 @@ export function getPrimaryKeyColumnsQuery(tableName: string): string {
 }
 
 /**
+ * The primary key constraint's own name (0 or 1 row) — needed to DROP CONSTRAINT before adding a
+ * new primary key, since ALTER TABLE can't just "replace" one. Used by the visual Table
+ * Designer's Alter Table mode when the set of primary key columns changes.
+ */
+export function getPrimaryKeyConstraintNameQuery(tableName: string): string {
+  return `SELECT TRIM(rc.RDB$CONSTRAINT_NAME) AS CONSTRAINT_NAME
+            FROM RDB$RELATION_CONSTRAINTS rc
+           WHERE rc.RDB$RELATION_NAME = '${tableName}'
+             AND rc.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY';`;
+}
+
+/**
  * Returns every column of every table in the database, one row per column, with a primary-key
  * flag — used by the schema visualizer to build all its table nodes in a single round trip
  * instead of one tableInfoQuery() per table.

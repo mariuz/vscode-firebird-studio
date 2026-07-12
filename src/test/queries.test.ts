@@ -4,6 +4,7 @@ import {
   getTriggerBodyQuery,
   getViewDefinitionQuery,
   getPrimaryKeyColumnsQuery,
+  getPrimaryKeyConstraintNameQuery,
   getSchemaColumnsQuery,
   getForeignKeysQuery,
   MAX_SOURCE_CAST_LENGTH,
@@ -78,6 +79,22 @@ suite('getPrimaryKeyColumnsQuery', function () {
 
   test('orders by field position so a composite key comes back in key order', function () {
     assert.ok(getPrimaryKeyColumnsQuery('PRODUCTS').includes('ORDER BY s.RDB$FIELD_POSITION'));
+  });
+});
+
+// ── getPrimaryKeyConstraintNameQuery ──────────────────────────────────────────
+//
+// Used by the Table Designer's Alter Table mode to DROP CONSTRAINT before adding a new primary
+// key when the set of PK columns changes.
+
+suite('getPrimaryKeyConstraintNameQuery', function () {
+
+  test('filters by the given table name', function () {
+    assert.ok(getPrimaryKeyConstraintNameQuery('PRODUCTS').includes("= 'PRODUCTS'"));
+  });
+
+  test('filters constraints down to PRIMARY KEY', function () {
+    assert.ok(getPrimaryKeyConstraintNameQuery('PRODUCTS').includes("RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'"));
   });
 });
 

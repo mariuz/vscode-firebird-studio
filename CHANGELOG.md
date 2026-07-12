@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.24 - 2026-07-12
+
+### Added
+
+- **Alter Table** now opens the visual Table Designer pre-populated with the table's existing columns, instead of a plain-text scaffold — edit column types, sizes, defaults, NOT NULL, and the primary key, and it generates the `ALTER TABLE ADD/DROP/ALTER COLUMN` statements for you. Renaming a column in place is detected as a genuine rename rather than a drop-and-recreate that would lose data.
+
 ## 0.1.23 - 2026-07-12
 
 ### Added

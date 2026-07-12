@@ -320,10 +320,10 @@ export function activate(context: ExtensionContext) {
     })
   );
 
-  /* DDL: alter table scaffold */
+  /* DDL: alter table via visual designer */
   context.subscriptions.push(
     commands.registerCommand("firebird.table.alterTable", (tableNode: NodeTable) => {
-      tableNode.alterTable().catch(err => logger.error(err));
+      tableNode.alterTable(firebirdTableDesigner).catch(err => logger.error(err));
     })
   );
 

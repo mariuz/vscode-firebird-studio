@@ -65,7 +65,7 @@
   </style>
 </head>
 <body>
-  <h2>Create Table</h2>
+  <h2 id="heading">Create Table</h2>
 
   <div class="table-name-row">
     <label for="tableName">Table Name</label>
@@ -101,6 +101,14 @@
   <script>
     const vscode = acquireVsCodeApi();
     const types = ['VARCHAR','CHAR','INTEGER','SMALLINT','INT64','FLOAT','DOUBLE','DATE','TIME','TIMESTAMP','BLOB','BOOLEAN'];
+    const SIZED_TYPES = ['VARCHAR','CHAR','CSTRING'];
+
+    // 'create' generates CREATE TABLE; 'alter' diffs against originalColumns and generates
+    // ALTER TABLE statements instead. Set from the "init" message the extension sends once this
+    // script signals it's ready — never assumed up front, since the same page serves both modes.
+    let mode = 'create';
+    let pkConstraintName = null;
+    let originalColumns = [];
 
     function escAttr(str) {
       return String(str || '')
@@ -111,14 +119,25 @@
         .replace(/>/g, '&gt;');
     }
 
-    function addRow(name, type, size, notNull, pk, dflt) {
+    function addRow(name, type, size, notNull, pk, dflt, original) {
       const tbody = document.getElementById('columnsBody');
       const tr = document.createElement('tr');
+      if (original) {
+        // Fixed at row creation — never re-read from the (editable) name field, so renaming a
+        // column is detected as a rename (ALTER ... TO ...), not a drop-and-recreate that would
+        // silently lose that column's data.
+        tr.dataset.original = JSON.stringify(original);
+      }
+      // If the column's current type isn't one of the dropdown's options (e.g. an older/exotic
+      // Firebird type this designer doesn't otherwise model), add it so the select shows the
+      // real value instead of silently defaulting to the first option — which would otherwise
+      // look like a no-op edit but actually emit a spurious, potentially destructive TYPE change.
+      const options = (type && !types.includes(type)) ? [type, ...types] : types;
       tr.innerHTML = `
         <td><input type="text" class="col-name" value="${escAttr(name)}" placeholder="COLUMN_NAME"></td>
         <td>
           <select class="col-type">
-            ${types.map(t => `<option value="${escAttr(t)}"${t===(type||'VARCHAR')?' selected':''}>${escAttr(t)}</option>`).join('')}
+            ${options.map(t => `<option value="${escAttr(t)}"${t===(type||'VARCHAR')?' selected':''}>${escAttr(t)}</option>`).join('')}
           </select>
         </td>
         <td><input type="text" class="col-size" value="${escAttr(size)}" placeholder="e.g. 100"></td>
@@ -133,10 +152,11 @@
 
     document.getElementById('addColumnBtn').addEventListener('click', () => addRow('', 'VARCHAR', '', false, false, ''));
 
-    // Add a default first column
-    addRow('ID', 'INTEGER', '', true, true, '');
+    function typeString(type, size) {
+      return (size && SIZED_TYPES.includes(type)) ? `${type}(${size})` : type;
+    }
 
-    function buildDDL() {
+    function buildCreateDDL() {
       const tableName = document.getElementById('tableName').value.trim().toUpperCase() || 'NEW_TABLE';
       const rows = document.querySelectorAll('#columnsBody tr');
       const pkCols = [];
@@ -152,7 +172,7 @@
         const dflt = row.querySelector('.col-default').value.trim();
 
         let colDef = `  ${name} ${type}`;
-        if (size && ['VARCHAR','CHAR','CSTRING'].includes(type)) colDef += `(${size})`;
+        if (size && SIZED_TYPES.includes(type)) colDef += `(${size})`;
         if (dflt) colDef += ` DEFAULT ${dflt}`;
         if (notNull) colDef += ' NOT NULL';
         colDefs.push(colDef);
@@ -164,6 +184,87 @@
       }
 
       return `CREATE TABLE ${tableName} (\n${colDefs.join(',\n')}\n);`;
+    }
+
+    function buildAlterDDL() {
+      const tableName = document.getElementById('tableName').value.trim().toUpperCase();
+      const rows = document.querySelectorAll('#columnsBody tr');
+      const statements = [];
+      const seenOriginalNames = new Set();
+      const currentPkNames = [];
+
+      rows.forEach(row => {
+        const name = row.querySelector('.col-name').value.trim().toUpperCase();
+        if (!name) return;
+        const type = row.querySelector('.col-type').value;
+        const size = row.querySelector('.col-size').value.trim();
+        const notNull = row.querySelector('.col-notnull').checked;
+        const pk = row.querySelector('.col-pk').checked;
+        const dflt = row.querySelector('.col-default').value.trim();
+        if (pk) currentPkNames.push(name);
+
+        if (!row.dataset.original) {
+          // Brand new column (added via "+ Add Column" in alter mode).
+          let colDef = `${name} ${type}`;
+          if (size && SIZED_TYPES.includes(type)) colDef += `(${size})`;
+          if (dflt) colDef += ` DEFAULT ${dflt}`;
+          if (notNull) {
+            colDef += ' NOT NULL';
+            if (!dflt) {
+              statements.push(`ALTER TABLE ${tableName} ADD ${colDef}; -- If this table already has rows, this may fail without a DEFAULT`);
+              return;
+            }
+          }
+          statements.push(`ALTER TABLE ${tableName} ADD ${colDef};`);
+          return;
+        }
+
+        const original = JSON.parse(row.dataset.original);
+        seenOriginalNames.add(original.name);
+
+        if (name !== original.name) {
+          statements.push(`ALTER TABLE ${tableName} ALTER COLUMN ${original.name} TO ${name};`);
+        }
+
+        if (typeString(original.type, original.size) !== typeString(type, size)) {
+          statements.push(`ALTER TABLE ${tableName} ALTER COLUMN ${name} TYPE ${typeString(type, size)};`);
+        }
+
+        if ((original.dflt || '') !== dflt) {
+          statements.push(dflt
+            ? `ALTER TABLE ${tableName} ALTER COLUMN ${name} SET DEFAULT ${dflt};`
+            : `ALTER TABLE ${tableName} ALTER COLUMN ${name} DROP DEFAULT;`);
+        }
+
+        if (Boolean(original.notNull) !== notNull) {
+          const clause = notNull ? 'SET NOT NULL' : 'DROP NOT NULL';
+          statements.push(`ALTER TABLE ${tableName} ALTER COLUMN ${name} ${clause}; -- Requires Firebird 4.0 or later`);
+        }
+      });
+
+      originalColumns.forEach(col => {
+        if (!seenOriginalNames.has(col.name)) {
+          statements.push(`ALTER TABLE ${tableName} DROP ${col.name};`);
+        }
+      });
+
+      const originalPkNames = originalColumns.filter(c => c.pk).map(c => c.name);
+      const pkChanged = originalPkNames.length !== currentPkNames.length
+        || !originalPkNames.every(n => currentPkNames.includes(n));
+      if (pkChanged) {
+        if (pkConstraintName) {
+          statements.push(`ALTER TABLE ${tableName} DROP CONSTRAINT ${pkConstraintName};`);
+        }
+        if (currentPkNames.length > 0) {
+          statements.push(`ALTER TABLE ${tableName} ADD PRIMARY KEY (${currentPkNames.join(', ')});`);
+        }
+      }
+
+      return statements.length > 0 ? statements.join('\n') : '-- No changes detected.';
+    }
+
+    function buildDDL() {
+      return mode === 'alter' ? buildAlterDDL() : buildCreateDDL();
     }
 
     document.getElementById('generateBtn').addEventListener('click', () => {
@@ -186,8 +287,30 @@
         document.getElementById('ddl-output').style.display = 'block';
         document.getElementById('ddl-output').textContent =
           (document.getElementById('ddl-output').textContent || '') + '\n-- ' + msg.data.text;
+        return;
+      }
+      if (msg.command === 'init') {
+        mode = msg.data.mode;
+        if (mode === 'alter') {
+          pkConstraintName = msg.data.pkConstraintName;
+          originalColumns = msg.data.columns;
+          document.getElementById('heading').textContent = `Alter Table: ${msg.data.tableName}`;
+          const tableNameInput = document.getElementById('tableName');
+          tableNameInput.value = msg.data.tableName;
+          tableNameInput.readOnly = true;
+          document.getElementById('columnsBody').innerHTML = '';
+          originalColumns.forEach(col => addRow(col.name, col.type, col.size, col.notNull, col.pk, col.dflt, col));
+          document.getElementById('generateBtn').textContent = 'Generate ALTER TABLE in Editor';
+          document.getElementById('executeBtn').textContent = 'Execute ALTER TABLE';
+        } else {
+          // Default first column for a brand new table.
+          addRow('ID', 'INTEGER', '', true, true, '');
+        }
+        return;
       }
     });
+
+    vscode.postMessage({ command: 'ready' });
   </script>
 </body>
 </html>

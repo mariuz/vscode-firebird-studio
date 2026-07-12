@@ -7,9 +7,9 @@
 Two separate, more limited pieces already exist:
 
 - `src/schema-visualizer/` (`index.ts`, `schema-graph.ts`, ~150 lines) — renders a **read-only** diagram of tables/relationships for an existing database. No editing, no layout persistence.
-- `src/table-designer/` (`src/table-designer/index.ts`, 41 lines) — a webview for building **one new table's** DDL. `TableDesigner.open()` takes no existing-table/schema argument, so it can't be pre-populated to *alter* a table. Its webview only posts two messages back to the extension: `openInEditor` and `executeDDL` (see `src/table-designer/htmlContent/index.html:173-183`), both handled in `TableDesigner.handleMessage()`.
+- `src/table-designer/` (`src/table-designer/index.ts`) — a single-table webview. **Phase 1 below is done**: `TableDesigner.openForAlter(dbDetails, tableName, columns, pkConstraintName)` pre-populates the form from an existing table (via a `ready`/`init` handshake — the webview posts `ready` once its script has loaded, and the extension flushes a queued `init` message rather than racing a `postMessage()` sent immediately after `show()`) and the webview diffs the edited rows against each column's original snapshot (tracked via a `data-original` attribute per row, keyed by the column's *original* name so a renamed column is detected as `ALTER COLUMN old TO new` rather than a destructive drop+recreate) to generate `ALTER TABLE ADD/DROP/ALTER COLUMN` and primary-key constraint changes. `NodeTable#alterTable(tableDesigner)` (in `src/nodes/node-table.ts`) is the entry point, wired to the `firebird.table.alterTable` command. Still single-table only — no multi-table canvas, no FK editing.
 
-There is no way today to visually add/remove/relate multiple tables in one session and generate a consolidated DDL script, and no way to open the designer against an *existing* table for alteration.
+There is still no way to visually add/remove/relate **multiple** tables in one session and generate a consolidated DDL script — that's what phases 2-4 below are for.
 
 ## Proposed feature
 
@@ -27,13 +27,13 @@ Add a "Ask Copilot to modify this schema" affordance in the designer's toolbar t
 
 ## Technical notes
 
-- Webview messaging needs a new message type for "load existing schema" (today's `table-designer/htmlContent/index.html` only listens for messages, never receives an init payload — see the `window.addEventListener('message', ...)` handler at line 183, currently unused for that purpose).
+- The `ready`/`init` handshake and the "diff by original column name, not by current name" design (phase 1) generalize directly to the multi-table case — the same per-row original-snapshot approach just needs to key by `(tableName, columnName)` instead of `columnName` alone once multiple tables are on one canvas.
 - Multi-table FK editing requires validating that referenced columns exist and have matching types before generating `ADD CONSTRAINT ... FOREIGN KEY`; surface violations inline rather than only failing at `executeDDL` time.
-- Should replace the existing unchecked ROADMAP item "Visual table designer for creating and modifying tables" and the "Create, alter, and drop database objects directly from the UI" item — this feature covers both once it supports alter.
+- Firebird can't rename a table via `ALTER TABLE`, and pre-4.0 servers don't support `ALTER COLUMN ... SET/DROP NOT NULL` — phase 1 already surfaces the latter as an inline SQL comment on the generated statement rather than silently emitting something that won't run; carry the same honesty forward into the multi-table generator.
 
 ## Suggested phases
 
-1. Extend `TableDesigner` to accept an existing table's metadata and support `ALTER TABLE` generation for a single table (closes the "modifying tables" gap without the multi-table diagram yet).
+1. ~~Extend `TableDesigner` to accept an existing table's metadata and support `ALTER TABLE` generation for a single table~~ — **done**.
 2. Merge in the multi-table canvas from `schema-visualizer`, adding editing affordances (add table/column, draw FK).
 3. Add the draft-vs-live diff engine reusing `schema-diff.ts`.
 4. Add the Copilot "modify this schema" panel.
