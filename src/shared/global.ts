@@ -1,9 +1,10 @@
-import { StatusBarItem, StatusBarAlignment, window, ExtensionContext } from "vscode";
+import { StatusBarItem, StatusBarAlignment, ThemeColor, window, ExtensionContext } from "vscode";
 import { ConnectionOptions } from "../interfaces";
 import { Constants } from "../config/constants";
 import { CredentialStore } from "./credential-store";
 import { logger } from "../logger/logger";
 import { getDatabaseFileName } from "./utils";
+import { themeColorIdFor } from "./connection-color";
 
 export class Global {
   private static _activeConnection: ConnectionOptions;
@@ -25,6 +26,18 @@ export class Global {
         logger.showInfo(this.getActiveDbNotifText(newActiveConnection));
       }
     }
+  }
+
+  /**
+   * Patches fields (color, group, a renamed database path, ...) on the currently active
+   * connection in place and refreshes the status bar — distinct from the `activeConnection`
+   * setter above, which only reacts to the active connection's *identity* changing (a different
+   * `id`) and is a no-op for same-id field edits like these.
+   */
+  public static patchActiveConnection(patch: Partial<ConnectionOptions>): void {
+    if (!this._activeConnection) { return; }
+    this._activeConnection = { ...this._activeConnection, ...patch };
+    this.updateStatusBarItems(this._activeConnection);
   }
 
   public static async setActiveConnectionById(context: ExtensionContext, id: string): Promise<void> {
@@ -49,15 +62,14 @@ export class Global {
   }
 
   public static updateStatusBarItems(activeConnection: ConnectionOptions): void {
-    if (this.firebirdStatusBarItem) {
-      this.firebirdStatusBarItem.text = this.getStatusBarItemText(activeConnection);
-      this.firebirdStatusBarItem.tooltip = this.getStatusBarTooltipText(activeConnection);
-    } else {
+    if (!this.firebirdStatusBarItem) {
       this.firebirdStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Left);
-      this.firebirdStatusBarItem.text = this.getStatusBarItemText(activeConnection);
-      this.firebirdStatusBarItem.tooltip = this.getStatusBarTooltipText(activeConnection);
       this.firebirdStatusBarItem.show();
     }
+    this.firebirdStatusBarItem.text = this.getStatusBarItemText(activeConnection);
+    this.firebirdStatusBarItem.tooltip = this.getStatusBarTooltipText(activeConnection);
+    const colorId = themeColorIdFor(activeConnection.color);
+    this.firebirdStatusBarItem.color = colorId ? new ThemeColor(colorId) : undefined;
   }
 
   private static getStatusBarItemText(activeConnection: ConnectionOptions): string {

@@ -130,7 +130,10 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
         return connections[id];
       })
       .reduce<{ [host: string]: ConnectionOptions[] }>((h, a) => {
-        const groupKey = a.embedded ? "(embedded)" : a.host;
+        // An explicit group name (set via "Set Connection Group...") takes precedence over the
+        // default host-based grouping, letting connections be organized by environment
+        // ("Production", "Staging"...) instead of by where they happen to be hosted.
+        const groupKey = a.group || (a.embedded ? "(embedded)" : a.host);
         return Object.assign(h, { [groupKey]: (h[groupKey] || []).concat(a) });
       }, {});
   }

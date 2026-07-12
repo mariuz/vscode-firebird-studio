@@ -277,6 +277,24 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB ITEM: tag this connection with a color (tree icon + status bar) */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.setConnectionColor", (databaseNode: NodeDatabase) => {
+      databaseNode.setConnectionColor(context, firebirdTreeDataProvider).catch(err => {
+        logger.error(err?.message ?? err);
+      });
+    })
+  );
+
+  /* DB ITEM: organize this connection under a named group/folder in the tree */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.setConnectionGroup", (databaseNode: NodeDatabase) => {
+      databaseNode.setConnectionGroup(context, firebirdTreeDataProvider).catch(err => {
+        logger.error(err?.message ?? err);
+      });
+    })
+  );
+
   /* DB ITEM: rename an embedded database's file on disk */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.renameDatabase", (databaseNode: NodeDatabase) => {

@@ -1,3 +1,5 @@
+import { ConnectionColor } from "../shared/connection-color";
+
 /**
  * Firebird connection options
  *
@@ -22,4 +24,8 @@ export interface ConnectionOptions {
   workspace?: boolean;
   /** Whether this workspace connection was marked "default": true — see workspace-config.ts. */
   isDefault?: boolean;
+  /** Optional folder/group name — when set, groups this connection under that name in the tree instead of by host. */
+  group?: string;
+  /** Optional color tag for quick visual identification in the tree icon and status bar. */
+  color?: ConnectionColor;
 }

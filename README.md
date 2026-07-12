@@ -49,6 +49,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Create, rename, and drop whole databases** from the connection tree, not just objects within one
 - **Object Search** — fuzzy-search every table, view, procedure, trigger, generator, and domain by name in one connection
 - **Create Local Firebird Container** — provision a brand-new Dockerized Firebird server from the extension
+- **Color-coded connection groups**, and paste a full connection string to prefill the "Add New Connection" wizard
 
 ## Getting Started
 
@@ -65,9 +66,11 @@ Quick start:
 
 ### Add a New Connection
 
-Click the **+** (Add New Connection) icon in the DB Explorer title bar. The Connection Wizard guides you through host, port, database path, username, password, and optional role. Your connection appears in the tree when the wizard completes.
+Click the **+** (Add New Connection) icon in the DB Explorer title bar. Paste a connection string (e.g. `firebird://sysdba:masterkey@localhost:3050/employee`) at the first prompt to prefill every field at once, or leave it empty and the Connection Wizard guides you through host, port, database path, username, password, and optional role instead. Your connection appears in the tree when the wizard completes.
 
-Choosing **Docker** as the connection type auto-detects Firebird containers currently running on your machine — pick one from the list and its published port (and, when available, its database path) are filled in for you. Falls back to the previous `localhost:3050` default if Docker isn't installed or no matching container is running.
+Choosing **Docker** as the connection type auto-detects Firebird containers currently running on your machine — pick one from the list and its published port (and, when available, its database path) are filled in for you. Falls back to the previous `localhost:3050` default if Docker isn't installed or no matching container is running. To provision a brand-new one instead of connecting to an existing one, run **Create Local Firebird Container...** from the Command Palette.
+
+Right-click any connection → **Set Connection Color...** tags it with a color (shown in its tree icon, and in the status bar while it's active) or **Set Connection Group...** to organize it under a named folder in the tree instead of by host — handy for telling Production apart from Staging/Dev at a glance.
 
 For advanced options (native driver, WireCrypt) see **[docs/connection-setup.md](docs/connection-setup.md)**.
 

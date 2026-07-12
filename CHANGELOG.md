@@ -2,6 +2,17 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.40 - 2026-07-12
+
+### Added
+
+- **Color-coded connection groups** — right-click a database → **Set Connection Color...** tags it with a color shown in its tree icon and (when active) the status bar; **Set Connection Group...** organizes it under a named folder in the Explorer tree instead of by host.
+- **Paste a connection string** — the "Add New Connection" wizard now offers to prefill every field from a pasted `firebird://user:password@host:port/database` string instead of stepping through each prompt by hand.
+
+### Fixed
+
+- Renaming a database, or tagging the *currently active* connection with a color/group, now actually updates the status bar immediately — previously this went through a code path that only reacts to the active connection's id changing, silently no-op'ing for same-connection field edits.
+
 ## 0.1.39 - 2026-07-12
 
 ### Added

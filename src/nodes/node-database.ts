@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri, ThemeIcon, ThemeColor} from "vscode";
 import {join} from "path";
 import {NodeTable, NodeCategoryFolder, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeSystemTable, NodeUser} from "./";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
@@ -17,6 +17,7 @@ import {runDataApiSpecGenerator} from "../data-api-builder";
 import {runExtractProject} from "../database-projects";
 import {runObjectSearch} from "../object-search";
 import QueryResultsView from "../result-view";
+import {themeColorIdFor, CONNECTION_COLORS, ConnectionColor} from "../shared/connection-color";
 import * as cp from 'node:child_process';
 
 
@@ -26,6 +27,7 @@ export class NodeDatabase implements FirebirdTree {
 
   // list databases grouped by host names
   public getTreeItem(context: ExtensionContext): TreeItem {
+    const colorId = themeColorIdFor(this.dbDetails.color);
     return {
       label: getDatabaseFileName(this.dbDetails.database),
       collapsibleState: TreeItemCollapsibleState.Collapsed,
@@ -33,12 +35,15 @@ export class NodeDatabase implements FirebirdTree {
       tooltip: this.dbDetails.workspace
         ? `[DATABASE] ${this.dbDetails.database}\nFrom this workspace's .vscode/firebird.json`
         : `[DATABASE] ${this.dbDetails.database}`,
-      iconPath: {
-        /* dark: join(__filename, "..", "..", "..", "resources", "icons", "dark", "db-dark.svg"),
-        light: join(__filename, "..", "..", "..", "resources", "icons", "light", "db-light.svg") */
-        dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "db-dark.svg")),
-        light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "db-light.svg"))
-      }
+      // A color tag (set via "Set Connection Color...") swaps the usual custom SVG icon for a
+      // themed codicon, since TreeItem iconPath can't tint an arbitrary SVG file — untagged
+      // connections keep the existing icon unchanged.
+      iconPath: colorId
+        ? new ThemeIcon("database", new ThemeColor(colorId))
+        : {
+            dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "db-dark.svg")),
+            light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "db-light.svg"))
+          }
     };
   }
 
@@ -188,6 +193,56 @@ export class NodeDatabase implements FirebirdTree {
     return this.resolvedDetails();
   }
 
+  // tag this connection with a color (tree icon + status bar) for quick visual identification
+  public async setConnectionColor(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+    if (this.dbDetails.workspace) {
+      logger.showInfo("This connection comes from this workspace's .vscode/firebird.json — edit it there instead.");
+      return;
+    }
+
+    const noneLabel = "$(circle-slash) None";
+    const items = [
+      { label: noneLabel, color: undefined as ConnectionColor | undefined },
+      ...CONNECTION_COLORS.map(color => ({ label: `$(circle-large-filled) ${color[0].toUpperCase()}${color.slice(1)}`, color })),
+    ];
+    const picked = await window.showQuickPick(items, { title: "Set Connection Color" });
+    if (!picked) { return; }
+
+    await this.updateSavedConnectionField(context, "color", picked.color);
+    firebirdTreeDataProvider.refresh();
+  }
+
+  // organize this connection under a named group/folder in the tree instead of by host
+  public async setConnectionGroup(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+    if (this.dbDetails.workspace) {
+      logger.showInfo("This connection comes from this workspace's .vscode/firebird.json — edit it there instead.");
+      return;
+    }
+
+    const group = await window.showInputBox({
+      title: "Set Connection Group",
+      prompt: "Group/folder name to organize this connection under (leave empty to ungroup — falls back to grouping by host)",
+      value: this.dbDetails.group ?? "",
+    });
+    if (group === undefined) { return; }
+
+    await this.updateSavedConnectionField(context, "group", group || undefined);
+    firebirdTreeDataProvider.refresh();
+  }
+
+  /** Patches one field of this connection's saved globalState entry (color/group tags — not password, which never lives there). */
+  private async updateSavedConnectionField<K extends "color" | "group">(
+    context: ExtensionContext, field: K, value: ConnectionOptions[K]
+  ): Promise<void> {
+    const connections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);
+    if (!connections?.[this.dbDetails.id]) { return; }
+    connections[this.dbDetails.id][field] = value;
+    await context.globalState.update(Constants.ConectionsKey, connections);
+    if (Global.activeConnection?.id === this.dbDetails.id) {
+      Global.patchActiveConnection({ [field]: value });
+    }
+  }
+
   // delete database connection details and remove it from explorer view
   public async removeDatabase(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider) {
     logger.info("Remove database start...");
@@ -281,7 +336,7 @@ export class NodeDatabase implements FirebirdTree {
       await context.globalState.update(Constants.ConectionsKey, connections);
     }
     if (Global.activeConnection?.id === this.dbDetails.id) {
-      Global.activeConnection = { ...Global.activeConnection, database: newPath };
+      Global.patchActiveConnection({ database: newPath });
     }
 
     firebirdTreeDataProvider.refresh();

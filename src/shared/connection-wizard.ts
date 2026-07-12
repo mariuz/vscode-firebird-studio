@@ -3,6 +3,7 @@ import * as cp from "node:child_process";
 import { ConnectionOptions } from "../interfaces";
 import { logger } from "../logger/logger";
 import { getOptions } from "../config";
+import { parseConnectionString } from "./connection-string";
 import {
   DiscoveredFirebirdContainer,
   dockerPsArgs,
@@ -57,6 +58,31 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
 
   async function collectInputs(): Promise<ConnectionOptions> {
     logger.info("Connection wizard start...");
+
+    const pasted = await window.showInputBox({
+      title,
+      prompt: "Paste a Firebird connection string to prefill every field, or leave empty for the guided wizard below",
+      placeHolder: "firebird://sysdba:masterkey@localhost:3050/employee",
+      ignoreFocusOut: true,
+    });
+    if (pasted) {
+      const parsed = parseConnectionString(pasted);
+      if (parsed) {
+        logger.info("Connection wizard: prefilled from a pasted connection string.");
+        return {
+          id: "",
+          host: parsed.host ?? "",
+          port: parsed.port ?? 3050,
+          database: parsed.database ?? "",
+          user: parsed.user ?? "sysdba",
+          password: parsed.password ?? "masterkey",
+          role: parsed.role ?? null,
+          embedded: false,
+          wireCrypt: parsed.wireCrypt,
+        };
+      }
+      logger.showError("That doesn't look like a Firebird connection string (expected firebird://user:password@host:port/database) — continuing with the guided wizard.");
+    }
 
     const options = {} as Partial<ConnectionOptions>;
     await MultiStepInput.run(input => connectionType(input, options));

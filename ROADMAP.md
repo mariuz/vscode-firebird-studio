@@ -93,7 +93,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 - [x] Create, rename, and drop whole databases from the connection tree (not just objects within one)
 - [x] Object Search — fuzzy search for any object (table/view/procedure/trigger/etc.) by name across a connection
 - [x] Local Firebird container **creation** — provision a new Dockerized Firebird server from the extension, extending today's detect-existing-containers support
-- [ ] Connection dialog: color-coded connection groups, and paste a full connection string to prefill fields
+- [x] Connection dialog: color-coded connection groups, and paste a full connection string to prefill fields
 
 ## Inspired by vscode-pgsql
 
