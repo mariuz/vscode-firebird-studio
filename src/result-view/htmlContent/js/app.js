@@ -139,8 +139,11 @@ $(() => {
     const $toggleEdit = $("<button>").addClass("btn-toggle-edit").text("Enable Editing");
     const $addRow     = $("<button>").addClass("btn-add-row").text("+ Add Row").hide();
     const $apply       = $("<button>").addClass("btn-apply-changes").text("Apply Changes").hide();
+    const $freezeToggle  = $("<button>").addClass("btn-grid-action btn-freeze-col").text("❄ Freeze Column");
+    const $copyInsert    = $("<button>").addClass("btn-grid-action btn-copy-insert").text("Copy as INSERT");
+    const $copyInClause  = $("<button>").addClass("btn-grid-action btn-copy-in").text("Copy as IN (...)");
     const $status       = $("<span>").addClass("edit-status");
-    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $status);
+    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $status);
 
     const $table = $("<table>")
       .attr("id", tableId)
@@ -184,6 +187,85 @@ $(() => {
     function columnNames() {
       return headers.map(h => h.title);
     }
+
+    // ── Cell selection (for "Copy as INSERT" / "Copy as IN (...)") ───────────
+    // Disabled while editing: cells are contenteditable there, so a mousedown
+    // drag is expected to place a text cursor / select text, not cells.
+    let selAnchor = null; // { tr, colIndex }
+    let selEnd = null;
+    let selecting = false;
+
+    function cellColIndex($td) {
+      return $td.index() - 1; // account for the leading actions column
+    }
+
+    function clearSelection() {
+      $(`#${tableId} td.fb-selected`).removeClass("fb-selected");
+      selAnchor = null;
+      selEnd = null;
+    }
+
+    function highlightSelection() {
+      $(`#${tableId} td.fb-selected`).removeClass("fb-selected");
+      if (!selAnchor || !selEnd) { return; }
+      const $rows = $(`#${tableId} tbody tr`);
+      const range = selectionRange(
+        { row: $rows.index(selAnchor.tr), col: selAnchor.colIndex },
+        { row: $rows.index(selEnd.tr), col: selEnd.colIndex }
+      );
+      $rows.slice(range.rowStart, range.rowEnd + 1).each(function () {
+        $(this).find("td:not(.fb-row-actions)").each(function () {
+          const c = cellColIndex($(this));
+          if (c >= range.colStart && c <= range.colEnd) { $(this).addClass("fb-selected"); }
+        });
+      });
+    }
+
+    function getSelectedGrid() {
+      if (!selAnchor || !selEnd) { return null; }
+      const $rows = $(`#${tableId} tbody tr`);
+      const range = selectionRange(
+        { row: $rows.index(selAnchor.tr), col: selAnchor.colIndex },
+        { row: $rows.index(selEnd.tr), col: selEnd.colIndex }
+      );
+      const rows = $rows.slice(range.rowStart, range.rowEnd + 1).map(function () {
+        const rowValues = [];
+        $(this).find("td:not(.fb-row-actions)").each(function () {
+          const c = cellColIndex($(this));
+          if (c >= range.colStart && c <= range.colEnd) { rowValues.push($(this).text()); }
+        });
+        return rowValues;
+      }).get();
+      return { rows, colStart: range.colStart, colEnd: range.colEnd };
+    }
+
+    $(`#${tableId} tbody`).on("mousedown", "td:not(.fb-row-actions)", function (e) {
+      if (editing) { return; }
+      const tr = $(this).closest("tr")[0];
+      const colIndex = cellColIndex($(this));
+      if (e.shiftKey && selAnchor) {
+        selEnd = { tr, colIndex };
+      } else {
+        selAnchor = { tr, colIndex };
+        selEnd = { tr, colIndex };
+        selecting = true;
+      }
+      highlightSelection();
+      e.preventDefault();
+    });
+
+    $(`#${tableId} tbody`).on("mouseenter", "td:not(.fb-row-actions)", function () {
+      if (!selecting) { return; }
+      selEnd = { tr: $(this).closest("tr")[0], colIndex: cellColIndex($(this)) };
+      highlightSelection();
+    });
+
+    // Namespaced + re-bound (rather than a bare document-level .on()) so
+    // repeated buildEditableTable() calls for the same tableId (a batch panel
+    // re-rendered on every query run) don't pile up duplicate handlers.
+    $(document).off(`mouseup.fbSelect-${tableId}`).on(`mouseup.fbSelect-${tableId}`, () => {
+      selecting = false;
+    });
 
     // ── Row actions (delegated so they survive DataTables redraws) ─────────
 
@@ -236,6 +318,7 @@ $(() => {
       $addRow.toggle(editing);
       $apply.toggle(editing);
       $wrapper.toggleClass("fb-editing", editing);
+      clearSelection();
 
       if (!editing) {
         // Discard any unapplied inserts and restore the grid.
@@ -322,11 +405,39 @@ $(() => {
       dt.draw(false);
       pending.length = 0;
       stillPending.forEach(p => pending.push(p));
+      clearSelection(); // rows may have been removed; stale tr references are no longer meaningful
 
       const failedCount = results.filter(r => r.error).length;
       $status.text(failedCount
         ? `${failedCount} of ${results.length} change(s) failed — see highlighted rows.`
         : `Applied ${results.length} change(s).`);
+    });
+
+    // ── Freeze column / copy selection ────────────────────────────────────────
+
+    $freezeToggle.on("click", () => {
+      const frozen = $wrapper.toggleClass("fb-frozen").hasClass("fb-frozen");
+      $freezeToggle.toggleClass("active", frozen);
+      $freezeToggle.text(frozen ? "❄ Unfreeze Column" : "❄ Freeze Column");
+    });
+
+    $copyInsert.on("click", () => {
+      const sel = getSelectedGrid();
+      if (!sel) { $status.text("Select one or more cells first."); return; }
+      const tableName = $tableNameInput.val() || "table_name";
+      const cols = headers.slice(sel.colStart, sel.colEnd + 1).map(h => h.title);
+      const stmts = sel.rows.map(values => buildInsertStatement(tableName, cols, values));
+      copyToClipboard(stmts.join("\n"));
+      $status.text(`Copied ${stmts.length} INSERT statement(s) to the clipboard.`);
+    });
+
+    $copyInClause.on("click", () => {
+      const sel = getSelectedGrid();
+      if (!sel) { $status.text("Select one or more cells first."); return; }
+      const values = [];
+      sel.rows.forEach(row => row.forEach(v => values.push(v)));
+      copyToClipboard(buildInClause(values));
+      $status.text(`Copied an IN (...) clause with ${values.length} value(s) to the clipboard.`);
     });
   }
 
@@ -339,6 +450,11 @@ $(() => {
   function buildExportButtons() {
     return [
       "pageLength",
+      {
+        extend: "colvis",
+        text: "Columns",
+        columns: ":gt(0)", // exclude the leading, always-index-0 actions column from the picker
+      },
       {
         extend: "collection",
         text: "Export data",
@@ -367,5 +483,51 @@ $(() => {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  // ── Copy-selection-as-SQL helpers (pure — no DOM/jQuery) ────────────────────
+
+  function sqlLiteral(value) {
+    if (value === null || value === undefined || value === "") { return "NULL"; }
+    if (/^-?\d+(\.\d+)?$/.test(value)) { return value; }
+    return "'" + String(value).replace(/'/g, "''") + "'";
+  }
+
+  function buildInsertStatement(tableName, columns, values) {
+    return `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.map(sqlLiteral).join(", ")});`;
+  }
+
+  function buildInClause(values) {
+    return `IN (${values.map(sqlLiteral).join(", ")})`;
+  }
+
+  /** Normalizes an (anchor, end) pair of {row,col} points into an inclusive rectangle. */
+  function selectionRange(anchor, end) {
+    return {
+      rowStart: Math.min(anchor.row, end.row),
+      rowEnd: Math.max(anchor.row, end.row),
+      colStart: Math.min(anchor.col, end.col),
+      colEnd: Math.max(anchor.col, end.col),
+    };
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    const $ta = $("<textarea>").val(text).css({ position: "fixed", left: "-9999px", top: "0" }).appendTo("body");
+    $ta[0].select();
+    document.execCommand("copy");
+    $ta.remove();
+  }
+
+  // Test-only hook: no-op in a real webview (there is no `module` global there).
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports.__test__ = { sqlLiteral, buildInsertStatement, buildInClause, selectionRange };
   }
 });

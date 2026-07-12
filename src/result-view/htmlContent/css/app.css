@@ -100,7 +100,8 @@ div.img-wrapper img {
 }
 .btn-toggle-edit,
 .btn-add-row,
-.btn-apply-changes {
+.btn-apply-changes,
+.btn-grid-action {
   padding: 3px 10px;
   font-size: 12px;
   border: none;
@@ -111,8 +112,12 @@ div.img-wrapper img {
 }
 .btn-toggle-edit:hover,
 .btn-add-row:hover,
-.btn-apply-changes:hover {
+.btn-apply-changes:hover,
+.btn-grid-action:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
+}
+.btn-freeze-col.active {
+  background: var(--vscode-statusBarItem-prominentBackground, #00457a);
 }
 .btn-apply-changes {
   background: var(--vscode-statusBarItem-warningBackground, #7a6400);
@@ -179,6 +184,34 @@ tr.fb-row-error td {
 }
 .btn-row-delete:hover {
   color: var(--vscode-inputValidation-errorForeground, #ff8080);
+}
+
+/* ── Cell selection (copy as INSERT / copy as IN (...)) ───────────────────── */
+.batch-table-wrapper:not(.fb-editing) table.dataTable tbody td:not(.fb-row-actions) {
+  cursor: cell;
+  user-select: none;
+}
+td.fb-selected {
+  background: var(--vscode-editor-selectionBackground, #264f78) !important;
+}
+
+/* ── Frozen first column ───────────────────────────────────────────────────
+   CSS-only position:sticky, not the FixedColumns DataTables extension: the
+   only vendored DataTables version here (1.10.18) doesn't bundle it, and one
+   sticky column is simple enough to hand-roll instead of adding a dependency.
+   :nth-child(2) is the first *data* column — nth-child(1) is the leading
+   actions column, whose 24px width (see the :first-child rule above) only
+   occupies layout space while .fb-editing is set, hence the offset here. */
+.fb-frozen table.dataTable > thead > tr > th:nth-child(2),
+.fb-frozen table.dataTable > tbody > tr > td:nth-child(2) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+.fb-editing.fb-frozen table.dataTable > thead > tr > th:nth-child(2),
+.fb-editing.fb-frozen table.dataTable > tbody > tr > td:nth-child(2) {
+  left: 24px;
 }
 
 /* ── batch table wrapper ──────────────────────────────────────────────────── */

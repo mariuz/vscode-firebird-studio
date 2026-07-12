@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.30 - 2026-07-12
+
+### Added
+
+- **Results grid: column freeze, show/hide, and copy-as-SQL** — a "Columns" button lets you toggle individual result columns on/off, "❄ Freeze Column" pins the first column while you scroll horizontally, and click/shift-click a range of cells then "Copy as INSERT" or "Copy as IN (...)" to copy ready-to-paste SQL built from the selection
+
 ## 0.1.29 - 2026-07-12
 
 ### Added
