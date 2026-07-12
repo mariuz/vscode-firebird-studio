@@ -419,6 +419,54 @@ suite('NodeClient.createConnection() – embedded connections', function () {
       /native driver/i
     );
   });
+
+  test('createDatabase() also rejects embedded connections, pointing at the native driver setting', async function () {
+    const client = new NodeClient();
+    await assert.rejects(client.createDatabase(baseConnection()), /native driver/i);
+  });
+
+  test('dropDatabase() also rejects embedded connections, pointing at the native driver setting', async function () {
+    const client = new NodeClient();
+    await assert.rejects(client.dropDatabase(baseConnection()), /native driver/i);
+  });
+});
+
+// ── Driver.createDatabase() / Driver.dropDatabase() ─────────────────────────
+//
+// Driver.client is whichever client is active; when it's a fake/test double that doesn't
+// implement the optional createDatabase()/dropDatabase() methods (most of this file's fakes
+// don't, since most tests have nothing to do with database creation), Driver should fail clearly
+// rather than throwing a raw "not a function" TypeError.
+
+suite('Driver.createDatabase() / Driver.dropDatabase() — unsupported client', function () {
+  const originalClient = Driver.client;
+
+  teardown(function () {
+    Driver.client = originalClient;
+  });
+
+  function baseConnection(overrides: Partial<ConnectionOptions> = {}): ConnectionOptions {
+    return {
+      id: 'test',
+      host: 'localhost',
+      port: 3050,
+      database: '/data/test.fdb',
+      user: 'sysdba',
+      password: 'masterkey',
+      role: null,
+      ...overrides,
+    };
+  }
+
+  test('createDatabase() rejects with a clear message when the active client has no createDatabase()', async function () {
+    Driver.client = new FakeClient(() => []);
+    await assert.rejects(Driver.createDatabase(baseConnection()), /does not support creating databases/i);
+  });
+
+  test('dropDatabase() rejects with a clear message when the active client has no dropDatabase()', async function () {
+    Driver.client = new FakeClient(() => []);
+    await assert.rejects(Driver.dropDatabase(baseConnection()), /does not support dropping databases/i);
+  });
 });
 
 // ── Driver.resolvePassword() ─────────────────────────────────────────────────

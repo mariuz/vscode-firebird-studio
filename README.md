@@ -46,6 +46,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **SQL Notebooks** — a native `.fbnb` notebook editor mixing markdown and SQL cells, with results rendered per cell
 - **Data API Builder** — generate an OpenAPI 3.0 REST spec (one CRUD route set per table) from the connected schema
 - **Database Projects** — extract the connected schema into a folder of versioned `.sql` files, and build one back into a deployable script
+- **Create, rename, and drop whole databases** from the connection tree, not just objects within one
 
 ## Getting Started
 
@@ -170,6 +171,10 @@ Right-click a database → **Generate Data API Spec...** to generate an OpenAPI 
 ### Database Projects (schema-as-code)
 
 Right-click a database → **Extract Database Project...**, pick a destination folder, and every table, view, procedure, trigger, and generator is written out as its own `.sql` file (under `tables/`, `views/`, `procedures/`, `triggers/`, `generators/`), alongside a `firebird.project.json` manifest recording a safe deploy order (tables, then foreign keys, then views/procedures/triggers/generators). Run **Build Database Project...** from the Command Palette and pick that folder to concatenate it back into one script, opened for review — nothing runs automatically; run the script yourself once you're happy with it. Domains, roles, exceptions, and users aren't extracted yet, and a `NUMERIC`/`DECIMAL` column's precision/scale can be lost in the round trip (see the design doc for why).
+
+### Creating, Renaming, and Dropping Whole Databases
+
+Run **Create New Database...** from the Command Palette to walk through the same connection wizard used for **Add New Connection**, except it also creates the database file itself before adding it as a saved connection. From a database's right-click menu: **Rename Database...** renames its file on disk (embedded connections only — a network connection's file lives on the remote server, which this extension can't reach) and updates the saved connection to match; **Drop Database...** permanently deletes the database after a modal confirmation — there is no undo, and it also removes the now-dangling saved connection entry.
 
 ## Settings
 

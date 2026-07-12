@@ -478,12 +478,31 @@ export class Driver {
     }
   }
 
+  /** Creates a brand-new, empty database file/attachment from connection options (host/port or embedded path). */
+  public static async createDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    if (!this.client.createDatabase) {
+      throw new Error("The current driver does not support creating databases.");
+    }
+    return this.client.createDatabase(connectionOptions);
+  }
+
+  /** Permanently deletes a database — there is no undo. */
+  public static async dropDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    if (!this.client.dropDatabase) {
+      throw new Error("The current driver does not support dropping databases.");
+    }
+    return this.client.dropDatabase(connectionOptions);
+  }
+
 }
 
 export interface ClientI<K extends Firebird.Database | Attachment> {
   queryPromise<T extends object>(connection: K, sql: string, args?: any[], txOptions?: TransactionRequestOptions): Promise<T[]>;
   createConnection(connectionOptions: ConnectionOptions): Promise<K>;
   detach(connection: K): Promise<void>;
+  /** Optional: fake/test ClientI implementations that never exercise create/drop can omit these. */
+  createDatabase?(connectionOptions: ConnectionOptions): Promise<void>;
+  dropDatabase?(connectionOptions: ConnectionOptions): Promise<void>;
 }
 
 /**
@@ -574,6 +593,42 @@ export class NodeClient implements ClientI<Firebird.Database> {
       await simpleCallbackToPromise((callback) => connection.detach(callback));
     }
   }
+
+  public async createDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    if (connectionOptions.embedded) {
+      throw new Error(
+        "Embedded database creation requires the native driver. Enable \"firebird.useNativeDriver\" in settings."
+      );
+    }
+    const opts = toNodeFirebirdOptions(connectionOptions);
+    return new Promise((resolve, reject) => {
+      Firebird.create(opts, (err: any, db: Firebird.Database) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        db.detach(() => resolve());
+      });
+    });
+  }
+
+  public async dropDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    if (connectionOptions.embedded) {
+      throw new Error(
+        "Embedded database drop requires the native driver. Enable \"firebird.useNativeDriver\" in settings."
+      );
+    }
+    const opts = toNodeFirebirdOptions(connectionOptions);
+    return new Promise((resolve, reject) => {
+      Firebird.drop(opts, (err: any) => {
+        if (err) {
+          reject(new Error(err?.error?.message ?? err?.message ?? String(err)));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
 }
 
 export class NativeClient implements ClientI<Attachment> {
@@ -635,6 +690,33 @@ export class NativeClient implements ClientI<Attachment> {
     } else {
       logger.debug("Called detach on an invalid connection");
     }
+  }
+
+  public async createDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    const connectionStr = connectionOptions.embedded
+      ? connectionOptions.database
+      : `${connectionOptions.host}/${connectionOptions.port ?? '3050'}:${connectionOptions.database}`;
+
+    let client: Client;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const {createNativeClient, getDefaultLibraryFilename} = await import('node-firebird-driver-native');
+      client = createNativeClient(getDefaultLibraryFilename());
+    } catch (e) {
+      throw new Error("Unable to initialize native driver: " + ((e as any)?.message ?? e));
+    }
+
+    const attachment = await client.createDatabase(connectionStr, {
+      username: connectionOptions.user,
+      password: connectionOptions.password ?? "",
+      role: connectionOptions.role ?? undefined
+    });
+    await attachment.disconnect();
+  }
+
+  public async dropDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    const connection = await this.createConnection(connectionOptions);
+    await connection.dropDatabase();
   }
 
   /**

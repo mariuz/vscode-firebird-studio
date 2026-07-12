@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.37 - 2026-07-12
+
+### Added
+
+- **Create, rename, and drop whole databases** — **Create New Database...** (Command Palette) creates a brand-new database file and adds it as a connection; right-click a database → **Rename Database...** (embedded connections only) renames its file on disk, or **Drop Database...** to permanently delete it (modal confirmation — there is no undo).
+
 ## 0.1.36 - 2026-07-12
 
 ### Added

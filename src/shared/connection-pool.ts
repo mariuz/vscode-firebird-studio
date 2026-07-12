@@ -103,6 +103,21 @@ export class PooledClient<K extends Firebird.Database | Attachment> implements C
     return this.idle.get(connectionId)?.length ?? 0;
   }
 
+  /** Database create/drop bypass pooling entirely — there's no live connection to reuse or return. */
+  public createDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    if (!this.inner.createDatabase) {
+      return Promise.reject(new Error("The current driver does not support creating databases."));
+    }
+    return this.inner.createDatabase(connectionOptions);
+  }
+
+  public dropDatabase(connectionOptions: ConnectionOptions): Promise<void> {
+    if (!this.inner.dropDatabase) {
+      return Promise.reject(new Error("The current driver does not support dropping databases."));
+    }
+    return this.inner.dropDatabase(connectionOptions);
+  }
+
   private async isAlive(connection: K): Promise<boolean> {
     const isValidFlag = (connection as unknown as { isValid?: boolean }).isValid;
     if (typeof isValidFlag === 'boolean') {

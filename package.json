@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -78,6 +78,11 @@
         }
       },
       {
+        "command": "firebird.explorer.createDatabase",
+        "title": "Create New Database...",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.explorer.newSqlDocument",
         "title": "New Sql Query",
         "category": "Firebird",
@@ -113,6 +118,16 @@
       {
         "command": "firebird.removeDatabase",
         "title": "Remove Database",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.database.renameDatabase",
+        "title": "Rename Database...",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.database.dropDatabase",
+        "title": "Drop Database...",
         "category": "Firebird"
       },
       {
@@ -704,9 +719,19 @@
           "group": "second@0"
         },
         {
-          "command": "firebird.schemaDiff",
+          "command": "firebird.database.renameDatabase",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "second@1"
+        },
+        {
+          "command": "firebird.database.dropDatabase",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "second@2"
+        },
+        {
+          "command": "firebird.schemaDiff",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "second@3"
         },
         {
           "command": "firebird.mockData",

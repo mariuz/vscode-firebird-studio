@@ -193,6 +193,96 @@ export class NodeDatabase implements FirebirdTree {
       return;
     }
 
+    await this.removeSavedConnectionEntry(context);
+    firebirdTreeDataProvider.refresh();
+    logger.info("Remove database end...");
+  }
+
+  /** Permanently deletes the database itself (not just its saved connection entry) — no undo. */
+  public async dropDatabase(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+    logger.info("Drop database start...");
+    const resolved = await this.resolvedDetails();
+
+    try {
+      await Driver.dropDatabase(resolved);
+    } catch (err: any) {
+      logger.error(err?.message ?? err);
+      logger.showError(`Could not drop the database: ${err?.message ?? err}`);
+      return;
+    }
+
+    // The database no longer exists — its saved connection entry (if any) would just fail to
+    // connect from now on, so clean it up the same way removeDatabase() does.
+    if (!this.dbDetails.workspace) {
+      await this.removeSavedConnectionEntry(context);
+    }
+    firebirdTreeDataProvider.refresh();
+    logger.info("Drop database end...");
+    logger.showInfo(`Database ${getDatabaseFileName(this.dbDetails.database)} dropped.`);
+  }
+
+  /**
+   * Renames an embedded database's file on disk and updates its saved connection entry to match.
+   * Scoped to embedded connections only — a network connection's database file lives on the
+   * remote server's filesystem, which this extension has no access to rename.
+   */
+  public async renameDatabase(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+    if (!this.dbDetails.embedded) {
+      logger.showInfo("Only embedded database connections can be renamed here — a network database's file lives on the remote server.");
+      return;
+    }
+    if (this.dbDetails.workspace) {
+      logger.showInfo("This connection comes from this workspace's .vscode/firebird.json — edit or remove it there instead.");
+      return;
+    }
+
+    const currentPath = this.dbDetails.database;
+    const newUri = await window.showSaveDialog({
+      title: "Rename Database To",
+      defaultUri: Uri.file(currentPath),
+      filters: { "Firebird Database": ["fdb", "gdb"], "All files": ["*"] },
+    });
+    if (!newUri) {
+      return;
+    }
+    const newPath = newUri.fsPath;
+    if (newPath === currentPath) {
+      return;
+    }
+
+    const answer = await window.showWarningMessage(
+      `Rename ${getDatabaseFileName(currentPath)} to ${getDatabaseFileName(newPath)}? The database must not be in use by any connection.`,
+      { modal: true },
+      "Rename"
+    );
+    if (answer !== "Rename") {
+      return;
+    }
+
+    try {
+      const { rename } = await import("fs/promises");
+      await rename(currentPath, newPath);
+    } catch (err: any) {
+      logger.error(err?.message ?? err);
+      logger.showError(`Could not rename the database file: ${err?.message ?? err}`);
+      return;
+    }
+
+    const connections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);
+    if (connections?.[this.dbDetails.id]) {
+      connections[this.dbDetails.id].database = newPath;
+      await context.globalState.update(Constants.ConectionsKey, connections);
+    }
+    if (Global.activeConnection?.id === this.dbDetails.id) {
+      Global.activeConnection = { ...Global.activeConnection, database: newPath };
+    }
+
+    firebirdTreeDataProvider.refresh();
+    logger.showInfo(`Database renamed to ${getDatabaseFileName(newPath)}.`);
+  }
+
+  /** Deletes this connection's saved entry from globalState (not the database file itself). */
+  private async removeSavedConnectionEntry(context: ExtensionContext): Promise<void> {
     const connections = context.globalState.get<{[key: string]: ConnectionOptions;}>(Constants.ConectionsKey);
 
     if (connections) {
@@ -200,8 +290,6 @@ export class NodeDatabase implements FirebirdTree {
       await CredentialStore.deletePassword(this.dbDetails.id);
       await context.globalState.update(Constants.ConectionsKey, connections);
       logger.debug(`Removed connection ${this.dbDetails.id}`);
-      firebirdTreeDataProvider.refresh();
-      logger.info("Remove database end...");
     }
   }
 

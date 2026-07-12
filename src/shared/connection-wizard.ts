@@ -52,8 +52,8 @@ async function suggestDatabasePathFor(dockerExe: string, containerId: string): P
   return suggestDatabasePath(parseDockerInspectEnv(stdout)["FIREBIRD_DATABASE"]);
 }
 
-export async function connectionWizard() {
-  const title = "FIREBIRD: Add New Connection";
+export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connection") {
+  const title = wizardTitle;
 
   async function collectInputs(): Promise<ConnectionOptions> {
     logger.info("Connection wizard start...");

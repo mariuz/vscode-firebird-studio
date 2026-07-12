@@ -6,6 +6,7 @@ import { connectionWizard } from "./shared/connection-wizard";
 import { Constants } from "./config/constants";
 import { Global } from "./shared/global";
 import { CredentialStore } from "./shared/credential-store";
+import { Driver } from "./shared/driver";
 import { loadWorkspaceConnections } from "./shared/workspace-config";
 import { logger } from "./logger/logger";
 
@@ -32,48 +33,63 @@ export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> 
   public async addConnection() {
     logger.info("Add Connection start...");
 
-    /* generate unique id for new connection */
-    const id = uuidv1();
-
-    /* fetch saved connections for update*/
-    this.savedConnections = this.context.globalState.get<{ [key: string]: ConnectionOptions }>(
-      Constants.ConectionsKey
-    ) ?? {};
-
-    logger.debug(`${Object.keys(this.savedConnections).length} saved connection(s) found...`);
-
     /* present connection wizard */
     await connectionWizard()
       .then(async newOptions => {
-        newOptions.id = id;
-        if (typeof newOptions.port === "string") {
-          newOptions.port = Number.parseInt(newOptions.port);
-        }
-
-        /* store password securely and remove it from the persisted options */
-        const password = newOptions.password;
-        await CredentialStore.storePassword(id, password || "");
-        const optionsToSave: ConnectionOptions = { ...newOptions, password: undefined };
-
-        this.savedConnections[id] = optionsToSave;
-
-        await this.context.globalState.update(Constants.ConectionsKey, this.savedConnections).then(
-          () => {
-            /* keep password in the runtime object for immediate use */
-            Global.activeConnection = newOptions;
-            this.refresh();
-            logger.info("Add Connection end...");
-            logger.debug(`Connection ID: ${this.savedConnections[id].id}`);
-            logger.showInfo("New Firebird connection added successfully!");
-          },
-          err => {
-            logger.error(err);
-          }
-        );
+        await this.saveNewConnection(newOptions);
+        logger.showInfo("New Firebird connection added successfully!");
       })
       .catch(error => {
         logger.error(error);
       });
+  }
+
+  /* create a brand-new database file, then save it as a connection the same way addConnection() does */
+  public async createDatabase() {
+    logger.info("Create Database start...");
+
+    await connectionWizard("FIREBIRD: Create New Database")
+      .then(async newOptions => {
+        await Driver.createDatabase(newOptions);
+        await this.saveNewConnection(newOptions);
+        logger.showInfo("New Firebird database created successfully!");
+      })
+      .catch(error => {
+        logger.error(error);
+        logger.showError(`Could not create the database: ${error?.message ?? error}`);
+      });
+  }
+
+  /**
+   * Persists a freshly-collected ConnectionOptions (from the wizard) as a saved connection:
+   * generates its id, stores the password in SecretStorage (never in globalState), writes the
+   * rest to globalState, sets it active, and refreshes the tree. Shared by addConnection() and
+   * createDatabase() — the only difference between them is what happens before this point
+   * (nothing, vs. actually creating the database file).
+   */
+  private async saveNewConnection(newOptions: ConnectionOptions): Promise<void> {
+    const id = uuidv1();
+
+    this.savedConnections = this.context.globalState.get<{ [key: string]: ConnectionOptions }>(
+      Constants.ConectionsKey
+    ) ?? {};
+    logger.debug(`${Object.keys(this.savedConnections).length} saved connection(s) found...`);
+
+    newOptions.id = id;
+    if (typeof newOptions.port === "string") {
+      newOptions.port = Number.parseInt(newOptions.port);
+    }
+
+    const password = newOptions.password;
+    await CredentialStore.storePassword(id, password || "");
+    const optionsToSave: ConnectionOptions = { ...newOptions, password: undefined };
+
+    this.savedConnections[id] = optionsToSave;
+
+    await this.context.globalState.update(Constants.ConectionsKey, this.savedConnections);
+    Global.activeConnection = newOptions;
+    this.refresh();
+    logger.debug(`Connection ID: ${this.savedConnections[id].id}`);
   }
 
   private async getHostNodes(): Promise<NodeHost[]> {

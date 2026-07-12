@@ -174,6 +174,15 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* EXPLORER TOOLBAR: create a brand-new database file, then add it as a connection */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.explorer.createDatabase", () => {
+      firebirdTreeDataProvider.createDatabase().catch(err => {
+        logger.error(err);
+      });
+    })
+  );
+
   /* EXPLORER TOOLBAR: create new sql document */
   context.subscriptions.push(
     commands.registerCommand("firebird.explorer.newSqlDocument", () => {
@@ -252,6 +261,33 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.removeDatabase", (databaseNode: NodeDatabase) => {
       databaseNode.removeDatabase(context, firebirdTreeDataProvider);
+    })
+  );
+
+  /* DB ITEM: rename an embedded database's file on disk */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.renameDatabase", (databaseNode: NodeDatabase) => {
+      databaseNode.renameDatabase(context, firebirdTreeDataProvider).catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Rename Database failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
+  /* DB ITEM: permanently drop the database itself (not just its saved connection entry) */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.dropDatabase", async (databaseNode: NodeDatabase) => {
+      const answer = await vscode.window.showWarningMessage(
+        "Permanently drop this database? This deletes every table, view, and row in it — there is no undo.",
+        { modal: true },
+        "Drop Database"
+      );
+      if (answer !== "Drop Database") { return; }
+      databaseNode.dropDatabase(context, firebirdTreeDataProvider).catch(err => {
+        logger.error(err?.message ?? err);
+      });
     })
   );
 
