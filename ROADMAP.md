@@ -85,7 +85,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 
 - [x] Flat File Import Wizard — guided CSV/TSV/JSON import into a new or existing table, with local type inference ([design doc](docs/roadmap/flat-file-import-wizard.md))
 - [x] SQL Notebooks — native VS Code notebook editor for Firebird SQL with rich per-cell results ([design doc](docs/roadmap/sql-notebooks.md))
-- [ ] Data API Builder — generate REST/GraphQL endpoint configs from the connected schema, optionally Copilot-assisted (speculative — validate demand first) ([design doc](docs/roadmap/data-api-builder.md))
+- [x] Data API Builder — generate REST/GraphQL endpoint configs from the connected schema, optionally Copilot-assisted (speculative — validate demand first) ([design doc](docs/roadmap/data-api-builder.md))
 
 ### Database lifecycle
 

@@ -13,6 +13,7 @@ import {getDatabaseFileName} from "../shared/utils";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
+import {runDataApiSpecGenerator} from "../data-api-builder";
 import * as cp from 'node:child_process';
 
 
@@ -161,6 +162,11 @@ export class NodeDatabase implements FirebirdTree {
   // guided CSV/TSV/JSON -> new table import wizard
   public async importFlatFile(): Promise<void> {
     return runFlatFileImportWizard(this.dbDetails);
+  }
+
+  // generate an OpenAPI REST spec (one CRUD route set per table) from the connected schema
+  public async generateDataApiSpec(): Promise<void> {
+    return runDataApiSpecGenerator(this.dbDetails);
   }
 
   /** Connection details with the password resolved from SecretStorage, for callers (e.g. the

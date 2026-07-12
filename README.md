@@ -44,6 +44,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Configurable results-grid shortcuts** (`firebird.shortcuts`) and per-session **transaction settings** (isolation level, lock timeout, read-only, wait mode)
 - **Flat File Import Wizard** — import a CSV/TSV/JSON file into a new table, with local column-type inference
 - **SQL Notebooks** — a native `.fbnb` notebook editor mixing markdown and SQL cells, with results rendered per cell
+- **Data API Builder** — generate an OpenAPI 3.0 REST spec (one CRUD route set per table) from the connected schema
 
 ## Getting Started
 
@@ -160,6 +161,10 @@ Right-click a database → **Import Flat File...**, then pick a CSV, TSV, or JSO
 ### SQL Notebooks
 
 Run **New Firebird SQL Notebook** to create a `.fbnb` notebook: mix markdown cells (documentation/notes) with SQL cells. Running a SQL cell (the ▷ button, or `Ctrl+Enter`/`Shift+Enter` like any VS Code notebook) executes every statement in that cell against a connection you pick the first time you run a cell in that notebook — rows come back as a table, DDL/DML as a success message, and errors are shown inline on the cell, all without leaving the notebook. The connection choice is remembered for the rest of that VS Code session, but isn't yet saved into the `.fbnb` file itself, so reopening a notebook (or restarting VS Code) will ask again.
+
+### Data API Builder
+
+Right-click a database → **Generate Data API Spec...** to generate an OpenAPI 3.0 document from the connected schema: a component schema per table (with JSON Schema types inferred from your columns) and CRUD routes (`GET`/`POST /table`, plus `GET`/`PUT`/`DELETE /table/{id}` for tables with a primary key). It opens as plain JSON for you to review — this doesn't run a REST server itself; hand the generated spec to your own backend (or a tool that consumes OpenAPI specs) to actually serve it.
 
 ## Settings
 

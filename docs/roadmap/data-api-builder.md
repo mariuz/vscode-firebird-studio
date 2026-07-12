@@ -4,7 +4,20 @@
 
 ## Current state in Firebird Studio
 
-None — this is a net-new capability, not an extension of an existing module. Microsoft's version wraps their standalone [Data API builder](https://github.com/Azure/data-api-builder) tool (a .NET config-driven REST/GraphQL/MCP server) with a VS Code UI for authoring its config; there's no Firebird equivalent tool to wrap.
+**Phase 2 (Option A) is done**, despite this item's "speculative — validate demand first" flag (explicitly overridden — see Phase 1 below). Right-click a database → **Generate Data API Spec...** produces an OpenAPI 3.0 document (one CRUD route set per table) and opens it as plain JSON for review:
+
+- `src/data-api-builder/openapi-spec.ts` (`buildOpenApiSpec()`) — a pure function (no vscode/Driver dependency, unit-tested like `schema-graph.ts`) that turns a `SchemaGraph` (the same model the Schema Designer/schema-diff already assemble from `getSchemaColumnsQuery()`) into an OpenAPI document: a component schema per table (JSON Schema types mapped from Firebird's own `RDB$FIELD_TYPE` names), a list+create (`GET`/`POST /table`) path per table, and a get/update/delete-by-primary-key path (`GET`/`PUT`/`DELETE /table/{pk...}`) per table that has one — composite keys get one path segment per PK column. Tables with no primary key only get the list+create routes.
+- `src/data-api-builder/index.ts` (`runDataApiSpecGenerator()`) — fetches the schema via the same `getSchemaColumnsQuery()` + `getForeignKeysQuery()` combined `Driver.runBatch()` call the Schema Designer uses, builds the spec, and opens it via `workspace.openTextDocument()` — plain, inspectable JSON, never executed or sent anywhere by the extension itself, per the design doc's explicit direction.
+- **JSON, not YAML**: OpenAPI supports both equally; JSON avoids adding a YAML-serialization dependency (none is vendored in this extension today), consistent with this repo's stated preference.
+- Wired to `firebird.database.generateDataApiSpec` (same command/menu-registration pattern as the other database-node actions) → `NodeDatabase.generateDataApiSpec()`.
+
+The pre-existing state this replaces: none — this was a net-new capability, not an extension of an existing module. Microsoft's vscode-mssql version wraps their standalone [Data API builder](https://github.com/Azure/data-api-builder) tool (a .NET config-driven REST/GraphQL/MCP server) with a VS Code UI for authoring its config; there's no Firebird equivalent tool to wrap, which is exactly why Option A (spec generation only, no bundled server) was chosen.
+
+### Explicitly deferred (not done)
+
+- **Phase 3 — Copilot-assisted natural-language config generation**: no slash command/button takes a description like "expose customers and orders as read-only" and adjusts the generated spec; every table gets the same full CRUD route set today.
+- **Phase 4 — Option B (bundled server runtime)**: no scaffolded Node/Express/GraphQL project — this remains "generate a spec for your own backend," not "run a Firebird API server," per the design doc's recommendation not to start Option B casually.
+- Foreign keys are fetched (reused from the Schema Designer's query) but not yet reflected in the generated spec (e.g. as OpenAPI relationship/links or nested-resource routes) — the FK rows are currently discarded after building the graph.
 
 ## Proposed feature
 
@@ -27,7 +40,7 @@ Whichever option is chosen, a natural Copilot hook (mirroring "GitHub Copilot in
 
 ## Suggested phases
 
-1. Validate scope/demand (this is speculative enough that it may not be worth building without concrete user requests).
-2. REST route-spec generator (Option A) from schema metadata, no server.
+1. ~~Validate scope/demand (this is speculative enough that it may not be worth building without concrete user requests).~~ — explicitly overridden: asked directly whether to build this or skip to the next roadmap item, given the speculative flag; the answer was to build it anyway.
+2. ~~REST route-spec generator (Option A) from schema metadata, no server.~~ — **done**.
 3. Copilot-assisted natural-language config generation.
 4. (Only if justified) bundled minimal server runtime (Option B).

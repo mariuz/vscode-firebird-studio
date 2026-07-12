@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.34",
+  "version": "0.1.35",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -298,6 +298,11 @@
       {
         "command": "firebird.database.importFlatFile",
         "title": "Import Flat File...",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.database.generateDataApiSpec",
+        "title": "Generate Data API Spec...",
         "category": "Firebird"
       },
       {
@@ -862,6 +867,11 @@
           "command": "firebird.database.importFlatFile",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "first@6"
+        },
+        {
+          "command": "firebird.database.generateDataApiSpec",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "first@7"
         },
         {
           "command": "firebird.database.backupDatabase",

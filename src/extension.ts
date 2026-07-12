@@ -677,6 +677,18 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB: generate an OpenAPI Data API spec from the connected schema */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.generateDataApiSpec", (databaseNode: NodeDatabase) => {
+      databaseNode.generateDataApiSpec().catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Data API spec generation failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
   /* DB: backup database */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.backupDatabase", (databaseNode: NodeDatabase) => {

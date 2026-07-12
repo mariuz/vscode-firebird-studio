@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.35 - 2026-07-12
+
+### Added
+
+- **Data API Builder** — right-click a database → **Generate Data API Spec...** to produce an OpenAPI 3.0 document (list/create/get/update/delete routes per table, JSON Schema types inferred from your columns) opened as plain JSON for review — a reviewable artifact for your own REST/GraphQL backend, not a server this extension runs itself.
+
 ## 0.1.34 - 2026-07-12
 
 ### Added
