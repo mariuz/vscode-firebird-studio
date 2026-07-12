@@ -80,6 +80,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 - [x] Results grid: column freeze/show/hide, copy selection as an `INSERT` statement, copy selection as a SQL `IN (...)` clause
 - [x] Configurable keyboard shortcuts for query/result actions (a `firebird.shortcuts` setting, mirroring `mssql.shortcuts`)
 - [x] Per-session transaction isolation level, lock timeout, and other `SET`-option controls exposed as settings
+- [ ] AI analysis of query results in the results panel — reuse the existing `/explain`/`/optimize` chat-prompt-building pattern (`src/copilot/prompts.ts`) to summarize/explain a result set on request, mirroring mssql's own "future" roadmap item for Copilot-assisted result analysis
 
 ### Data import/export & integration
 
@@ -95,6 +96,13 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 - [x] Local Firebird container **creation** — provision a new Dockerized Firebird server from the extension, extending today's detect-existing-containers support
 - [x] Connection dialog: color-coded connection groups, and paste a full connection string to prefill fields
 
+### Onboarding & discoverability
+
+- [ ] Object Explorer Filters — a type-ahead filter box on the connection tree itself (narrows which nodes are shown as you type), distinct from the existing Object Search QuickPick which searches rather than filters the tree in place
+- [ ] Getting Started walkthrough — an interactive, checklist-style onboarding flow using VS Code's native `contributes.walkthroughs` API, complementing the existing static `docs/getting-started.md`
+- [ ] In-product "What's New" notification/webview shown once after an extension update, summarizing the new version's `CHANGELOG.md` entry
+- [ ] Firebird Dev Container template — a ready-made `.devcontainer` config (Firebird server + this extension preinstalled) for VS Code's Dev Containers extension, for quick-start/demo/CI-reproduction scenarios
+
 ## Inspired by vscode-pgsql
 
 The following features are adapted from Microsoft's [PostgreSQL extension for VS Code](https://marketplace.visualstudio.com/items?itemName=ms-ossdata.vscode-pgsql) (`ms-ossdata.vscode-pgsql`; see also its [overview docs](https://learn.microsoft.com/en-us/azure/postgresql/development/vs-code-extension/postgresql-extension-overview)), reviewed — including its demo GIFs, not just its written docs — for what's applicable to Firebird. Several of its features overlap with items already tracked above under "Inspired by vscode-mssql" (schema visualization, results export, connection groups, object search, container creation) and aren't repeated here; this section covers what's genuinely new.
@@ -103,14 +111,21 @@ The following features are adapted from Microsoft's [PostgreSQL extension for VS
 
 - [x] MCP Server — expose this extension's own connection/schema/query-execution tooling to *any* MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode), not just the `@firebird` chat participant, which only works inside this extension's own Copilot Chat integration ([design doc](docs/roadmap/mcp-server.md))
 - [x] AI Query Actions in the editor — right-click selected SQL for Explain/Optimize (reusing the existing `/explain`/`/optimize` chat logic) without first opening the chat panel
+- [ ] AI-assisted DDL conversion from other databases — a `/migrate` chat participant command that takes pasted DDL from another RDBMS (MySQL, PostgreSQL, SQL Server, legacy InterBase) and asks Copilot for the Firebird-dialect equivalent, reusing the existing `src/copilot/prompts.ts` system-prompt/message-builder pattern rather than a new parsing engine — inspired by vscode-pgsql's AI-powered Oracle-to-PostgreSQL schema migration assistant
 
 ### Query execution & results
 
 - [x] Chart visualization for query results — render numeric result columns as line/bar/pie/scatter charts directly in the results panel, alongside the existing grid view
+- [ ] Parameterized query execution — write a query with named/typed placeholders (e.g. `:paramName`) and fill in bound values through a form before running, distinct from today's plain-text-only execution; reuses `node-firebird`'s existing parameterized-query support (already used internally, e.g. by the result grid's row-edit path) but exposes it as an authoring feature rather than an internal-only mechanism
 
 ### Object explorer
 
 - [x] Generic "Script as Create" / "Script as Drop" — reverse-engineer any selected object's DDL from one tree action regardless of type, rather than only tables/procedures/views/triggers each having their own bespoke edit command
+- [ ] Object privileges/grants viewer — show a selected object's grants (`RDB$USER_PRIVILEGES`) in a simple read-only panel, complementing "Script as Create" (which covers DDL, not privileges)
+
+### Connectivity
+
+- [ ] SSH tunneling — connect to a Firebird server reachable only through an SSH bastion/jump host, tunneling the wire-protocol connection through a local forwarded port ([design doc](docs/roadmap/ssh-tunneling.md))
 
 ## Testing and CI
 
