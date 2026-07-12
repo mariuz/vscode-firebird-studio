@@ -99,7 +99,7 @@ The following features are adapted from Microsoft's [vscode-mssql](https://githu
 ### Onboarding & discoverability
 
 - [ ] Object Explorer Filters — a type-ahead filter box on the connection tree itself (narrows which nodes are shown as you type), distinct from the existing Object Search QuickPick which searches rather than filters the tree in place
-- [ ] Getting Started walkthrough — an interactive, checklist-style onboarding flow using VS Code's native `contributes.walkthroughs` API, complementing the existing static `docs/getting-started.md`
+- [x] Getting Started walkthrough — an interactive, checklist-style onboarding flow using VS Code's native `contributes.walkthroughs` API, complementing the existing static `docs/getting-started.md`
 - [ ] In-product "What's New" notification/webview shown once after an extension update, summarizing the new version's `CHANGELOG.md` entry
 - [ ] Firebird Dev Container template — a ready-made `.devcontainer` config (Firebird server + this extension preinstalled) for VS Code's Dev Containers extension, for quick-start/demo/CI-reproduction scenarios
 

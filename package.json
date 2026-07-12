@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.45",
+  "version": "0.1.46",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -1212,6 +1212,65 @@
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "firebirdGettingStarted",
+        "title": "Get Started with Firebird Studio",
+        "description": "Connect to a Firebird database and run your first query, right inside VS Code.",
+        "steps": [
+          {
+            "id": "connect",
+            "title": "Add Your First Connection",
+            "description": "Open the DB Explorer and connect to a Firebird server or embedded database file.",
+            "media": {
+              "markdown": "walkthroughs/getting-started/01-connect.md"
+            },
+            "completionEvents": [
+              "onCommand:firebird.explorer.addConnection"
+            ]
+          },
+          {
+            "id": "explore",
+            "title": "Explore the Database Structure",
+            "description": "Browse tables, views, procedures, triggers, generators, and domains in the tree.",
+            "media": {
+              "markdown": "walkthroughs/getting-started/02-explore.md"
+            }
+          },
+          {
+            "id": "setActive",
+            "title": "Set the Active Database",
+            "description": "Tell the extension which connected database your queries should run against.",
+            "media": {
+              "markdown": "walkthroughs/getting-started/03-set-active.md"
+            },
+            "completionEvents": [
+              "onCommand:firebird.setActive"
+            ]
+          },
+          {
+            "id": "runQuery",
+            "title": "Run Your First Query",
+            "description": "Open a new SQL file and run a query against the active database.",
+            "media": {
+              "markdown": "walkthroughs/getting-started/04-run-query.md"
+            },
+            "completionEvents": [
+              "onCommand:firebird.runQuery",
+              "onCommand:firebird.explorer.newSqlDocument"
+            ]
+          },
+          {
+            "id": "nextSteps",
+            "title": "Next Steps",
+            "description": "IntelliSense, snippets, mock data, and the @firebird Copilot Chat participant.",
+            "media": {
+              "markdown": "walkthroughs/getting-started/05-next-steps.md"
+            }
+          }
+        ]
+      }
+    ],
     "snippets": [
       {
         "language": "sql",

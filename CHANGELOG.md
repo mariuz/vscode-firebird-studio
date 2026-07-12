@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.46 - 2026-07-12
+
+### Added
+
+- **Getting Started walkthrough** — an interactive, checklist-style onboarding flow (VS Code's native Walkthroughs UI, shown from the Welcome page or **Help: Get Started**) covering adding a connection, exploring the tree, setting the active database, running a first query, and next steps (IntelliSense, snippets, mock data, `@firebird` Copilot Chat). Complements the existing static `docs/getting-started.md`.
+
 ## 0.1.45 - 2026-07-12
 
 ### Added
