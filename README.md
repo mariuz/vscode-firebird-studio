@@ -38,6 +38,12 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Editable result grids** — enable editing on any result set to update cells, add rows, or mark rows for deletion, then apply the changes directly to the database (primary-key aware, with a confirmation before anything is written)
 - **Schema visualizer** — an interactive entity-relationship diagram of a database's tables, columns, and foreign key relationships, with pan/zoom, auto-layout, and a minimap
 - **isql in the integrated terminal** — connect with `isql`/`isql-fb` for backslash-command-style administration, or run a `.sql` file through it directly, without leaving VS Code
+- **Graphical query plan** — an interactive, pannable/zoomable diagram of a query's execution plan (native driver required)
+- **Live Profiler** — a continuously-refreshing view of active connections, their current statement, and live I/O rates
+- **Results grid**: freeze/show-hide columns, and copy a cell selection as an `INSERT` statement or a SQL `IN (...)` clause
+- **Configurable results-grid shortcuts** (`firebird.shortcuts`) and per-session **transaction settings** (isolation level, lock timeout, read-only, wait mode)
+- **Flat File Import Wizard** — import a CSV/TSV/JSON file into a new table, with local column-type inference
+- **SQL Notebooks** — a native `.fbnb` notebook editor mixing markdown and SQL cells, with results rendered per cell
 
 ## Getting Started
 
@@ -135,6 +141,26 @@ See the full list in **[docs/sql-snippets.md](docs/sql-snippets.md)**.
 
 Right-click a table → **Generate Mock Data**. Requires a [Mockaroo API key](https://www.mockaroo.com/users/sign_up). See [wiki](https://github.com/mariuz/vscode-firebird-studio/wiki/SQL-Mock-Data-Generator) for details.
 
+### Graphical Query Plan
+
+With a query in the editor, press `Ctrl+Alt+Shift+E` (`Cmd+Alt+Shift+E` on macOS) or run **Show Graphical Query Plan** — an interactive, pannable/zoomable diagram of the execution plan opens: click a node to see its scan method and index in a side panel, or toggle to the raw `PLAN` text to copy it. Requires the native driver (`firebird.useNativeDriver`); with the pure-JS driver it falls back to a text summary of relevant index metadata instead of a real plan.
+
+### Live Profiler
+
+Right-click a database → **Monitor Database** opens a continuously-refreshing view of every connection to that database: user, remote address, current statement, and live I/O rates (page reads/writes/fetches per second). **Pause**/**Resume** stops and restarts polling; the interval is controlled by `firebird.profiler.pollIntervalMs` (default 3s).
+
+### Results Grid: Freeze, Show/Hide, and Copy as SQL
+
+Every result grid has a **Columns** button (show/hide any column) and a **❄ Freeze Column** toggle (pins the first column while you scroll a wide result horizontally). Click a cell, then shift-click another to select a rectangular range, and use **Copy as INSERT** or **Copy as IN (...)** to copy ready-to-paste SQL built from the selection — handy for turning a few rows you spotted into a repro `INSERT` or a `WHERE id IN (...)` filter elsewhere. All of these (plus **Enable Editing**, **+ Add Row**, and **Apply Changes**) also have configurable keyboard shortcuts — see `firebird.shortcuts` below.
+
+### Flat File Import Wizard
+
+Right-click a database → **Import Flat File...**, then pick a CSV, TSV, or JSON file. The wizard sniffs a Firebird column type per column (`INTEGER`/`BIGINT`/`NUMERIC`/`BOOLEAN`/`DATE`/`TIMESTAMP`/`VARCHAR`) from the file's own data, opens the generated `CREATE TABLE` statement in an editor for you to review or edit, and — once you confirm — creates the table and batch-inserts every row with a progress notification. Only creating a brand-new table is supported today; mapping onto an existing table's columns is a planned follow-up.
+
+### SQL Notebooks
+
+Run **New Firebird SQL Notebook** to create a `.fbnb` notebook: mix markdown cells (documentation/notes) with SQL cells. Running a SQL cell (the ▷ button, or `Ctrl+Enter`/`Shift+Enter` like any VS Code notebook) executes every statement in that cell against a connection you pick the first time you run a cell in that notebook — rows come back as a table, DDL/DML as a success message, and errors are shown inline on the cell, all without leaving the notebook. The connection choice is remembered for the rest of that VS Code session, but isn't yet saved into the `.fbnb` file itself, so reopening a notebook (or restarting VS Code) will ask again.
+
 ## Settings
 
 | Setting | Type | Default | Description |
@@ -149,6 +175,15 @@ Right-click a table → **Generate Mock Data**. Requires a [Mockaroo API key](ht
 | `firebird.isqlPath` | string | *(blank)* | Path to the `isql`/`isql-fb` executable; leave blank to search `PATH` automatically |
 | `firebird.showSystemObjects` | boolean | `false` | Show a **System Tables** folder listing Firebird's built-in `RDB$` system/metadata tables under each database |
 | `firebird.dockerPath` | string | *(blank)* | Path to the `docker` executable, used to auto-detect running Firebird containers in **Add New Connection**; leave blank to search `PATH` automatically |
+| `firebird.enableConnectionPooling` | boolean | `false` | Keep idle connections alive and reuse them instead of reconnecting per query |
+| `firebird.connectionPool.maxSize` | number | `5` | Max idle connections retained per saved connection when pooling is enabled |
+| `firebird.connectionPool.idleTimeoutMs` | number | `60000` | How long an idle pooled connection is kept before being closed |
+| `firebird.profiler.pollIntervalMs` | number | `3000` | How often the Live Profiler re-polls connection activity while its panel is visible |
+| `firebird.shortcuts` | object | `{}` | Keyboard shortcuts for actions inside the **Query Results** webview (edit mode, freeze column, copy as INSERT/IN); see the setting's description for event names and combo syntax |
+| `firebird.transaction.isolationLevel` | string | *(blank)* | Isolation level for every transaction this extension opens (`READ_COMMITTED_RECORD_VERSION`, `READ_COMMITTED_NO_RECORD_VERSION`, `SNAPSHOT`, `SNAPSHOT_TABLE_STABILITY`); blank uses the driver's own default |
+| `firebird.transaction.lockTimeoutSec` | number | `0` | Lock wait timeout in seconds before a blocked query gives up (`0` = wait indefinitely); only honored by the pure-JS driver |
+| `firebird.transaction.readOnly` | boolean | `false` | Open every query's transaction as READ ONLY |
+| `firebird.transaction.waitMode` | string | *(blank)* | `WAIT` or `NO_WAIT` for a lock conflict; blank uses the driver's default (`WAIT`) |
 
 ## Documentation
 
