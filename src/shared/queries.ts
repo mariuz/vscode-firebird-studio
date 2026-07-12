@@ -367,6 +367,41 @@ export function getViewDefinitionQuery(viewName: string): string {
            WHERE TRIM(RDB$RELATION_NAME) = '${viewName}';`;
 }
 
+/**
+ * Every non-system procedure's full source, for the Database Projects Extract command — the
+ * same CAST(...) truncation-safe pattern as getProcedureBodyQuery(), just for all procedures in
+ * one round trip instead of one query per procedure.
+ */
+export function getAllProcedureSourcesQuery(): string {
+  return `SELECT TRIM(RDB$PROCEDURE_NAME) AS PROCEDURE_NAME,
+                 CAST(RDB$PROCEDURE_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS PROCEDURE_SOURCE
+            FROM RDB$PROCEDURES
+           WHERE (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
+        ORDER BY 1;`;
+}
+
+/** Every non-system trigger's full source, one round trip — see getAllProcedureSourcesQuery(). */
+export function getAllTriggerSourcesQuery(): string {
+  return `SELECT TRIM(RDB$TRIGGER_NAME) AS TRIGGER_NAME,
+                 TRIM(RDB$RELATION_NAME) AS TABLE_NAME,
+                 RDB$TRIGGER_TYPE AS TRIGGER_TYPE,
+                 CASE WHEN RDB$TRIGGER_INACTIVE = 1 THEN 1 ELSE 0 END AS INACTIVE,
+                 CAST(RDB$TRIGGER_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS TRIGGER_SOURCE
+            FROM RDB$TRIGGERS
+           WHERE (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
+        ORDER BY 1;`;
+}
+
+/** Every non-system view's full source, one round trip — see getAllProcedureSourcesQuery(). */
+export function getAllViewSourcesQuery(): string {
+  return `SELECT TRIM(RDB$RELATION_NAME) AS VIEW_NAME,
+                 CAST(RDB$VIEW_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS VIEW_SOURCE
+            FROM RDB$RELATIONS
+           WHERE RDB$VIEW_BLR IS NOT NULL
+             AND (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
+        ORDER BY 1;`;
+}
+
 export function dropProcedureQuery(procedureName: string): string {
   return `DROP PROCEDURE ${procedureName};`;
 }

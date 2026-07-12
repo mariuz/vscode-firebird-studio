@@ -14,6 +14,7 @@ import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
 import {runDataApiSpecGenerator} from "../data-api-builder";
+import {runExtractProject} from "../database-projects";
 import * as cp from 'node:child_process';
 
 
@@ -167,6 +168,11 @@ export class NodeDatabase implements FirebirdTree {
   // generate an OpenAPI REST spec (one CRUD route set per table) from the connected schema
   public async generateDataApiSpec(): Promise<void> {
     return runDataApiSpecGenerator(this.dbDetails);
+  }
+
+  // extract the connected schema into a folder of versioned .sql files (Database Projects)
+  public async extractProject(): Promise<void> {
+    return runExtractProject(this.dbDetails);
   }
 
   /** Connection details with the password resolved from SecretStorage, for callers (e.g. the

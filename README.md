@@ -45,6 +45,7 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Flat File Import Wizard** — import a CSV/TSV/JSON file into a new table, with local column-type inference
 - **SQL Notebooks** — a native `.fbnb` notebook editor mixing markdown and SQL cells, with results rendered per cell
 - **Data API Builder** — generate an OpenAPI 3.0 REST spec (one CRUD route set per table) from the connected schema
+- **Database Projects** — extract the connected schema into a folder of versioned `.sql` files, and build one back into a deployable script
 
 ## Getting Started
 
@@ -165,6 +166,10 @@ Run **New Firebird SQL Notebook** to create a `.fbnb` notebook: mix markdown cel
 ### Data API Builder
 
 Right-click a database → **Generate Data API Spec...** to generate an OpenAPI 3.0 document from the connected schema: a component schema per table (with JSON Schema types inferred from your columns) and CRUD routes (`GET`/`POST /table`, plus `GET`/`PUT`/`DELETE /table/{id}` for tables with a primary key). It opens as plain JSON for you to review — this doesn't run a REST server itself; hand the generated spec to your own backend (or a tool that consumes OpenAPI specs) to actually serve it.
+
+### Database Projects (schema-as-code)
+
+Right-click a database → **Extract Database Project...**, pick a destination folder, and every table, view, procedure, trigger, and generator is written out as its own `.sql` file (under `tables/`, `views/`, `procedures/`, `triggers/`, `generators/`), alongside a `firebird.project.json` manifest recording a safe deploy order (tables, then foreign keys, then views/procedures/triggers/generators). Run **Build Database Project...** from the Command Palette and pick that folder to concatenate it back into one script, opened for review — nothing runs automatically; run the script yourself once you're happy with it. Domains, roles, exceptions, and users aren't extracted yet, and a `NUMERIC`/`DECIMAL` column's precision/scale can be lost in the round trip (see the design doc for why).
 
 ## Settings
 

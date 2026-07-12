@@ -27,6 +27,7 @@ import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
+import {runBuildProject} from "./database-projects";
 
 /** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -683,6 +684,30 @@ export function activate(context: ExtensionContext) {
       databaseNode.generateDataApiSpec().catch(err => {
         logger.error(err?.message ?? err);
         logger.showError("Data API spec generation failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
+  /* DB: extract the connected schema into a Database Project folder */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.project.extract", (databaseNode: NodeDatabase) => {
+      databaseNode.extractProject().catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Database Project extract failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
+  /* Build a Database Project folder into one reviewable deploy script */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.project.build", () => {
+      runBuildProject().catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Database Project build failed. Check logs for details.", ["Show Logs"]).then(sel => {
           if (sel === "Show Logs") { logger.showOutput(); }
         });
       });

@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.36 - 2026-07-12
+
+### Added
+
+- **Firebird Database Projects** — right-click a database → **Extract Database Project...** writes the connected schema out as one `.sql` file per table/view/procedure/trigger/generator, plus a manifest recording a safe deploy order; **Build Database Project...** (Command Palette) concatenates an extracted project into one reviewable deploy script.
+
 ## 0.1.35 - 2026-07-12
 
 ### Added

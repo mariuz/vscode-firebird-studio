@@ -3,6 +3,9 @@ import {
   getProcedureBodyQuery,
   getTriggerBodyQuery,
   getViewDefinitionQuery,
+  getAllProcedureSourcesQuery,
+  getAllTriggerSourcesQuery,
+  getAllViewSourcesQuery,
   getPrimaryKeyColumnsQuery,
   getAllPrimaryKeyConstraintNamesQuery,
   getSchemaColumnsQuery,
@@ -61,6 +64,40 @@ suite('getProcedureBodyQuery / getTriggerBodyQuery / getViewDefinitionQuery', fu
 
   test('getViewDefinitionQuery filters by the given view name', function () {
     assert.ok(getViewDefinitionQuery("MY_VIEW").includes("= 'MY_VIEW'"));
+  });
+});
+
+// ── getAllProcedureSourcesQuery / getAllTriggerSourcesQuery / getAllViewSourcesQuery ──────────
+//
+// The "all objects at once" counterparts of the single-name source queries above, used by the
+// Database Projects Extract command so it fetches every procedure/trigger/view's source in one
+// round trip instead of one query per object.
+
+suite('getAllProcedureSourcesQuery / getAllTriggerSourcesQuery / getAllViewSourcesQuery', function () {
+  test('all three cast with an explicit CHARACTER SET UTF8, same as the single-name versions', function () {
+    for (const sql of [getAllProcedureSourcesQuery(), getAllTriggerSourcesQuery(), getAllViewSourcesQuery()]) {
+      assert.ok(sql.includes(`VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8`), sql);
+    }
+  });
+
+  test('all three exclude system objects', function () {
+    assert.ok(getAllProcedureSourcesQuery().includes('RDB$SYSTEM_FLAG'));
+    assert.ok(getAllTriggerSourcesQuery().includes('RDB$SYSTEM_FLAG'));
+    assert.ok(getAllViewSourcesQuery().includes('RDB$SYSTEM_FLAG'));
+  });
+
+  test('getAllViewSourcesQuery filters to actual views (RDB$VIEW_BLR IS NOT NULL)', function () {
+    assert.ok(getAllViewSourcesQuery().includes('RDB$VIEW_BLR IS NOT NULL'));
+  });
+
+  test('getAllTriggerSourcesQuery normalizes INACTIVE to 0/1', function () {
+    assert.ok(getAllTriggerSourcesQuery().includes('CASE WHEN RDB$TRIGGER_INACTIVE = 1 THEN 1 ELSE 0 END AS INACTIVE'));
+  });
+
+  test('none fetch just one named object (no name filter, unlike the single-object queries)', function () {
+    for (const sql of [getAllProcedureSourcesQuery(), getAllTriggerSourcesQuery(), getAllViewSourcesQuery()]) {
+      assert.ok(!/TRIM\([^)]+\)\s*=\s*'/.test(sql), `expected no name filter: ${sql}`);
+    }
   });
 });
 
