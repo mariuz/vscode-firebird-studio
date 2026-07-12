@@ -63,6 +63,38 @@ This document outlines the planned features and improvements for the **Firebird 
 - [x] Sample databases and tutorials for getting started
 - [x] Contributing guide for community contributors
 
+## Inspired by vscode-mssql
+
+The following features are adapted from Microsoft's [vscode-mssql](https://github.com/microsoft/vscode-mssql) extension for SQL Server, reviewed for what's applicable to Firebird. Heavier, multi-phase features link out to a dedicated design doc under [`docs/roadmap/`](docs/roadmap/); lighter ones are listed directly.
+
+### Visual design & schema tools
+
+- [ ] Visual multi-table Schema Designer — drag-and-drop ER modeling, auto-layout, and consolidated DDL generation, replacing/merging today's read-only schema visualizer and single-table designer ([design doc](docs/roadmap/visual-schema-designer.md))
+- [ ] Copilot-assisted schema editing inside the Schema Designer — natural-language edits applied to an open diagram, not just one-shot DDL generation (see design doc above)
+- [ ] Extend the Table Designer to alter existing tables, not just create new ones (see design doc above)
+
+### Query execution & analysis
+
+- [ ] Graphical Query Plan Visualizer — interactive execution-plan diagram instead of today's plain-text `EXPLAIN PLAN` output ([design doc](docs/roadmap/query-plan-visualizer.md))
+- [ ] Live connection/query Profiler — polling `MON$*` dashboard with delta stats, replacing today's one-shot connection snapshot ([design doc](docs/roadmap/live-profiler.md))
+- [ ] Results grid: column freeze/show/hide, copy selection as an `INSERT` statement, copy selection as a SQL `IN (...)` clause
+- [ ] Configurable keyboard shortcuts for query/result actions (a `firebird.shortcuts` setting, mirroring `mssql.shortcuts`)
+- [ ] Per-session transaction isolation level, lock timeout, and other `SET`-option controls exposed as settings
+
+### Data import/export & integration
+
+- [ ] Flat File Import Wizard — guided CSV/TSV/JSON import into a new or existing table, with local type inference ([design doc](docs/roadmap/flat-file-import-wizard.md))
+- [ ] SQL Notebooks — native VS Code notebook editor for Firebird SQL with rich per-cell results ([design doc](docs/roadmap/sql-notebooks.md))
+- [ ] Data API Builder — generate REST/GraphQL endpoint configs from the connected schema, optionally Copilot-assisted (speculative — validate demand first) ([design doc](docs/roadmap/data-api-builder.md))
+
+### Database lifecycle
+
+- [ ] Firebird Database Projects — schema-as-code project structure with extract/build/publish and generated migration scripts, built on the existing schema-diff engine ([design doc](docs/roadmap/database-projects.md))
+- [ ] Create, rename, and drop whole databases from the connection tree (not just objects within one)
+- [ ] Object Search — fuzzy search for any object (table/view/procedure/trigger/etc.) by name across a connection
+- [ ] Local Firebird container **creation** — provision a new Dockerized Firebird server from the extension, extending today's detect-existing-containers support
+- [ ] Connection dialog: color-coded connection groups, and paste a full connection string to prefill fields
+
 ## Testing and CI
 
 - [x] E2E test matrix covering Firebird 3, 4, 5, and 6 (snapshot) across Node.js 24-26, mirroring [node-firebird's own CI](https://github.com/mariuz/node-firebird/blob/master/.github/workflows/node.js.yml) so driver-compatibility regressions surface before they reach users on older or newer servers
@@ -71,4 +103,4 @@ This document outlines the planned features and improvements for the **Firebird 
 
 > **Note**: This roadmap is subject to change based on community feedback and contributions. Feature requests and suggestions are welcome via [GitHub Issues](https://github.com/mariuz/vscode-firebird-studio/issues).
 >
-> Inspired by the features announced in [Microsoft's IDE for PostgreSQL in VS Code](https://techcommunity.microsoft.com/blog/adforpostgresql/announcing-a-new-ide-for-postgresql-in-vs-code-from-microsoft/4414648).
+> Inspired by the features announced in [Microsoft's IDE for PostgreSQL in VS Code](https://techcommunity.microsoft.com/blog/adforpostgresql/announcing-a-new-ide-for-postgresql-in-vs-code-from-microsoft/4414648) and by [Microsoft's vscode-mssql extension](https://github.com/microsoft/vscode-mssql) for SQL Server.
