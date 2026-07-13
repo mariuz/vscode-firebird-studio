@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.56 - 2026-07-13
+
+### Added
+
+- **MCP Server: `run_query` and `get_query_plan` tools** — the `firebird-mcp` server (any MCP-compatible AI client, not just this extension's own `@firebird` Copilot chat) can now execute a single read-only `SELECT` (or `WITH ... AS (...) SELECT`) statement and fetch an index-metadata-based execution plan, in addition to the existing `list_connections`/`get_schema`. Both are unconditionally read-only with no opt-out — anything else (INSERT/UPDATE/DELETE/DDL/EXECUTE BLOCK, or more than one statement) is rejected before a connection is even opened.
+
+### Internal
+
+- `extractTableNames()`/the index-metadata query and plan renderer moved from `src/shared/driver.ts` into a new dependency-free `src/shared/sql-analysis.ts`, shared by both the extension host and the MCP server's spawned subprocess (which can't import `driver.ts` at all, since that pulls in `vscode`).
+
 ## 0.1.55 - 2026-07-13
 
 ### Fixed

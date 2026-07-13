@@ -8,6 +8,7 @@ import { TransactionIsolation, TransactionOptions as NativeTransactionOptions } 
 import {simpleCallbackToPromise, getConnectionLabel} from './utils';
 import {CredentialStore} from './credential-store';
 import {splitStatements} from './sql-splitter';
+import {extractTableNames as extractTableNamesImpl, buildIndexMetadataQuery, renderIndexMetadataPlan} from './sql-analysis';
 import {PooledClient, ConnectionPoolOptions} from './connection-pool';
 import {SshTunnelClient} from './ssh-tunnel';
 import {getOptions} from '../config';
@@ -453,42 +454,18 @@ export class Driver {
       return rawClient.getQueryPlan(connectionOptions, stmt);
     }
 
-    // NodeClient fallback: extract table names and show index metadata
-    const tables = extractTableNames(stmt);
+    // NodeClient fallback: extract table names and show index metadata (see sql-analysis.ts —
+    // shared with src/mcp-server/server.ts's get_query_plan tool, which can't import this file).
+    const tables = extractTableNamesImpl(stmt);
     if (tables.length === 0) {
-      return `-- PLAN not available via node-firebird driver.\n-- Use the native driver (firebird.useNativeDriver) for execution plans.\n-- Query:\n${stmt}`;
+      return renderIndexMetadataPlan(stmt, tables, []);
     }
 
-    const placeholders = tables.map(() => "?").join(", ");
-    const metaSql = `SELECT TRIM(i.RDB$RELATION_NAME) AS TABLE_NAME,
-       TRIM(i.RDB$INDEX_NAME)    AS INDEX_NAME,
-       TRIM(s.RDB$FIELD_NAME)    AS FIELD_NAME,
-       i.RDB$UNIQUE_FLAG         AS IS_UNIQUE
-  FROM RDB$INDICES i
-  JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = i.RDB$INDEX_NAME
- WHERE TRIM(i.RDB$RELATION_NAME) IN (${placeholders})
- ORDER BY 1, 2, s.RDB$FIELD_POSITION`;
-
+    const metaSql = buildIndexMetadataQuery(tables);
     const connection = await this.client.createConnection(resolved.connectionOptions);
     try {
       const rows: any[] = await (this.client as NodeClient).queryPromise(connection, metaSql, tables);
-      if (!rows || rows.length === 0) {
-        return `-- No index information found for table(s): ${tables.join(", ")}\n-- Query:\n${stmt}`;
-      }
-      let plan = `-- Firebird Index Metadata (node-firebird fallback plan)\n-- Use native driver for real PLAN output.\n--\n-- Query:\n`;
-      stmt.split("\n").forEach(l => (plan += `--   ${l}\n`));
-      plan += "\n";
-      let lastTable = "";
-      rows.forEach((r: any) => {
-        const tbl = (r.TABLE_NAME ?? "").trim();
-        if (tbl !== lastTable) {
-          plan += `\nTABLE ${tbl}\n`;
-          lastTable = tbl;
-        }
-        const uniq = r.IS_UNIQUE ? " (UNIQUE)" : "";
-        plan += `  INDEX ${(r.INDEX_NAME ?? "").trim()}${uniq} — field: ${(r.FIELD_NAME ?? "").trim()}\n`;
-      });
-      return plan;
+      return renderIndexMetadataPlan(stmt, tables, rows);
     } finally {
       this.client.detach(connection);
     }
@@ -762,17 +739,9 @@ export class NativeClient implements ClientI<Attachment> {
 }
 
 /**
- * Extracts unqualified table/view names from a SQL SELECT statement's FROM and JOIN clauses.
- * This is a best-effort heuristic for the node-firebird explain-plan fallback.
- * Exported for unit testing.
+ * Re-exported from sql-analysis.ts (moved there so src/mcp-server/server.ts — a separate spawned
+ * subprocess that cannot import this file at all, since it pulls in `vscode` — can share the exact
+ * same heuristic rather than a second, drifting copy). Existing imports of `extractTableNames`
+ * from `./driver` keep working unchanged.
  */
-export function extractTableNames(sql: string): string[] {
-  const names = new Set<string>();
-  // Match: FROM <name>, JOIN <name>  — stop at whitespace, comma, or paren
-  const re = /\b(?:FROM|JOIN)\s+([A-Z_$][A-Z0-9_$]*)/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(sql)) !== null) {
-    names.add(m[1].toUpperCase());
-  }
-  return Array.from(names);
-}
+export { extractTableNames } from "./sql-analysis";

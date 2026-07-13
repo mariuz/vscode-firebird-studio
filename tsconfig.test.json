@@ -20,6 +20,7 @@
   },
   "include": [
     "src/shared/sql-splitter.ts",
+    "src/shared/sql-analysis.ts",
     "src/shared/sql-formatter.ts",
     "src/shared/changelog-notice.ts",
     "src/shared/object-explorer-filter.ts",

@@ -25,6 +25,7 @@ import { z } from "zod";
 import * as Firebird from "node-firebird";
 import { getSchemaColumnsQuery, getForeignKeysQuery } from "../shared/queries";
 import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from "../schema-designer/schema-graph";
+import { validateReadOnlyStatement, extractTableNames, buildIndexMetadataQuery, renderIndexMetadataPlan } from "../shared/sql-analysis";
 
 interface ExposedConnection {
   id: string;
@@ -70,9 +71,9 @@ function connect(conn: ExposedConnection): Promise<Firebird.Database> {
   });
 }
 
-function query<T = any>(db: Firebird.Database, sql: string): Promise<T[]> {
+function query<T = any>(db: Firebird.Database, sql: string, args: any[] = []): Promise<T[]> {
   return new Promise((resolve, reject) => {
-    db.query(sql, [], (err: any, rows: any) => {
+    db.query(sql, args, (err: any, rows: any) => {
       if (err) { reject(err); return; }
       resolve(rows);
     });
@@ -121,6 +122,83 @@ server.registerTool(
       return { content: [{ type: "text" as const, text: JSON.stringify(graph, null, 2) }] };
     } catch (err: any) {
       return { content: [{ type: "text" as const, text: `Could not fetch schema: ${err?.message ?? err}` }], isError: true };
+    } finally {
+      if (db) { await detach(db); }
+    }
+  }
+);
+
+server.registerTool(
+  "run_query",
+  {
+    description: "Executes a single read-only SELECT (or WITH ... AS (...) SELECT) statement against an exposed Firebird connection and returns the resulting rows as JSON. Any other statement (INSERT/UPDATE/DELETE/DDL/EXECUTE BLOCK) or more than one statement is rejected — this tool is read-only, matching the security model in docs/roadmap/mcp-server.md.",
+    inputSchema: {
+      connectionId: z.string().describe("A connection id returned by list_connections"),
+      sql: z.string().describe("A single SELECT statement"),
+    },
+  },
+  async ({ connectionId, sql }) => {
+    const conn = loadExposedConnections().find(c => c.id === connectionId);
+    if (!conn) {
+      return {
+        content: [{ type: "text" as const, text: `No exposed connection with id "${connectionId}". Call list_connections first.` }],
+        isError: true,
+      };
+    }
+
+    const rejection = validateReadOnlyStatement(sql);
+    if (rejection) {
+      return { content: [{ type: "text" as const, text: rejection }], isError: true };
+    }
+
+    let db: Firebird.Database | undefined;
+    try {
+      db = await connect(conn);
+      const rows = await query(db, sql);
+      return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
+    } catch (err: any) {
+      return { content: [{ type: "text" as const, text: `Query failed: ${err?.message ?? err}` }], isError: true };
+    } finally {
+      if (db) { await detach(db); }
+    }
+  }
+);
+
+server.registerTool(
+  "get_query_plan",
+  {
+    description: "Returns Firebird's index-metadata-based execution plan heuristic for a single SELECT statement (this subprocess doesn't bundle the native driver, so it can't request Firebird's real PLAN output — see docs/roadmap/mcp-server.md). Read-only, same restriction as run_query.",
+    inputSchema: {
+      connectionId: z.string().describe("A connection id returned by list_connections"),
+      sql: z.string().describe("A single SELECT statement"),
+    },
+  },
+  async ({ connectionId, sql }) => {
+    const conn = loadExposedConnections().find(c => c.id === connectionId);
+    if (!conn) {
+      return {
+        content: [{ type: "text" as const, text: `No exposed connection with id "${connectionId}". Call list_connections first.` }],
+        isError: true,
+      };
+    }
+
+    const rejection = validateReadOnlyStatement(sql);
+    if (rejection) {
+      return { content: [{ type: "text" as const, text: rejection }], isError: true };
+    }
+
+    const tables = extractTableNames(sql);
+    if (tables.length === 0) {
+      return { content: [{ type: "text" as const, text: renderIndexMetadataPlan(sql, tables, []) }] };
+    }
+
+    let db: Firebird.Database | undefined;
+    try {
+      db = await connect(conn);
+      const rows = await query(db, buildIndexMetadataQuery(tables), tables);
+      return { content: [{ type: "text" as const, text: renderIndexMetadataPlan(sql, tables, rows) }] };
+    } catch (err: any) {
+      return { content: [{ type: "text" as const, text: `Could not fetch query plan: ${err?.message ?? err}` }], isError: true };
     } finally {
       if (db) { await detach(db); }
     }
