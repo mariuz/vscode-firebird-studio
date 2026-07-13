@@ -113,19 +113,44 @@ suite('database-project-model – buildForeignKeyDDL()', function () {
 });
 
 suite('database-project-model – object DDL builders (CREATE OR ALTER)', function () {
+  // NOTE: a procedure's parameters/RETURNS clause are NOT part of RDB$PROCEDURE_SOURCE at all
+  // (confirmed against a live server) and this data model has no field for them — reconstructing
+  // a parameterized procedure's DDL is a known, disclosed limitation (see database-projects.md),
+  // out of scope for the "AS"/trailing-";" fixes below. Every fixture here is deliberately a
+  // parameterless procedure, the one case this module can reconstruct correctly today.
   test('buildProcedureCreateDDL wraps the raw source with CREATE OR ALTER PROCEDURE <name>', function () {
-    const ddl = buildProcedureCreateDDL({ name: 'GET_TOTAL', source: '(ID INT)\nRETURNS (TOTAL INT)\nAS\nBEGIN\n  TOTAL = 1;\nEND' });
-    assert.ok(ddl.startsWith('CREATE OR ALTER PROCEDURE GET_TOTAL\n(ID INT)'));
+    const ddl = buildProcedureCreateDDL({ name: 'GET_TOTAL', source: 'BEGIN\n  TOTAL = 1;\nEND' });
+    assert.ok(ddl.startsWith('CREATE OR ALTER PROCEDURE GET_TOTAL\nAS\nBEGIN'), ddl);
   });
 
-  test('buildTriggerCreateDDL wraps the raw source with CREATE OR ALTER TRIGGER <name>', function () {
-    const ddl = buildTriggerCreateDDL({ name: 'TR_AUDIT', table: 'ORDERS', inactive: false, source: 'ACTIVE BEFORE INSERT ON ORDERS\nAS\nBEGIN\nEND' });
-    assert.ok(ddl.startsWith('CREATE OR ALTER TRIGGER TR_AUDIT\nACTIVE BEFORE INSERT'));
+  test('buildProcedureCreateDDL inserts "AS" — RDB$PROCEDURE_SOURCE never includes it, confirmed against a live server', function () {
+    const ddl = buildProcedureCreateDDL({ name: 'P', source: 'BEGIN EXIT; END' });
+    assert.ok(ddl.startsWith('CREATE OR ALTER PROCEDURE P\nAS\nBEGIN EXIT; END'), ddl);
+  });
+
+  test('buildProcedureCreateDDL ends with a trailing ";" — needed so concatenating multiple objects with no SET TERM stays splittable', function () {
+    const ddl = buildProcedureCreateDDL({ name: 'P', source: 'BEGIN EXIT; END' });
+    assert.ok(ddl.endsWith('END;'), ddl);
+  });
+
+  test('buildTriggerCreateDDL reconstructs the FOR <table> ACTIVE/INACTIVE <event> header — RDB$TRIGGER_SOURCE never includes it, confirmed against a live server', function () {
+    const ddl = buildTriggerCreateDDL({ name: 'TR_AUDIT', table: 'ORDERS', inactive: false, type: 1, source: 'AS\nBEGIN\nEND' });
+    assert.ok(ddl.startsWith('CREATE OR ALTER TRIGGER TR_AUDIT\nFOR ORDERS ACTIVE BEFORE INSERT\n'), ddl);
+  });
+
+  test('buildTriggerCreateDDL emits INACTIVE for a disabled trigger', function () {
+    const ddl = buildTriggerCreateDDL({ name: 'TR1', table: 'T', inactive: true, type: 4, source: 'AS BEGIN END' });
+    assert.ok(ddl.includes('FOR T INACTIVE AFTER UPDATE'), ddl);
+  });
+
+  test('buildTriggerCreateDDL ends with a trailing ";"', function () {
+    const ddl = buildTriggerCreateDDL({ name: 'TR1', table: 'T', inactive: false, type: 1, source: 'AS BEGIN END' });
+    assert.ok(ddl.endsWith('END;'), ddl);
   });
 
   test('buildViewCreateDDL wraps the raw source with CREATE OR ALTER VIEW <name> AS', function () {
     const ddl = buildViewCreateDDL({ name: 'V_ACTIVE_ORDERS', source: 'SELECT * FROM ORDERS WHERE STATUS = 1' });
-    assert.strictEqual(ddl, 'CREATE OR ALTER VIEW V_ACTIVE_ORDERS AS\nSELECT * FROM ORDERS WHERE STATUS = 1');
+    assert.strictEqual(ddl, 'CREATE OR ALTER VIEW V_ACTIVE_ORDERS AS\nSELECT * FROM ORDERS WHERE STATUS = 1;');
   });
 
   test('buildGeneratorCreateDDL builds a plain CREATE SEQUENCE statement', function () {
@@ -146,7 +171,7 @@ suite('database-project-model – sanitizeFileName()', function () {
 suite('database-project-model – buildProjectFiles()', function () {
   function baseInput(overrides: Partial<ProjectInput> = {}): ProjectInput {
     const graph: SchemaGraph = { tables: [], relationships: [] };
-    return { graph, procedures: [], triggers: [], views: [], generators: [], ...overrides };
+    return { graph, procedures: [], triggers: [], views: [], generators: [], pkConstraintNames: {}, ...overrides };
   }
 
   test('always emits the manifest file first', function () {
@@ -186,7 +211,7 @@ suite('database-project-model – buildProjectFiles()', function () {
     const files = buildProjectFiles(baseInput({
       views: [{ name: 'V1', source: 'SELECT 1 FROM RDB$DATABASE' }],
       procedures: [{ name: 'P1', source: 'AS\nBEGIN\nEND' }],
-      triggers: [{ name: 'T1', table: 'A', inactive: false, source: 'ACTIVE BEFORE INSERT ON A\nAS\nBEGIN\nEND' }],
+      triggers: [{ name: 'T1', table: 'A', inactive: false, type: 1, source: 'AS\nBEGIN\nEND' }],
       generators: ['G1'],
     }));
     assert.ok(files.some(f => f.path === 'views/V1.sql'));
@@ -200,7 +225,7 @@ suite('database-project-model – buildProjectFiles()', function () {
       graph: { tables: [{ name: 'A', columns: [column()] }], relationships: [{ constraintName: 'FK1', table: 'A', column: 'B_ID', refTable: 'B', refColumn: 'ID' }] },
       views: [{ name: 'V1', source: 'SELECT 1 FROM RDB$DATABASE' }],
       procedures: [{ name: 'P1', source: 'AS\nBEGIN\nEND' }],
-      triggers: [{ name: 'T1', table: 'A', inactive: false, source: 'ACTIVE BEFORE INSERT ON A\nAS\nBEGIN\nEND' }],
+      triggers: [{ name: 'T1', table: 'A', inactive: false, type: 1, source: 'AS\nBEGIN\nEND' }],
       generators: ['G1'],
     }));
     const order = files.map(f => f.path);

@@ -25,6 +25,20 @@
  */
 const PSQL_HEADER = /^(CREATE\s+(OR\s+ALTER\s+)?|ALTER\s+|RECREATE\s+)(PROCEDURE|TRIGGER|FUNCTION|PACKAGE\s+BODY)\b|^EXECUTE\s+BLOCK\b/i;
 
+/**
+ * True if `text` is empty once line/block comments are stripped — i.e. "nothing but whitespace
+ * and/or comments accumulated so far in this statement". Both SET TERM and the PSQL-header
+ * lookahead below only special-case a genuine statement boundary; a bare `current.trim() === ""`
+ * check missed this whenever a comment came first (e.g. a "-- New/changed procedures" note ahead
+ * of a `CREATE OR ALTER PROCEDURE ... BEGIN ... END` block with no SET TERM), since a comment's
+ * own text is non-blank and had already been appended into `current` verbatim — the PSQL-header
+ * case would then never trigger, and the procedure body's internal `;` got mistaken for the
+ * statement terminator, splitting a single CREATE PROCEDURE into two broken fragments.
+ */
+function isBlankOrCommentsOnly(text: string): boolean {
+  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--[^\n]*/g, "").trim() === "";
+}
+
 export function splitStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = "";
@@ -99,7 +113,7 @@ export function splitStatements(sql: string): string[] {
     }
 
     // SET TERM <token> <currentTerminator> — only recognised at a statement boundary
-    if (blockDepth === 0 && current.trim() === "" && matchWord(i, "SET")) {
+    if (blockDepth === 0 && isBlankOrCommentsOnly(current) && matchWord(i, "SET")) {
       const m = /^SET\s+TERM\s+(\S+)\s*/i.exec(sql.slice(i));
       if (m) {
         const newTerminator = m[1];
@@ -116,7 +130,7 @@ export function splitStatements(sql: string): string[] {
     // CREATE/ALTER/RECREATE PROCEDURE|TRIGGER|FUNCTION|PACKAGE BODY or EXECUTE
     // BLOCK: suppress splitting until the first BEGIN, so a declaration
     // section between AS and BEGIN isn't cut off when SET TERM isn't used.
-    if (blockDepth === 0 && !awaitingFirstBegin && current.trim() === "" && PSQL_HEADER.test(sql.slice(i))) {
+    if (blockDepth === 0 && !awaitingFirstBegin && isBlankOrCommentsOnly(current) && PSQL_HEADER.test(sql.slice(i))) {
       awaitingFirstBegin = true;
     }
 

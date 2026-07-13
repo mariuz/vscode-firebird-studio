@@ -2,6 +2,22 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.54 - 2026-07-13
+
+### Added
+
+- **Database Projects: Publish/migrate** — a new **Publish Database Project...** command diffs a saved project (from **Extract Database Project...**) against a live target connection's current schema and generates an executable migration script (`ALTER TABLE`/`CREATE OR ALTER PROCEDURE`/etc.), always opened for review before running. Table/column adds, drops, type/NOT NULL/default changes, primary key changes (with dependent foreign keys safely cycled around the change), new/dropped foreign keys, and new/changed procedures/triggers/views/generators are all covered; drops are opt-in (off by default).
+
+### Fixed
+
+- `ALTER TABLE ... DROP COLUMN` isn't valid Firebird syntax (no `COLUMN` keyword) — fixed in the new Publish feature's column-drop statement.
+- `src/shared/sql-splitter.ts` mis-split a multi-statement script whenever a `-- comment` (with no `SET TERM`) preceded a `CREATE PROCEDURE`/`TRIGGER` block, breaking BEGIN/END depth tracking and corrupting the statement.
+- **Database Projects' Extract/Build have been silently generating invalid DDL for every trigger, and every procedure via "Script as Create"/"Edit Procedure"**, since before Publish existed: `RDB$PROCEDURE_SOURCE` never includes the `AS` keyword, and `RDB$TRIGGER_SOURCE` never includes the required `FOR <table> ACTIVE/INACTIVE BEFORE/AFTER <event>` header (both confirmed directly against a live server) — neither was ever reinserted. Only ever noticed now because Publish is the first feature to actually *execute* a generated script rather than just open it for review.
+
+### Known limitation
+
+- A procedure with input/output parameters is not correctly reconstructed by Extract/Build/Publish/Script-as-Create/Edit-Procedure — `RDB$PROCEDURE_SOURCE` excludes the parameter list and `RETURNS` clause entirely, and nothing in this extension captures that data yet. Parameterless procedures are unaffected.
+
 ## 0.1.53 - 2026-07-13
 
 ### Added

@@ -342,6 +342,68 @@ suite('SQL Splitter – SET TERM directive', function () {
   });
 });
 
+suite('SQL Splitter – a leading comment before a PSQL block (no SET TERM)', function () {
+
+  test('a line comment before CREATE PROCEDURE does not break BEGIN/END depth tracking', function () {
+    // A trailing ";" right after END is required here for the *next* statement to be recognised
+    // as separate — project-model.ts's buildProcedureCreateDDL() always adds one for exactly this
+    // reason; a PSQL body has no other reliable "I'm done" marker once blockDepth returns to 0.
+    const sql = [
+      '-- New/changed procedures',
+      '',
+      'CREATE OR ALTER PROCEDURE PUB_PROC',
+      'AS BEGIN EXIT; END;',
+      '',
+      '-- New generators',
+      '',
+      'CREATE SEQUENCE PUB_GEN;',
+    ].join('\n');
+    const stmts = splitStatements(sql);
+    assert.strictEqual(stmts.length, 2, JSON.stringify(stmts));
+    assert.ok(stmts[0].includes('CREATE OR ALTER PROCEDURE PUB_PROC'), stmts[0]);
+    assert.ok(stmts[0].includes('BEGIN EXIT; END'), stmts[0]);
+    assert.ok(stmts[1].includes('CREATE SEQUENCE PUB_GEN'), stmts[1]);
+  });
+
+  test('without a trailing terminator, a PSQL block with no SET TERM absorbs everything up to the next real ";" (documented limitation, not this fix\'s job)', function () {
+    const sql = [
+      'CREATE OR ALTER PROCEDURE PUB_PROC',
+      'AS BEGIN EXIT; END',
+      '',
+      'CREATE SEQUENCE PUB_GEN;',
+    ].join('\n');
+    const stmts = splitStatements(sql);
+    assert.strictEqual(stmts.length, 1, JSON.stringify(stmts));
+    assert.ok(stmts[0].includes('CREATE SEQUENCE PUB_GEN'), 'both objects get merged into one statement without a trailing terminator');
+  });
+
+  test('a block comment before CREATE TRIGGER does not break BEGIN/END depth tracking', function () {
+    const sql = [
+      '/* recreated trigger */',
+      'CREATE OR ALTER TRIGGER TRG1 FOR T',
+      'ACTIVE BEFORE INSERT AS',
+      'BEGIN',
+      '  NEW.ID = 1;',
+      'END',
+    ].join('\n');
+    const stmts = splitStatements(sql);
+    assert.strictEqual(stmts.length, 1, JSON.stringify(stmts));
+    assert.ok(stmts[0].includes('NEW.ID = 1;'), stmts[0]);
+  });
+
+  test('a leading comment before SET TERM is still recognised as a directive, not a statement', function () {
+    const sql = [
+      '-- switch terminator',
+      'SET TERM ^ ;',
+      'CREATE PROCEDURE P AS BEGIN EXIT; END^',
+      'SET TERM ; ^',
+    ].join('\n');
+    const stmts = splitStatements(sql);
+    assert.strictEqual(stmts.length, 1, JSON.stringify(stmts));
+    assert.ok(stmts[0].includes('CREATE PROCEDURE P'), stmts[0]);
+  });
+});
+
 suite('SQL Splitter – mixed real-world documents', function () {
 
   test('handles a document with plain DML followed by a procedure and more DML', function () {

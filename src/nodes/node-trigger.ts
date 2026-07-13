@@ -5,7 +5,7 @@ import {getTriggerBodyQuery, dropTriggerQuery, createTriggerScaffold} from "../s
 import {Driver} from "../shared/driver";
 import {logger} from "../logger/logger";
 import {withTruncationWarning} from "../shared/utils";
-import {buildTriggerCreateDDL} from "../database-projects/project-model";
+import {buildTriggerCreateDDL, describeTriggerType} from "../database-projects/project-model";
 
 export class NodeTrigger implements FirebirdTree {
   constructor(private readonly trigger: any, private readonly dbDetails?: ConnectionOptions) {}
@@ -14,7 +14,7 @@ export class NodeTrigger implements FirebirdTree {
     const name = this.trigger.TRIGGER_NAME ? this.trigger.TRIGGER_NAME.trim() : "";
     const tableName = this.trigger.TABLE_NAME ? this.trigger.TABLE_NAME.trim() : "";
     const inactive = this.trigger.INACTIVE === 1;
-    const typeDesc = this.parseTriggerType(this.trigger.TRIGGER_TYPE);
+    const typeDesc = describeTriggerType(this.trigger.TRIGGER_TYPE);
     return {
       label: `${name}${inactive ? " (inactive)" : ""}`,
       collapsibleState: TreeItemCollapsibleState.None,
@@ -80,6 +80,7 @@ export class NodeTrigger implements FirebirdTree {
       const source = rows[0]?.TRIGGER_SOURCE ?? "";
       await Driver.createSQLTextDocument(buildTriggerCreateDDL({
         name, source, table: this.trigger.TABLE_NAME ?? "", inactive: this.trigger.INACTIVE === 1,
+        type: this.trigger.TRIGGER_TYPE ?? 0,
       }));
     } catch (err: any) {
       logger.error(err?.message ?? err);
@@ -91,19 +92,5 @@ export class NodeTrigger implements FirebirdTree {
   public async scriptAsDrop(): Promise<void> {
     const name = this.trigger.TRIGGER_NAME ? this.trigger.TRIGGER_NAME.trim() : "";
     await Driver.createSQLTextDocument(dropTriggerQuery(name));
-  }
-
-  private parseTriggerType(type: number): string {
-    // Firebird trigger types: 1=BEFORE INSERT, 2=AFTER INSERT, 3=BEFORE UPDATE,
-    // 4=AFTER UPDATE, 5=BEFORE DELETE, 6=AFTER DELETE
-    switch (type) {
-      case 1: return "BEFORE INSERT";
-      case 2: return "AFTER INSERT";
-      case 3: return "BEFORE UPDATE";
-      case 4: return "AFTER UPDATE";
-      case 5: return "BEFORE DELETE";
-      case 6: return "AFTER DELETE";
-      default: return `TYPE ${type}`;
-    }
   }
 }

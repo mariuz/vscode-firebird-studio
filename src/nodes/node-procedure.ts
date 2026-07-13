@@ -48,8 +48,10 @@ export class NodeProcedure implements FirebirdTree {
       const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery(this.procedureName.trim()));
       const source = rows[0]?.PROCEDURE_SOURCE ?? "";
+      // RDB$PROCEDURE_SOURCE never includes the "AS" keyword (unlike RDB$TRIGGER_SOURCE), confirmed
+      // directly against a live server — it must always be reinserted here.
       const scaffold = source
-        ? withTruncationWarning(source, `ALTER PROCEDURE ${this.procedureName.trim()}\n${source.trim()}`)
+        ? withTruncationWarning(source, `ALTER PROCEDURE ${this.procedureName.trim()}\nAS\n${source.trim()}`)
         : `ALTER PROCEDURE ${this.procedureName.trim()}\nAS\nBEGIN\n  /* procedure body */\nEND`;
       Driver.createSQLTextDocument(scaffold);
     } catch (err) {

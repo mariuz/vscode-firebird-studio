@@ -33,7 +33,7 @@ import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
 import {registerMcpServer} from "./mcp-server";
-import {runBuildProject} from "./database-projects";
+import {runBuildProject, runPublishProject} from "./database-projects";
 import {runContainerProvisionWizard} from "./container-provisioning";
 
 /** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
@@ -928,6 +928,18 @@ export function activate(context: ExtensionContext) {
       runBuildProject().catch(err => {
         logger.error(err?.message ?? err);
         logger.showError("Database Project build failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
+  /* Publish/migrate a Database Project against a live target connection (diff -> executable ALTER script) */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.project.publish", () => {
+      runPublishProject(context).catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Database Project publish failed. Check logs for details.", ["Show Logs"]).then(sel => {
           if (sel === "Show Logs") { logger.showOutput(); }
         });
       });

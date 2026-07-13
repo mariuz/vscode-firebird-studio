@@ -1,4 +1,4 @@
-import { window, workspace, ViewColumn, Uri, commands } from "vscode";
+import { window, workspace, ViewColumn, Uri, commands, ExtensionContext } from "vscode";
 import { mkdir, writeFile, readFile } from "fs/promises";
 import { join, dirname } from "path";
 import { ConnectionOptions } from "../interfaces";
@@ -6,17 +6,77 @@ import { Driver } from "../shared/driver";
 import {
   getSchemaColumnsQuery, getForeignKeysQuery, getAllViewSourcesQuery,
   getAllProcedureSourcesQuery, getAllTriggerSourcesQuery, getGeneratorsQuery,
+  getAllPrimaryKeyConstraintNamesQuery,
 } from "../shared/queries";
 import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from "../schema-designer/schema-graph";
 import { buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput } from "./project-model";
+import { diffProjects, buildPublishScript } from "./publish-model";
 import { logger } from "../logger/logger";
+import { CredentialStore } from "../shared/credential-store";
+import { Constants } from "../config/constants";
+import { getConnectionLabel } from "../shared/utils";
+
+export const SNAPSHOT_FILE_NAME = "firebird.project-snapshot.json";
+
+/**
+ * Fetches a live connection's schema (tables/columns/FKs/views/procedures/triggers/generators/PK
+ * constraint names) into the same structured ProjectInput shape used to write a project's .sql
+ * files — shared by Extract (writes it to disk) and Publish (diffs it against a saved snapshot,
+ * with no need for the SchemaDesigner/tree code paths that also read this data).
+ */
+export async function fetchProjectSnapshot(connectionOptions: ConnectionOptions): Promise<ProjectInput> {
+  const sql = [
+    getSchemaColumnsQuery(),
+    getForeignKeysQuery(),
+    getAllViewSourcesQuery(),
+    getAllProcedureSourcesQuery(),
+    getAllTriggerSourcesQuery(),
+    getGeneratorsQuery(),
+    getAllPrimaryKeyConstraintNamesQuery(),
+  ].join("\n");
+
+  const results = await Driver.runBatch(sql, connectionOptions);
+  const [columnsResult, fkResult, viewsResult, proceduresResult, triggersResult, generatorsResult, pkNamesResult] = results;
+  for (const r of [columnsResult, fkResult, viewsResult, proceduresResult, triggersResult, generatorsResult, pkNamesResult]) {
+    if (r?.error) {
+      throw new Error(r.error);
+    }
+  }
+
+  const graph = buildSchemaGraph(
+    (columnsResult?.rows ?? []) as SchemaColumnRow[],
+    (fkResult?.rows ?? []) as ForeignKeyRow[]
+  );
+
+  const pkConstraintNames: Record<string, string> = {};
+  for (const row of (pkNamesResult?.rows ?? []) as any[]) {
+    pkConstraintNames[row.TABLE_NAME.trim()] = row.CONSTRAINT_NAME.trim();
+  }
+
+  return {
+    graph,
+    views: ((viewsResult?.rows ?? []) as any[]).map(r => ({ name: r.VIEW_NAME.trim(), source: r.VIEW_SOURCE ?? "" })),
+    procedures: ((proceduresResult?.rows ?? []) as any[]).map(r => ({ name: r.PROCEDURE_NAME.trim(), source: r.PROCEDURE_SOURCE ?? "" })),
+    triggers: ((triggersResult?.rows ?? []) as any[]).map(r => ({
+      name: r.TRIGGER_NAME.trim(),
+      table: (r.TABLE_NAME ?? "").trim(),
+      inactive: !!r.INACTIVE,
+      type: r.TRIGGER_TYPE ?? 0,
+      source: r.TRIGGER_SOURCE ?? "",
+    })),
+    generators: ((generatorsResult?.rows ?? []) as any[]).map(r => r.GENERATOR_NAME.trim()),
+    pkConstraintNames,
+  };
+}
 
 /**
  * Extract: reads the connected schema and writes it out as one .sql file per table/view/
  * procedure/trigger/generator under a folder the user picks, plus a firebird.project.json
  * manifest recording a dependency-safe file order — Phase 1 of the design doc. Domains, roles,
  * exceptions, and users are out of scope for this pass (see the design doc's "explicitly
- * deferred" section).
+ * deferred" section). Also writes firebird.project-snapshot.json — the same ProjectInput, raw —
+ * so Publish can later diff this exact point-in-time snapshot against a live target without
+ * needing to re-parse the generated .sql files or reconnect to this source database.
  */
 export async function runExtractProject(connectionOptions: ConnectionOptions): Promise<void> {
   const folders = await window.showOpenDialog({
@@ -30,51 +90,16 @@ export async function runExtractProject(connectionOptions: ConnectionOptions): P
   }
   const destFolder = folders[0].fsPath;
 
-  const sql = [
-    getSchemaColumnsQuery(),
-    getForeignKeysQuery(),
-    getAllViewSourcesQuery(),
-    getAllProcedureSourcesQuery(),
-    getAllTriggerSourcesQuery(),
-    getGeneratorsQuery(),
-  ].join("\n");
-
-  let results;
+  let input: ProjectInput;
   try {
-    results = await Driver.runBatch(sql, connectionOptions);
+    input = await fetchProjectSnapshot(connectionOptions);
   } catch (err: any) {
     logger.error(`Database Projects extract failed: ${err?.message ?? err}`);
     logger.showError(`Could not read the schema: ${err?.message ?? err}`);
     return;
   }
 
-  const [columnsResult, fkResult, viewsResult, proceduresResult, triggersResult, generatorsResult] = results;
-  for (const r of [columnsResult, fkResult, viewsResult, proceduresResult, triggersResult, generatorsResult]) {
-    if (r?.error) {
-      logger.showError(`Could not read the schema: ${r.error}`);
-      return;
-    }
-  }
-
-  const graph = buildSchemaGraph(
-    (columnsResult?.rows ?? []) as SchemaColumnRow[],
-    (fkResult?.rows ?? []) as ForeignKeyRow[]
-  );
-
-  const input: ProjectInput = {
-    graph,
-    views: ((viewsResult?.rows ?? []) as any[]).map(r => ({ name: r.VIEW_NAME.trim(), source: r.VIEW_SOURCE ?? "" })),
-    procedures: ((proceduresResult?.rows ?? []) as any[]).map(r => ({ name: r.PROCEDURE_NAME.trim(), source: r.PROCEDURE_SOURCE ?? "" })),
-    triggers: ((triggersResult?.rows ?? []) as any[]).map(r => ({
-      name: r.TRIGGER_NAME.trim(),
-      table: (r.TABLE_NAME ?? "").trim(),
-      inactive: !!r.INACTIVE,
-      source: r.TRIGGER_SOURCE ?? "",
-    })),
-    generators: ((generatorsResult?.rows ?? []) as any[]).map(r => r.GENERATOR_NAME.trim()),
-  };
-
-  if (graph.tables.length === 0 && input.views.length === 0 && input.procedures.length === 0
+  if (input.graph.tables.length === 0 && input.views.length === 0 && input.procedures.length === 0
     && input.triggers.length === 0 && input.generators.length === 0) {
     logger.showError("No objects found in this database — nothing to extract.");
     return;
@@ -86,6 +111,7 @@ export async function runExtractProject(connectionOptions: ConnectionOptions): P
     await mkdir(dirname(fullPath), { recursive: true });
     await writeFile(fullPath, file.content, "utf8");
   }
+  await writeFile(join(destFolder, SNAPSHOT_FILE_NAME), JSON.stringify(input, null, 2), "utf8");
 
   window.showInformationMessage(`Extracted ${files.length - 1} object(s) to ${destFolder}.`, "Reveal in Explorer").then(sel => {
     if (sel === "Reveal in Explorer") {
@@ -137,4 +163,71 @@ export async function runBuildProject(): Promise<void> {
   const doc = await workspace.openTextDocument({ content: script, language: "sql" });
   await window.showTextDocument(doc, ViewColumn.Beside);
   logger.showInfo(`Built a ${manifest.files?.length ?? 0}-file deployable script. Review it, then run it against your target database.`);
+}
+
+/**
+ * Publish/migrate — Phase 3 of the design doc. Reads a project's saved firebird.project-snapshot.json
+ * (written by Extract), picks a target connection from the saved list, fetches that connection's
+ * live schema into the same ProjectInput shape, diffs the two, and opens an executable migration
+ * script for review. Never executed automatically — this only ever opens the script in an editor;
+ * running it against the target database is a separate, explicit step for the user.
+ */
+export async function runPublishProject(context: ExtensionContext): Promise<void> {
+  const folders = await window.showOpenDialog({
+    title: "Select a Database Project Folder to Publish",
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: false,
+  });
+  if (!folders || folders.length === 0) {
+    return;
+  }
+  const projectFolder = folders[0].fsPath;
+
+  let sourceSnapshot: ProjectInput;
+  try {
+    const snapshotText = await readFile(join(projectFolder, SNAPSHOT_FILE_NAME), "utf8");
+    sourceSnapshot = JSON.parse(snapshotText);
+  } catch (err: any) {
+    logger.showError(`Could not read ${SNAPSHOT_FILE_NAME} in ${projectFolder} — re-extract this project with the current version of Firebird Studio to generate it. (${err?.message ?? err})`);
+    return;
+  }
+
+  const savedConnections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);
+  if (!savedConnections || Object.keys(savedConnections).length === 0) {
+    logger.showError("No saved connections found — add a target connection first.");
+    return;
+  }
+  const items = Object.values(savedConnections).map(c => ({ label: getConnectionLabel(c), detail: c.id, conn: c }));
+  const targetPick = await window.showQuickPick(items, { placeHolder: "Select the TARGET database to publish to" });
+  if (!targetPick) {
+    return;
+  }
+
+  const includeDropsPick = await window.showQuickPick(
+    [
+      { label: "No", description: "Only additive/modifying changes (default, safer)" },
+      { label: "Yes", description: "Also drop objects present in the target but not in the project — DESTRUCTIVE" },
+    ],
+    { placeHolder: "Include DROP statements for objects only in the target database?" }
+  );
+  if (!includeDropsPick) {
+    return;
+  }
+
+  try {
+    const password = await CredentialStore.getPassword(targetPick.conn.id);
+    const targetConnection = { ...targetPick.conn, password: password ?? "" };
+
+    const targetSnapshot = await fetchProjectSnapshot(targetConnection);
+    const diff = diffProjects(sourceSnapshot, targetSnapshot);
+    const script = buildPublishScript(diff, targetSnapshot, { includeDrops: includeDropsPick.label === "Yes" });
+
+    const doc = await workspace.openTextDocument({ content: script, language: "sql" });
+    await window.showTextDocument(doc, ViewColumn.Beside);
+    logger.showInfo(`Publish script generated for ${targetPick.label}. Review it carefully, then run it yourself against the target database.`);
+  } catch (err: any) {
+    logger.error(`Database Projects publish failed: ${err?.message ?? err}`);
+    logger.showError(`Could not generate the publish script: ${err?.message ?? err}`);
+  }
 }

@@ -15,7 +15,27 @@ export interface TriggerSource {
   name: string;
   table: string;
   inactive: boolean;
+  /** RDB$TRIGGER_TYPE — simple single-event encoding only (1-6); see describeTriggerType(). */
+  type: number;
   source: string;
+}
+
+/**
+ * Decodes RDB$TRIGGER_TYPE's simple single-event encoding into the BEFORE/AFTER <event> clause
+ * CREATE TRIGGER needs. Firebird also supports combined multi-event triggers (a different, more
+ * complex bitmask-based encoding) — out of scope here, matching the pre-existing tree tooltip's
+ * own scope (see the identical switch this replaces in src/nodes/node-trigger.ts).
+ */
+export function describeTriggerType(type: number): string {
+  switch (type) {
+    case 1: return "BEFORE INSERT";
+    case 2: return "AFTER INSERT";
+    case 3: return "BEFORE UPDATE";
+    case 4: return "AFTER UPDATE";
+    case 5: return "BEFORE DELETE";
+    case 6: return "AFTER DELETE";
+    default: return `TYPE ${type}`;
+  }
 }
 
 export interface ViewSource {
@@ -29,6 +49,8 @@ export interface ProjectInput {
   triggers: TriggerSource[];
   views: ViewSource[];
   generators: string[];
+  /** Table name -> primary key constraint name, from getAllPrimaryKeyConstraintNamesQuery(). Needed by publish-model.ts to DROP CONSTRAINT a changing PK by its real name — Firebird has no "DROP PRIMARY KEY" shorthand (confirmed directly against a live server). */
+  pkConstraintNames: Record<string, string>;
 }
 
 export interface ProjectFile {
@@ -111,21 +133,47 @@ export function buildForeignKeyDDL(rel: SchemaRelationship): string {
 /**
  * CREATE OR ALTER is used for procedures/triggers/views (not tables, which have no such syntax)
  * so a project's files are safe to (re)run against either a fresh database or one that already
- * has the object — RDB$PROCEDURE_SOURCE/RDB$TRIGGER_SOURCE/RDB$VIEW_SOURCE each already contain
- * everything after the object's name (params/RETURNS/AS/body, or ACTIVE...AS body, or just the
- * SELECT), confirmed against how NodeProcedure#editProcedure()/NodeTrigger#editTrigger()/
- * NodeView#editView() already reconstruct a runnable ALTER from the same source columns.
+ * has the object.
+ *
+ * RDB$TRIGGER_SOURCE/RDB$VIEW_SOURCE already contain everything after the object's name (ACTIVE
+ * ... AS ... body, or just the SELECT) — but RDB$PROCEDURE_SOURCE, unlike triggers, **never**
+ * includes the "AS" keyword, confirmed directly against a live server across three shapes
+ * (no params, params+RETURNS, and a bare DECLARE section): it always starts right at BEGIN or
+ * DECLARE. A prior comment here claimed otherwise ("already contain ... AS ... confirmed against
+ * NodeProcedure#editProcedure()") — that claim was never actually exercised by execution, only by
+ * a human reviewing an opened scaffold, so the missing "AS" went unnoticed until Publish/migrate
+ * (Phase 3) actually ran the generated script and Firebird rejected it as a syntax error at
+ * "BEGIN". NodeProcedure#editProcedure() has the same bug, fixed alongside this.
+ *
+ * Each of these three ends with an explicit trailing ";" (unlike the raw RDB$*_SOURCE text, which
+ * never has one) — also found necessary while building Publish/migrate: without it, several of
+ * these concatenated together with no SET TERM (as buildPublishScript() does) have no way for
+ * src/shared/sql-splitter.ts to know where one CREATE OR ALTER ends and the next object's DDL
+ * begins once the PSQL block's BEGIN/END depth returns to 0 — it just keeps accumulating into one
+ * oversized "statement" until it finds the next real ";", silently merging unrelated objects'
+ * DDL together. buildTableCreateDDL()/buildForeignKeyDDL() already ended with ";"; this brings
+ * the PSQL-body builders in line with that same convention.
  */
 export function buildProcedureCreateDDL(procedure: ProcedureSource): string {
-  return `CREATE OR ALTER PROCEDURE ${procedure.name}\n${procedure.source.trim()}`;
+  return `CREATE OR ALTER PROCEDURE ${procedure.name}\nAS\n${procedure.source.trim()};`;
 }
 
+/**
+ * RDB$TRIGGER_SOURCE, unlike RDB$PROCEDURE_SOURCE, already includes "AS" — but it never includes
+ * the "FOR <table> {ACTIVE|INACTIVE} {BEFORE|AFTER} <event>" header CREATE TRIGGER requires,
+ * confirmed directly against a live server. This was a real, pre-existing gap (not introduced
+ * while building Publish/migrate, just exposed by it): every trigger Extract/Build/Publish ever
+ * reconstructed was missing this header entirely, a syntax error the moment it was actually run —
+ * previously unnoticed since Extract's output was only ever manually reviewed, never executed.
+ */
 export function buildTriggerCreateDDL(trigger: TriggerSource): string {
-  return `CREATE OR ALTER TRIGGER ${trigger.name}\n${trigger.source.trim()}`;
+  const state = trigger.inactive ? "INACTIVE" : "ACTIVE";
+  const header = `FOR ${trigger.table} ${state} ${describeTriggerType(trigger.type)}`;
+  return `CREATE OR ALTER TRIGGER ${trigger.name}\n${header}\n${trigger.source.trim()};`;
 }
 
 export function buildViewCreateDDL(view: ViewSource): string {
-  return `CREATE OR ALTER VIEW ${view.name} AS\n${view.source.trim()}`;
+  return `CREATE OR ALTER VIEW ${view.name} AS\n${view.source.trim()};`;
 }
 
 export function buildGeneratorCreateDDL(name: string): string {
