@@ -7,7 +7,7 @@ import {Driver} from "../shared/driver";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
 import {withTruncationWarning} from "../shared/utils";
-import {buildProcedureCreateDDL} from "../database-projects/project-model";
+import {buildProcedureCreateDDL, buildProcedureParameterHeader, ProcedureParameter} from "../database-projects/project-model";
 
 export class NodeProcedure implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly procedureName: string) {}
@@ -42,16 +42,36 @@ export class NodeProcedure implements FirebirdTree {
     Driver.createSQLTextDocument(createProcedureScaffold(procedureName.trim()));
   }
 
+  /** Fetches this procedure's parameters via the given (already-open) connection, in ProcedureParameter shape. */
+  private async fetchParameters(connection: any): Promise<ProcedureParameter[]> {
+    const paramRows = await Driver.client.queryPromise<any>(connection, procedureParametersQuery(this.procedureName.trim()));
+    return paramRows.map((r: any) => ({
+      name: r.PARAM_NAME.trim(),
+      direction: r.PARAM_TYPE === 1 ? "out" : "in",
+      type: r.FIELD_TYPE.trim(),
+      length: r.FIELD_LENGTH ?? 0,
+      subType: r.FIELD_SUB_TYPE ?? undefined,
+      precision: r.FIELD_PRECISION ?? undefined,
+      scale: r.FIELD_SCALE ?? undefined,
+    }));
+  }
+
   public async editProcedure() {
     logger.info("Edit Procedure: open source for editing");
     try {
       const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery(this.procedureName.trim()));
       const source = rows[0]?.PROCEDURE_SOURCE ?? "";
+      const parameters = await this.fetchParameters(connection);
       // RDB$PROCEDURE_SOURCE never includes the "AS" keyword (unlike RDB$TRIGGER_SOURCE), confirmed
-      // directly against a live server — it must always be reinserted here.
+      // directly against a live server — it must always be reinserted here. Unlike ALTER TRIGGER,
+      // a plain ALTER PROCEDURE also genuinely requires re-specifying the full parameter list even
+      // for a body-only edit (also confirmed live) — omitting it makes every parameter "unknown"
+      // inside the new body.
+      const header = buildProcedureParameterHeader(parameters);
+      const headerPart = header ? `\n${header}` : "";
       const scaffold = source
-        ? withTruncationWarning(source, `ALTER PROCEDURE ${this.procedureName.trim()}\nAS\n${source.trim()}`)
+        ? withTruncationWarning(source, `ALTER PROCEDURE ${this.procedureName.trim()}${headerPart}\nAS\n${source.trim()}`)
         : `ALTER PROCEDURE ${this.procedureName.trim()}\nAS\nBEGIN\n  /* procedure body */\nEND`;
       Driver.createSQLTextDocument(scaffold);
     } catch (err) {
@@ -80,7 +100,8 @@ export class NodeProcedure implements FirebirdTree {
       const connection = await Driver.client.createConnection(await Driver.resolvePassword(this.dbDetails));
       const rows = await Driver.client.queryPromise<any>(connection, getProcedureBodyQuery(this.procedureName.trim()));
       const source = rows[0]?.PROCEDURE_SOURCE ?? "";
-      await Driver.createSQLTextDocument(buildProcedureCreateDDL({ name: this.procedureName.trim(), source }));
+      const parameters = await this.fetchParameters(connection);
+      await Driver.createSQLTextDocument(buildProcedureCreateDDL({ name: this.procedureName.trim(), source, parameters }));
     } catch (err: any) {
       logger.error(err?.message ?? err);
       logger.showError(`Could not script ${this.procedureName.trim()} as CREATE: ${err?.message ?? err}`);

@@ -2,6 +2,13 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.55 - 2026-07-13
+
+### Fixed
+
+- **Database Projects (Extract/Build/Publish), "Script as Create", and "Edit Procedure" now correctly reconstruct procedures with input/output parameters.** `RDB$PROCEDURE_SOURCE` excludes a procedure's parameter list and `RETURNS` clause entirely — previously silently dropped, generating an invalid `CREATE OR ALTER PROCEDURE`/`ALTER PROCEDURE`. A new `RDB$PROCEDURE_PARAMETERS` query reconstructs the full `(param TYPE, ...) RETURNS (param TYPE, ...)` header, including NUMERIC/DECIMAL precision. Parameterless procedures are unaffected (this was already correct for them).
+- `NodeProcedure#editProcedure()`'s `ALTER PROCEDURE` scaffold now re-specifies the full parameter list even for a body-only edit — unlike `ALTER TRIGGER`, Firebird requires it (confirmed directly against a live server); omitting it made every parameter "unknown" inside the edited body.
+
 ## 0.1.54 - 2026-07-13
 
 ### Added

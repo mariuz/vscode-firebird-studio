@@ -5,11 +5,11 @@ import { ConnectionOptions } from "../interfaces";
 import { Driver } from "../shared/driver";
 import {
   getSchemaColumnsQuery, getForeignKeysQuery, getAllViewSourcesQuery,
-  getAllProcedureSourcesQuery, getAllTriggerSourcesQuery, getGeneratorsQuery,
+  getAllProcedureSourcesQuery, getAllProcedureParametersQuery, getAllTriggerSourcesQuery, getGeneratorsQuery,
   getAllPrimaryKeyConstraintNamesQuery,
 } from "../shared/queries";
 import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from "../schema-designer/schema-graph";
-import { buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput } from "./project-model";
+import { buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput, ProcedureParameter } from "./project-model";
 import { diffProjects, buildPublishScript } from "./publish-model";
 import { logger } from "../logger/logger";
 import { CredentialStore } from "../shared/credential-store";
@@ -30,17 +30,34 @@ export async function fetchProjectSnapshot(connectionOptions: ConnectionOptions)
     getForeignKeysQuery(),
     getAllViewSourcesQuery(),
     getAllProcedureSourcesQuery(),
+    getAllProcedureParametersQuery(),
     getAllTriggerSourcesQuery(),
     getGeneratorsQuery(),
     getAllPrimaryKeyConstraintNamesQuery(),
   ].join("\n");
 
   const results = await Driver.runBatch(sql, connectionOptions);
-  const [columnsResult, fkResult, viewsResult, proceduresResult, triggersResult, generatorsResult, pkNamesResult] = results;
-  for (const r of [columnsResult, fkResult, viewsResult, proceduresResult, triggersResult, generatorsResult, pkNamesResult]) {
+  const [columnsResult, fkResult, viewsResult, proceduresResult, procParamsResult, triggersResult, generatorsResult, pkNamesResult] = results;
+  for (const r of [columnsResult, fkResult, viewsResult, proceduresResult, procParamsResult, triggersResult, generatorsResult, pkNamesResult]) {
     if (r?.error) {
       throw new Error(r.error);
     }
+  }
+
+  const parametersByProcedure = new Map<string, ProcedureParameter[]>();
+  for (const row of (procParamsResult?.rows ?? []) as any[]) {
+    const procName = row.PROCEDURE_NAME.trim();
+    const list = parametersByProcedure.get(procName) ?? [];
+    list.push({
+      name: row.PARAM_NAME.trim(),
+      direction: row.PARAM_TYPE === 1 ? "out" : "in",
+      type: row.FIELD_TYPE.trim(),
+      length: row.FIELD_LENGTH ?? 0,
+      subType: row.FIELD_SUB_TYPE ?? undefined,
+      precision: row.FIELD_PRECISION ?? undefined,
+      scale: row.FIELD_SCALE ?? undefined,
+    });
+    parametersByProcedure.set(procName, list);
   }
 
   const graph = buildSchemaGraph(
@@ -56,7 +73,10 @@ export async function fetchProjectSnapshot(connectionOptions: ConnectionOptions)
   return {
     graph,
     views: ((viewsResult?.rows ?? []) as any[]).map(r => ({ name: r.VIEW_NAME.trim(), source: r.VIEW_SOURCE ?? "" })),
-    procedures: ((proceduresResult?.rows ?? []) as any[]).map(r => ({ name: r.PROCEDURE_NAME.trim(), source: r.PROCEDURE_SOURCE ?? "" })),
+    procedures: ((proceduresResult?.rows ?? []) as any[]).map(r => {
+      const name = r.PROCEDURE_NAME.trim();
+      return { name, source: r.PROCEDURE_SOURCE ?? "", parameters: parametersByProcedure.get(name) ?? [] };
+    }),
     triggers: ((triggersResult?.rows ?? []) as any[]).map(r => ({
       name: r.TRIGGER_NAME.trim(),
       table: (r.TABLE_NAME ?? "").trim(),

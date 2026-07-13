@@ -66,7 +66,7 @@ suite('Database Projects – Publish/migrate (real Firebird integration)', funct
     await Driver.runQuery("ALTER TABLE PUB_CHILD ADD PARENT_ID INTEGER", conn);
     await Driver.runQuery("ALTER TABLE PUB_CHILD ADD CONSTRAINT FK_PUB_CHILD_PARENT FOREIGN KEY (PARENT_ID) REFERENCES PUB_PARENT (ID)", conn);
     await Driver.runQuery("CREATE SEQUENCE PUB_GEN", conn);
-    await Driver.runQuery("CREATE PROCEDURE PUB_PROC AS BEGIN EXIT; END", conn);
+    await Driver.runQuery("CREATE PROCEDURE PUB_PROC (X INT, AMT NUMERIC(9,2)) RETURNS (Y INT) AS BEGIN Y = X; SUSPEND; END", conn);
     await Driver.runQuery("CREATE TRIGGER PUB_TRIG FOR PUB_PARENT ACTIVE BEFORE INSERT AS BEGIN END", conn);
 
     const sourceSnapshot = await fetchProjectSnapshot(conn);
@@ -83,6 +83,8 @@ suite('Database Projects – Publish/migrate (real Firebird integration)', funct
     assert.ok(script.includes('ALTER TABLE PUB_CHILD ADD CONSTRAINT FK_PUB_CHILD_PARENT FOREIGN KEY (PARENT_ID) REFERENCES PUB_PARENT (ID);'), script);
     assert.ok(script.includes('CREATE SEQUENCE PUB_GEN;'), script);
     assert.ok(script.includes('CREATE OR ALTER PROCEDURE PUB_PROC'), script);
+    assert.ok(script.includes('(X INTEGER, AMT NUMERIC(9,2))'), script);
+    assert.ok(script.includes('RETURNS (Y INTEGER)'), script);
     assert.ok(script.includes('CREATE OR ALTER TRIGGER PUB_TRIG'), script);
     assert.ok(script.includes('FOR PUB_PARENT ACTIVE BEFORE INSERT'), script);
 
@@ -110,7 +112,11 @@ suite('Database Projects – Publish/migrate (real Firebird integration)', funct
     assert.ok(migratedParent.columns.find(c => c.name === 'STATUS'), 'STATUS column should now exist');
     assert.strictEqual(migratedParent.columns.find(c => c.name === 'STATUS')?.notNull, true);
     assert.ok(migratedSnapshot.generators.includes('PUB_GEN'));
-    assert.ok(migratedSnapshot.procedures.some(p => p.name === 'PUB_PROC'));
+    const migratedProc = migratedSnapshot.procedures.find(p => p.name === 'PUB_PROC');
+    assert.ok(migratedProc, 'PUB_PROC should now exist');
+    assert.strictEqual(migratedProc!.parameters?.length, 3, JSON.stringify(migratedProc!.parameters));
+    assert.ok(migratedProc!.parameters!.some(p => p.name === 'AMT' && p.direction === 'in' && p.subType === 1 && p.precision === 9));
+    assert.ok(migratedProc!.parameters!.some(p => p.name === 'Y' && p.direction === 'out'));
     assert.ok(migratedSnapshot.triggers.some(t => t.name === 'PUB_TRIG' && t.table === 'PUB_PARENT'));
     assert.ok(
       migratedSnapshot.graph.relationships.some(r => r.table === 'PUB_CHILD' && r.refTable === 'PUB_PARENT'),

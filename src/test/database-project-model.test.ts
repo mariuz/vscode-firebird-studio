@@ -1,8 +1,8 @@
 import * as assert from 'assert';
 import {
   columnTypeToDDL, buildTableCreateDDL, buildForeignKeyDDL, buildProcedureCreateDDL,
-  buildTriggerCreateDDL, buildViewCreateDDL, buildGeneratorCreateDDL, sanitizeFileName,
-  buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput,
+  buildProcedureParameterHeader, buildTriggerCreateDDL, buildViewCreateDDL, buildGeneratorCreateDDL,
+  sanitizeFileName, buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput, ProcedureParameter,
 } from '../database-projects/project-model';
 import { SchemaColumn, SchemaTable, SchemaGraph, SchemaRelationship } from '../schema-designer/schema-graph';
 
@@ -113,11 +113,10 @@ suite('database-project-model – buildForeignKeyDDL()', function () {
 });
 
 suite('database-project-model – object DDL builders (CREATE OR ALTER)', function () {
-  // NOTE: a procedure's parameters/RETURNS clause are NOT part of RDB$PROCEDURE_SOURCE at all
-  // (confirmed against a live server) and this data model has no field for them — reconstructing
-  // a parameterized procedure's DDL is a known, disclosed limitation (see database-projects.md),
-  // out of scope for the "AS"/trailing-";" fixes below. Every fixture here is deliberately a
-  // parameterless procedure, the one case this module can reconstruct correctly today.
+  // NOTE: RDB$PROCEDURE_SOURCE itself never includes the parameter list/RETURNS clause (confirmed
+  // against a live server) — buildProcedureCreateDDL() reconstructs it separately from the
+  // procedure's `parameters` field instead (see the "parameterized procedures" suite below).
+  // Fixtures with no `parameters` field exercise the parameterless case.
   test('buildProcedureCreateDDL wraps the raw source with CREATE OR ALTER PROCEDURE <name>', function () {
     const ddl = buildProcedureCreateDDL({ name: 'GET_TOTAL', source: 'BEGIN\n  TOTAL = 1;\nEND' });
     assert.ok(ddl.startsWith('CREATE OR ALTER PROCEDURE GET_TOTAL\nAS\nBEGIN'), ddl);
@@ -155,6 +154,61 @@ suite('database-project-model – object DDL builders (CREATE OR ALTER)', functi
 
   test('buildGeneratorCreateDDL builds a plain CREATE SEQUENCE statement', function () {
     assert.strictEqual(buildGeneratorCreateDDL('GEN_ORDER_ID'), 'CREATE SEQUENCE GEN_ORDER_ID;');
+  });
+});
+
+suite('database-project-model – parameterized procedures', function () {
+  function param(overrides: Partial<ProcedureParameter> = {}): ProcedureParameter {
+    return { name: 'X', direction: 'in', type: 'INTEGER', length: 4, ...overrides };
+  }
+
+  test('buildProcedureParameterHeader returns "" for a parameterless procedure', function () {
+    assert.strictEqual(buildProcedureParameterHeader([]), '');
+  });
+
+  test('buildProcedureParameterHeader builds just the input list when there are no output params', function () {
+    const header = buildProcedureParameterHeader([param({ name: 'X', type: 'INTEGER' })]);
+    assert.strictEqual(header, '(X INTEGER)');
+  });
+
+  test('buildProcedureParameterHeader builds just RETURNS when there are no input params', function () {
+    const header = buildProcedureParameterHeader([param({ name: 'Y', direction: 'out', type: 'INTEGER' })]);
+    assert.strictEqual(header, 'RETURNS (Y INTEGER)');
+  });
+
+  test('buildProcedureParameterHeader builds both input list and RETURNS, in that order', function () {
+    const header = buildProcedureParameterHeader([
+      param({ name: 'X', direction: 'in', type: 'INTEGER' }),
+      param({ name: 'Y', direction: 'out', type: 'INTEGER' }),
+    ]);
+    assert.strictEqual(header, '(X INTEGER)\nRETURNS (Y INTEGER)');
+  });
+
+  test('buildProcedureParameterHeader joins multiple parameters of the same direction with ", "', function () {
+    const header = buildProcedureParameterHeader([
+      param({ name: 'X', direction: 'in', type: 'INTEGER' }),
+      param({ name: 'CODE', direction: 'in', type: 'VARCHAR', length: 10 }),
+    ]);
+    assert.strictEqual(header, '(X INTEGER, CODE VARCHAR(10))');
+  });
+
+  test('buildProcedureParameterHeader reuses columnTypeToDDL for NUMERIC/DECIMAL parameters', function () {
+    const header = buildProcedureParameterHeader([param({ name: 'AMT', direction: 'in', type: 'INTEGER', subType: 1, precision: 9, scale: -2 })]);
+    assert.strictEqual(header, '(AMT NUMERIC(9,2))');
+  });
+
+  test('buildProcedureCreateDDL includes the parameter header between the name and AS', function () {
+    const ddl = buildProcedureCreateDDL({
+      name: 'GET_TOTAL',
+      source: 'BEGIN\n  TOTAL = X;\n  SUSPEND;\nEND',
+      parameters: [param({ name: 'X', direction: 'in' }), param({ name: 'TOTAL', direction: 'out' })],
+    });
+    assert.strictEqual(ddl, 'CREATE OR ALTER PROCEDURE GET_TOTAL\n(X INTEGER)\nRETURNS (TOTAL INTEGER)\nAS\nBEGIN\n  TOTAL = X;\n  SUSPEND;\nEND;');
+  });
+
+  test('buildProcedureCreateDDL omits the header entirely for a parameterless procedure (no empty parens)', function () {
+    const ddl = buildProcedureCreateDDL({ name: 'P', source: 'BEGIN EXIT; END' });
+    assert.strictEqual(ddl, 'CREATE OR ALTER PROCEDURE P\nAS\nBEGIN EXIT; END;');
   });
 });
 

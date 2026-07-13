@@ -6,9 +6,32 @@
 
 import { SchemaGraph, SchemaTable, SchemaColumn, SchemaRelationship } from "../schema-designer/schema-graph";
 
+/**
+ * One input or output parameter of a procedure, from getAllProcedureParametersQuery(). Shares
+ * columnTypeToDDL()'s type/length/subType/precision/scale shape with SchemaColumn so the same
+ * NUMERIC/DECIMAL-aware DDL-type reconstruction works for both columns and parameters.
+ */
+export interface ProcedureParameter {
+  name: string;
+  direction: "in" | "out";
+  type: string;
+  length: number;
+  subType?: number;
+  precision?: number;
+  scale?: number;
+}
+
 export interface ProcedureSource {
   name: string;
   source: string;
+  /**
+   * Input/output parameters, in declaration order — RDB$PROCEDURE_SOURCE excludes the parameter
+   * list and RETURNS clause entirely (confirmed directly against a live server), so this is the
+   * only way to reconstruct a parameterized procedure's DDL. Optional/defaults to empty for
+   * callers (e.g. older cached snapshots) that predate this field; a parameterless procedure is
+   * unaffected either way.
+   */
+  parameters?: ProcedureParameter[];
 }
 
 export interface TriggerSource {
@@ -70,8 +93,11 @@ const FOREIGN_KEYS_FILE = "foreign-keys.sql";
  * against a live Firebird server (not assumed): RDB$FIELD_SUB_TYPE is 1 for NUMERIC, 2 for
  * DECIMAL, 0/null for a plain (non-fixed-point) column; RDB$FIELD_SCALE is negative, so decimal
  * places = -scale. Exported for testing.
+ *
+ * Narrowed to just the fields it actually reads (not the full SchemaColumn) so ProcedureParameter
+ * — which has no name/notNull/isPrimaryKey/dflt concept — can reuse it too.
  */
-export function columnTypeToDDL(column: SchemaColumn): string {
+export function columnTypeToDDL(column: Pick<SchemaColumn, "type" | "length" | "subType" | "precision" | "scale">): string {
   if ((column.subType === 1 || column.subType === 2) && column.precision) {
     const kind = column.subType === 1 ? "NUMERIC" : "DECIMAL";
     const scale = column.scale ? -column.scale : 0;
@@ -154,8 +180,35 @@ export function buildForeignKeyDDL(rel: SchemaRelationship): string {
  * DDL together. buildTableCreateDDL()/buildForeignKeyDDL() already ended with ";"; this brings
  * the PSQL-body builders in line with that same convention.
  */
+/** Renders a procedure's `(name TYPE, ...)` input list or `RETURNS (name TYPE, ...)` output list — empty string if there are none of that direction. */
+function buildParameterListDDL(parameters: ProcedureParameter[], direction: "in" | "out"): string {
+  const matching = parameters.filter(p => p.direction === direction);
+  if (matching.length === 0) {
+    return "";
+  }
+  const list = matching.map(p => `${p.name} ${columnTypeToDDL(p)}`).join(", ");
+  return direction === "in" ? `(${list})` : `RETURNS (${list})`;
+}
+
+/**
+ * Renders the full `(in params...) \n RETURNS (out params...)` header (either half omitted if
+ * empty), or "" if there are no parameters at all — shared by buildProcedureCreateDDL() and
+ * NodeProcedure#editProcedure()'s ALTER PROCEDURE scaffold. Unlike ALTER TRIGGER (which only needs
+ * a body to change behavior, confirmed live), a plain ALTER PROCEDURE genuinely requires
+ * re-specifying the full parameter list even for a body-only edit — also confirmed live: omitting
+ * it makes every parameter "unknown" inside the new body, since ALTER PROCEDURE redefines the
+ * signature too, defaulting to none unless given.
+ */
+export function buildProcedureParameterHeader(parameters: ProcedureParameter[]): string {
+  const inputList = buildParameterListDDL(parameters, "in");
+  const returnsList = buildParameterListDDL(parameters, "out");
+  return [inputList, returnsList].filter(Boolean).join("\n");
+}
+
 export function buildProcedureCreateDDL(procedure: ProcedureSource): string {
-  return `CREATE OR ALTER PROCEDURE ${procedure.name}\nAS\n${procedure.source.trim()};`;
+  const header = buildProcedureParameterHeader(procedure.parameters ?? []);
+  const headerPart = header ? `\n${header}` : "";
+  return `CREATE OR ALTER PROCEDURE ${procedure.name}${headerPart}\nAS\n${procedure.source.trim()};`;
 }
 
 /**

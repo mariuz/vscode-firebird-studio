@@ -4,6 +4,7 @@ import {
   getTriggerBodyQuery,
   getViewDefinitionQuery,
   getAllProcedureSourcesQuery,
+  getAllProcedureParametersQuery,
   getAllTriggerSourcesQuery,
   getAllViewSourcesQuery,
   getPrimaryKeyColumnsQuery,
@@ -100,6 +101,34 @@ suite('getAllProcedureSourcesQuery / getAllTriggerSourcesQuery / getAllViewSourc
     for (const sql of [getAllProcedureSourcesQuery(), getAllTriggerSourcesQuery(), getAllViewSourcesQuery()]) {
       assert.ok(!/TRIM\([^)]+\)\s*=\s*'/.test(sql), `expected no name filter: ${sql}`);
     }
+  });
+});
+
+// ── getAllProcedureParametersQuery ─────────────────────────────────────────────
+//
+// Needed to reconstruct a parameterized procedure's DDL, since RDB$PROCEDURE_SOURCE excludes the
+// parameter list/RETURNS clause entirely (confirmed directly against a live server).
+
+suite('getAllProcedureParametersQuery', function () {
+  test('joins RDB$PROCEDURE_PARAMETERS to RDB$FIELDS via RDB$FIELD_SOURCE', function () {
+    const sql = getAllProcedureParametersQuery();
+    assert.ok(sql.includes('FROM RDB$PROCEDURE_PARAMETERS'), sql);
+    assert.ok(sql.includes('pp.RDB$FIELD_SOURCE = f.RDB$FIELD_NAME'), sql);
+  });
+
+  test('selects NUMERIC/DECIMAL precision/scale alongside the bare field type', function () {
+    const sql = getAllProcedureParametersQuery();
+    assert.ok(sql.includes('RDB$FIELD_SUB_TYPE'), sql);
+    assert.ok(sql.includes('RDB$FIELD_PRECISION'), sql);
+    assert.ok(sql.includes('RDB$FIELD_SCALE'), sql);
+  });
+
+  test('excludes system procedures\' parameters', function () {
+    assert.ok(getAllProcedureParametersQuery().includes('RDB$SYSTEM_FLAG'));
+  });
+
+  test('orders by procedure, then parameter type (input before output), then declaration order', function () {
+    assert.ok(getAllProcedureParametersQuery().includes('ORDER BY pp.RDB$PROCEDURE_NAME, pp.RDB$PARAMETER_TYPE, pp.RDB$PARAMETER_NUMBER'));
   });
 });
 

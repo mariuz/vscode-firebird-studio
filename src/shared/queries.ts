@@ -178,11 +178,14 @@ export function procedureParametersQuery(procedureName: string): string {
                    WHEN 37  THEN 'VARCHAR'
                    ELSE 'UNKNOWN'
                  END AS FIELD_TYPE,
-                 f.RDB$FIELD_LENGTH AS FIELD_LENGTH
+                 f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+                 f.RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE,
+                 f.RDB$FIELD_PRECISION AS FIELD_PRECISION,
+                 f.RDB$FIELD_SCALE AS FIELD_SCALE
             FROM RDB$PROCEDURE_PARAMETERS pp
        LEFT JOIN RDB$FIELDS f ON pp.RDB$FIELD_SOURCE = f.RDB$FIELD_NAME
            WHERE pp.RDB$PROCEDURE_NAME = '${procedureName}'
-        ORDER BY pp.RDB$PARAMETER_NUMBER;`;
+        ORDER BY pp.RDB$PARAMETER_TYPE, pp.RDB$PARAMETER_NUMBER;`;
 }
 
 export function getTriggersQuery(): string {
@@ -380,6 +383,44 @@ export function getAllProcedureSourcesQuery(): string {
             FROM RDB$PROCEDURES
            WHERE (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
         ORDER BY 1;`;
+}
+
+/**
+ * Every non-system procedure's parameters (input and output), one round trip — needed to
+ * reconstruct a parameterized procedure's DDL, since RDB$PROCEDURE_SOURCE excludes the parameter
+ * list and RETURNS clause entirely (confirmed directly against a live server). RDB$PARAMETER_TYPE
+ * is 0 for an input parameter, 1 for an output one; ordered so input params come back in
+ * declaration order followed by output params in declaration order.
+ */
+export function getAllProcedureParametersQuery(): string {
+  return `SELECT TRIM(pp.RDB$PROCEDURE_NAME) AS PROCEDURE_NAME,
+                 TRIM(pp.RDB$PARAMETER_NAME) AS PARAM_NAME,
+                 pp.RDB$PARAMETER_TYPE AS PARAM_TYPE,
+                 CASE f.RDB$FIELD_TYPE
+                   WHEN 261 THEN 'BLOB'
+                   WHEN 14  THEN 'CHAR'
+                   WHEN 40  THEN 'CSTRING'
+                   WHEN 11  THEN 'D_FLOAT'
+                   WHEN 27  THEN 'DOUBLE'
+                   WHEN 10  THEN 'FLOAT'
+                   WHEN 16  THEN 'INT64'
+                   WHEN 8   THEN 'INTEGER'
+                   WHEN 9   THEN 'QUAD'
+                   WHEN 7   THEN 'SMALLINT'
+                   WHEN 12  THEN 'DATE'
+                   WHEN 13  THEN 'TIME'
+                   WHEN 35  THEN 'TIMESTAMP'
+                   WHEN 37  THEN 'VARCHAR'
+                   ELSE 'UNKNOWN'
+                 END AS FIELD_TYPE,
+                 f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+                 f.RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE,
+                 f.RDB$FIELD_PRECISION AS FIELD_PRECISION,
+                 f.RDB$FIELD_SCALE AS FIELD_SCALE
+            FROM RDB$PROCEDURE_PARAMETERS pp
+       LEFT JOIN RDB$FIELDS f ON pp.RDB$FIELD_SOURCE = f.RDB$FIELD_NAME
+           WHERE pp.RDB$PROCEDURE_NAME IN (SELECT RDB$PROCEDURE_NAME FROM RDB$PROCEDURES WHERE RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
+        ORDER BY pp.RDB$PROCEDURE_NAME, pp.RDB$PARAMETER_TYPE, pp.RDB$PARAMETER_NUMBER;`;
 }
 
 /** Every non-system trigger's full source, one round trip — see getAllProcedureSourcesQuery(). */
