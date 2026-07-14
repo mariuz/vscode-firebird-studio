@@ -5,11 +5,13 @@
     toolbar: document.getElementById("toolbar"),
     btnRefresh: document.getElementById("btn-refresh"),
     btnPause: document.getElementById("btn-pause"),
+    filter: document.getElementById("filter"),
     status: document.getElementById("status"),
     activityBody: document.getElementById("activity-body"),
     loading: document.getElementById("loading"),
     errorBanner: document.getElementById("error-banner"),
     emptyBanner: document.getElementById("empty-banner"),
+    filteredBanner: document.getElementById("filtered-banner"),
   };
 
   const ISOLATION_LABELS = {
@@ -25,6 +27,12 @@
   let pollTimer = null;
   let pollIntervalMs = 3000;
   let paused = false;
+  /** [{row, rates}] from the most recent poll -- kept around so typing in the filter box or
+   *  toggling a pin can re-render immediately, without waiting for (or forcing) another poll. */
+  let lastRendered = [];
+  /** Pinned ATTACHMENT_IDs -- pinned rows sort first among whatever the current filter shows. */
+  let pinned = new Set();
+  let filterText = "";
 
   // ── Messaging ──────────────────────────────────────────────────────────────
 
@@ -37,6 +45,7 @@
       return;
     }
     if (msg.command === "activityData") { handleActivityData(msg.data); return; }
+    if (msg.command === "actionResult") { handleActionResult(msg.data); return; }
   });
 
   vscode.postMessage({ command: "ready" });
@@ -70,6 +79,15 @@
     }
   });
 
+  el.filter.addEventListener("input", () => {
+    filterText = el.filter.value.trim().toLowerCase();
+    renderTable();
+  });
+
+  function handleActionResult(data) {
+    setStatus(data.ok ? "Action completed." : `Action failed: ${data.error}`);
+  }
+
   // ── Rendering ─────────────────────────────────────────────────────────────
 
   function handleActivityData(data) {
@@ -88,23 +106,57 @@
     const rows = data.rows || [];
     if (rows.length === 0) {
       el.emptyBanner.style.display = "block";
+      el.filteredBanner.style.display = "none";
       el.activityBody.innerHTML = "";
       previous = new Map();
+      pinned = new Set();
+      lastRendered = [];
       setStatus("");
       return;
     }
     el.emptyBanner.style.display = "none";
 
-    el.activityBody.innerHTML = "";
+    // Rates must be computed for every row the server returned, regardless of the current filter,
+    // so delta tracking for a temporarily-hidden connection doesn't skip a beat.
     const seenIds = new Set();
-    rows.forEach(row => {
+    lastRendered = rows.map(row => {
       seenIds.add(row.ATTACHMENT_ID);
-      const rates = computeRates(row);
-      renderRow(row, rates);
+      return { row, rates: computeRates(row) };
     });
     pruneStale(seenIds);
+    Array.from(pinned).forEach(id => { if (!seenIds.has(id)) { pinned.delete(id); } });
 
-    setStatus(`${rows.length} connection${rows.length === 1 ? '' : 's'} — updated ${new Date().toLocaleTimeString()}`);
+    renderTable();
+  }
+
+  function matchesFilter(row, text) {
+    if (!text) { return true; }
+    const haystack = [
+      row.USER_NAME,
+      row.REMOTE_ADDRESS,
+      row.ATTACHMENT_STATE === 1 ? "active" : "idle",
+      row.SQL_TEXT,
+    ].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(text);
+  }
+
+  function renderTable() {
+    el.activityBody.innerHTML = "";
+
+    const visible = lastRendered
+      .filter(({ row }) => matchesFilter(row, filterText))
+      .sort((a, b) => {
+        const aPinned = pinned.has(a.row.ATTACHMENT_ID);
+        const bPinned = pinned.has(b.row.ATTACHMENT_ID);
+        return aPinned === bPinned ? 0 : (aPinned ? -1 : 1);
+      });
+
+    el.filteredBanner.style.display = (visible.length === 0 && lastRendered.length > 0) ? "block" : "none";
+    visible.forEach(({ row, rates }) => renderRow(row, rates));
+
+    setStatus(`${lastRendered.length} connection${lastRendered.length === 1 ? '' : 's'}` +
+      (visible.length !== lastRendered.length ? ` (${visible.length} shown)` : '') +
+      ` — updated ${new Date().toLocaleTimeString()}`);
   }
 
   function computeRates(row) {
@@ -153,6 +205,20 @@
   function renderRow(row, rates) {
     const tr = document.createElement("tr");
     if (row.ATTACHMENT_STATE === 1) { tr.classList.add("fb-active-row"); }
+    const isPinned = pinned.has(row.ATTACHMENT_ID);
+    if (isPinned) { tr.classList.add("fb-pinned-row"); }
+
+    const pinTd = document.createElement("td");
+    const pinBtn = document.createElement("button");
+    pinBtn.className = "fb-pin-btn" + (isPinned ? " fb-pinned" : "");
+    pinBtn.textContent = "★";
+    pinBtn.title = isPinned ? "Unpin" : "Pin to top";
+    pinBtn.addEventListener("click", () => {
+      if (pinned.has(row.ATTACHMENT_ID)) { pinned.delete(row.ATTACHMENT_ID); } else { pinned.add(row.ATTACHMENT_ID); }
+      renderTable();
+    });
+    pinTd.appendChild(pinBtn);
+    tr.appendChild(pinTd);
 
     const values = [
       row.USER_NAME || "",
@@ -177,7 +243,37 @@
       tr.appendChild(td);
     });
 
+    tr.appendChild(renderActionsCell(row));
+
     el.activityBody.appendChild(tr);
+  }
+
+  function renderActionsCell(row) {
+    const td = document.createElement("td");
+    td.classList.add("fb-actions");
+
+    const label = `${row.USER_NAME || "?"} (${row.REMOTE_ADDRESS || "local"})`;
+
+    const killBtn = document.createElement("button");
+    killBtn.className = "fb-kill-btn";
+    killBtn.textContent = "Kill";
+    killBtn.title = "Force-detach this connection";
+    killBtn.addEventListener("click", () => {
+      vscode.postMessage({ command: "killAttachment", data: { attachmentId: row.ATTACHMENT_ID, label } });
+    });
+    td.appendChild(killBtn);
+
+    if (row.TRANSACTION_ID != null) {
+      const rollbackBtn = document.createElement("button");
+      rollbackBtn.textContent = "Rollback";
+      rollbackBtn.title = "Roll back this connection's active transaction";
+      rollbackBtn.addEventListener("click", () => {
+        vscode.postMessage({ command: "rollbackTransaction", data: { transactionId: row.TRANSACTION_ID, label } });
+      });
+      td.appendChild(rollbackBtn);
+    }
+
+    return td;
   }
 
   function isolationLabel(mode) {
@@ -200,8 +296,9 @@
   // Test-only hook: no-op in a real webview (there is no `module` global there).
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.__test__ = {
-      rate, truncateOneLine, isolationLabel, handleActivityData,
+      rate, truncateOneLine, isolationLabel, handleActivityData, matchesFilter,
       getPrevious: () => previous,
+      getPinned: () => pinned,
     };
   }
 })();

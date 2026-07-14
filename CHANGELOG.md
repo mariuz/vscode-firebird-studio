@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.57 - 2026-07-14
+
+### Added
+
+- **Live Profiler: filter, pin, and Kill/Rollback actions.** The connection activity table (`firebird.database.monitorDatabase`) now has a toolbar filter box (matches user/address/state/statement text), a per-row pin to keep a connection sorted to the top, and per-row "Kill" (force-detach) / "Rollback" (roll back the active transaction) actions — both gated behind a confirmation dialog naming the affected connection before anything runs.
+
 ## 0.1.56 - 2026-07-13
 
 ### Added

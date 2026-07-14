@@ -713,3 +713,23 @@ export function profilerActivityQuery(): string {
              AND a.MON$ATTACHMENT_ID <> CURRENT_CONNECTION
         ORDER BY a.MON$ATTACHMENT_ID;`;
 }
+
+/**
+ * Force-detaches a connection from the Live Profiler's "Kill" action (`docs/roadmap/live-profiler.md`
+ * phase 3). Deleting from MON$ATTACHMENTS is Firebird's documented mechanism for this -- there is no
+ * separate DDL/admin statement for it.
+ */
+export function killAttachmentQuery(attachmentId: number): string {
+  if (!Number.isInteger(attachmentId)) {
+    throw new Error("Invalid attachment id.");
+  }
+  return `DELETE FROM MON$ATTACHMENTS WHERE MON$ATTACHMENT_ID = ${attachmentId};`;
+}
+
+/** Rolls back a transaction from the Live Profiler's "Rollback" action -- same MON$ mechanism as killAttachmentQuery(). */
+export function rollbackTransactionQuery(transactionId: number): string {
+  if (!Number.isInteger(transactionId)) {
+    throw new Error("Invalid transaction id.");
+  }
+  return `DELETE FROM MON$TRANSACTIONS WHERE MON$TRANSACTION_ID = ${transactionId};`;
+}

@@ -45,6 +45,15 @@ body {
   font-size: 11px;
   color: var(--vscode-descriptionForeground, #999);
 }
+#filter {
+  flex: 0 1 320px;
+  padding: 3px 8px;
+  font-size: 12px;
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: 3px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+}
 
 #table-wrapper {
   position: relative;
@@ -78,6 +87,40 @@ td.fb-statement {
 }
 tr.fb-active-row td {
   color: var(--vscode-charts-green, #89d185);
+}
+tr.fb-pinned-row {
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.06));
+}
+.fb-pin-col {
+  width: 22px;
+}
+.fb-pin-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+.fb-pin-btn.fb-pinned {
+  color: var(--vscode-charts-yellow, #e2c08d);
+}
+td.fb-actions {
+  white-space: nowrap;
+}
+td.fb-actions button {
+  padding: 2px 6px;
+  font-size: 11px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #444);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+}
+td.fb-actions button.fb-kill-btn:hover {
+  background: var(--vscode-errorForeground, #f44);
+  color: #fff;
 }
 
 #loading, #error-banner, #empty-banner {

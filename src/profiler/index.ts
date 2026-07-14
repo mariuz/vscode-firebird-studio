@@ -3,15 +3,16 @@ import { join } from "path";
 import { QueryResultsView, Message } from "../result-view/queryResultsView";
 import { ConnectionOptions } from "../interfaces";
 import { Driver } from "../shared/driver";
-import { profilerActivityQuery } from "../shared/queries";
+import { profilerActivityQuery, killAttachmentQuery, rollbackTransactionQuery } from "../shared/queries";
 import { getOptions } from "../config";
 import { logger } from "../logger/logger";
 
 /**
  * Live connection/query activity monitor: polls MON$ tables on an interval and shows a
  * continuously refreshing table (delta rates like reads/sec are computed webview-side, from one
- * poll to the next). Phases 1+2 of `docs/roadmap/live-profiler.md` — no filter/pin, kill action,
- * charted dashboard, or Queries/Sessions drill-down tabs yet (see that doc for what's deferred).
+ * poll to the next). Phases 1+2 of `docs/roadmap/live-profiler.md` are done; phase 3 (filter/pin,
+ * done webview-side) adds the "Kill"/"Rollback" actions handled below. Charted dashboard and
+ * Queries/Sessions drill-down tabs are still not done (see that doc for what's deferred).
  *
  * Uses its own dedicated connection (created lazily, reused across polls, closed on dispose)
  * rather than going through Driver.runQuery()'s per-call connect/detach — so repeated polling
@@ -51,6 +52,42 @@ export class ProfilerView extends QueryResultsView implements vscode.Disposable 
     if (message.command === "refresh") {
       this.pollOnce().catch(err => logger.error(err));
     }
+    if (message.command === "killAttachment") {
+      const { attachmentId, label } = message.data as { attachmentId: number; label: string };
+      this.runAdminAction(
+        `Force-detach connection ${label}? Any uncommitted work on it will be rolled back.`,
+        "Kill Connection",
+        () => killAttachmentQuery(attachmentId)
+      );
+    }
+    if (message.command === "rollbackTransaction") {
+      const { transactionId, label } = message.data as { transactionId: number; label: string };
+      this.runAdminAction(
+        `Roll back transaction ${transactionId} on connection ${label}?`,
+        "Rollback Transaction",
+        () => rollbackTransactionQuery(transactionId)
+      );
+    }
+  }
+
+  /** Shared confirm-then-execute path for the "Kill"/"Rollback" row actions -- both need the same
+   *  modal-confirm-then-refresh flow, just against a different MON$ DELETE statement. */
+  private runAdminAction(confirmMessage: string, confirmLabel: string, buildSql: () => string): void {
+    vscode.window.showWarningMessage(confirmMessage, { modal: true }, confirmLabel).then(async answer => {
+      if (answer !== confirmLabel) {
+        return;
+      }
+      try {
+        const connection = await this.ensureConnection();
+        await Driver.client.queryPromise(connection, buildSql());
+        this.send({ command: "actionResult", data: { ok: true } });
+      } catch (err: any) {
+        const message = err?.message ?? String(err);
+        logger.error(`Live Profiler action failed: ${message}`);
+        this.send({ command: "actionResult", data: { ok: false, error: message } });
+      }
+      this.pollOnce().catch(err => logger.error(err));
+    });
   }
 
   dispose(): void {

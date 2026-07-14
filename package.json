@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.56",
+  "version": "0.1.57",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -42,7 +42,7 @@
     "compile": "npm run -S esbuild-build",
     "watch": "npm run -S esbuild-base -- --sourcemap --watch",
     "tsc-watch": "tsc -watch -p ./",
-    "test": "tsc -p tsconfig.test.json --noEmitOnError false; mocha 'out/test/**/*.test.js' --exclude 'out/test/e2e/**' --exclude 'out/test/suite/**'",
+    "test": "tsc -p tsconfig.test.json --noEmitOnError false; mocha --require ./out/test/setup.js 'out/test/**/*.test.js' --exclude 'out/test/e2e/**' --exclude 'out/test/suite/**'",
     "test:e2e": "tsc -p tsconfig.e2e.json --noEmitOnError false; mocha 'out/test/e2e/**/*.test.js' --timeout 30000 --exit",
     "test:vscode-host": "npm run compile && tsc -p tsconfig.suite.json --noEmitOnError false && vscode-test"
   },

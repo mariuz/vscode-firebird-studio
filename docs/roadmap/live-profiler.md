@@ -4,7 +4,7 @@
 
 ## Current state in Firebird Studio
 
-**Phases 1 and 2 are done.** `src/profiler/` (`ProfilerView`) replaces the one-shot `MON$ATTACHMENTS` snapshot `NodeDatabase#monitorDatabase()` used to run (`monitorConnectionsQuery` is gone from `queries.ts` — superseded, not kept alongside) with a continuously polling activity table:
+**Phases 1, 2, and 3 are done.** `src/profiler/` (`ProfilerView`) replaces the one-shot `MON$ATTACHMENTS` snapshot `NodeDatabase#monitorDatabase()` used to run (`monitorConnectionsQuery` is gone from `queries.ts` — superseded, not kept alongside) with a continuously polling activity table:
 
 - `profilerActivityQuery()` (`src/shared/queries.ts`) — one row per connection (attachment-level, excluding the profiler's own dedicated connection and internal engine attachments), with cumulative page/record I-O counters and, if there is one, the most recently started active statement and transaction. **Verified directly against a real Firebird 3.0 server** (a scratch database, via `isql-fb`) before being written, the same way `plan-parser.ts`'s grammar was — see the query's doc comment for exactly what was checked (in particular, `MON$STAT_GROUP = 1` to select the attachment-level stat row for a given `MON$STAT_ID`, and picking the highest active `MON$STATEMENT_ID`/`MON$TRANSACTION_ID` per attachment rather than every combination, to keep the grain at one row per connection).
 - `ProfilerView` uses its **own dedicated connection** (created lazily on first poll, reused across polls, closed on dispose) rather than going through `Driver.runQuery()`'s per-call connect/detach, so repeated polling doesn't pay a fresh-connection cost every few seconds and never contends with the user's own query execution or the connection pool.
@@ -13,15 +13,21 @@
 - New `firebird.profiler.pollIntervalMs` setting (default 3000ms) controls the polling interval.
 - `firebird.database.monitorDatabase` (right-click a database → **Monitor Database**) — same command id, title, and menu placement as before — now opens this webview instead of running the old one-shot query into the regular results grid, the same repointing approach already used for the Schema Designer's three commands.
 
+### Phase 3 — Filter/pin and kill/rollback
+
+- **Filter**: a toolbar text box (`#filter` in `index.html`) matches against user/remote address/state/statement text, entirely webview-side (`matchesFilter()` in `app.js`) — no extra polling or round-trip needed to re-filter as the user types.
+- **Pin**: a per-row star button toggles membership in a webview-local `pinned` Set (by `ATTACHMENT_ID`); pinned rows sort first within whatever the current filter shows. Pins are intentionally not persisted across a panel reopen/reload — `retainContextWhenHidden: false` already discards all webview-side state when hidden (see above), and a live monitoring session's pins are a working-session concern, not something worth a `globalState` entry.
+- **Kill / Rollback**: a "Kill" button on every row and a "Rollback" button on rows with an active transaction (`row.TRANSACTION_ID != null`) post `killAttachment`/`rollbackTransaction` messages to the extension host. `ProfilerView.runAdminAction()` (`src/profiler/index.ts`) is the shared confirm-then-execute path: a modal `vscode.window.showWarningMessage()` (naming the user/address being affected) gates the action — the webview itself never confirms, matching this repo's convention that a webview posts an intent and the extension host owns any destructive confirmation. On confirm, it runs `killAttachmentQuery(attachmentId)` / `rollbackTransactionQuery(transactionId)` (new in `src/shared/queries.ts` — `DELETE FROM MON$ATTACHMENTS`/`MON$TRANSACTIONS`, Firebird's documented mechanism for forced detach/rollback, each guarding its numeric id with `Number.isInteger()` before interpolating) over the profiler's existing dedicated connection, then triggers an immediate re-poll. (The `killAttachmentQuery()` helper mentioned as "drafted and removed" in an earlier revision of this doc is now implemented for real, with a caller.)
+- **Verified against a live server**: a standalone script opened a "victim" connection, force-detached it via the same `DELETE FROM MON$ATTACHMENTS` statement `killAttachmentQuery()` builds, and confirmed the victim's next query was rejected ("Connection shutdown, Killed by database administrator.") and it no longer appeared in `MON$ATTACHMENTS`; separately, started a transaction, rolled it back via the same `DELETE FROM MON$TRANSACTIONS` statement, and confirmed it no longer appeared in `MON$TRANSACTIONS`.
+
 ### Explicitly deferred (not done)
 
-- **Phase 3 — Filter/pin and kill/rollback**: no per-user filtering and no "force detach" action (`DELETE FROM MON$ATTACHMENTS ...`) yet. (A `killAttachmentQuery()` helper was drafted and then deliberately removed before committing — no UI called it yet, and this repo's convention is not to carry unused code "for later.")
 - **Phase 4 — Charted dashboard**: still a plain table, not the live line-chart view (grouped sections, time-range selector) vscode-pgsql's dashboard uses. The metrics this phase would chart (connections, cache hit ratio, block I/O) are exactly the ones already polled — charting is presentation on top of data this phase already fetches, not new data access.
 - **Phase 5 — Sessions/blocking view**: no dedicated blocking-tree view; `MON$TRANSACTIONS`' state is available in the query but not yet surfaced distinctly from the main activity row.
 
 ### Testing
 
-`src/test/queries.test.ts` covers `profilerActivityQuery()`'s SQL shape (the `CURRENT_CONNECTION` exclusion, the `MON$REMOTE_ADDRESS IS NOT NULL` filter, the `MON$STAT_GROUP = 1` scoping, the UTF8 statement-text cast, and the "most recent active" subqueries). The webview's inline JS (`src/profiler/htmlContent/js/app.js`) has no automated coverage, matching this repo's convention for webview inline JS — verified instead with a one-off Node harness (not committed) exercising two consecutive simulated polls with a controlled elapsed time, confirming: no rate on the first poll (nothing to diff against), a correct rate computed on the second poll, and stale-connection pruning when a connection disappears between polls.
+`src/test/queries.test.ts` covers `profilerActivityQuery()`'s SQL shape (the `CURRENT_CONNECTION` exclusion, the `MON$REMOTE_ADDRESS IS NOT NULL` filter, the `MON$STAT_GROUP = 1` scoping, the UTF8 statement-text cast, and the "most recent active" subqueries) and now also `killAttachmentQuery()`/`rollbackTransactionQuery()`'s exact SQL shape and their rejection of a non-integer id. The webview's inline JS (`src/profiler/htmlContent/js/app.js`) has no automated coverage, matching this repo's convention for webview inline JS — verified instead with one-off Node harnesses (not committed): one exercising two consecutive simulated polls with a controlled elapsed time (no rate on the first poll, a correct rate on the second, stale-connection pruning when a connection disappears between polls), and a second driving the real built kill/rollback SQL against a live server (see above).
 
 ## Technical notes
 
@@ -33,6 +39,6 @@
 
 1. ~~Static "Activity Snapshot" query, richer than the old one-shot `MON$ATTACHMENTS` query.~~ — **done** (`profilerActivityQuery()`).
 2. ~~Interval-based polling + delta-stat computation.~~ — **done**.
-3. Add filter/pin and the kill/rollback action.
+3. ~~Add filter/pin and the kill/rollback action.~~ — **done**.
 4. Add the charted dashboard view (line charts + time-range selector) over the same polled data, plus a Queries drill-down ranking statements by a chosen metric.
 5. (Stretch, scoped down per the original note here) a Sessions/blocking view.

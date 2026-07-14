@@ -21,6 +21,8 @@ import {
   alterDomainScaffold,
   profilerActivityQuery,
   getObjectPrivilegesQuery,
+  killAttachmentQuery,
+  rollbackTransactionQuery,
 } from '../shared/queries';
 
 // ── Source-fetching queries (procedure/trigger/view "edit source") ────────────
@@ -386,5 +388,34 @@ suite('profilerActivityQuery', function () {
     assert.ok(sql.includes('MAX(MON$STATEMENT_ID)'), sql);
     assert.ok(sql.includes('WHERE MON$STATE = 1'), sql);
     assert.ok(sql.includes('MAX(MON$TRANSACTION_ID)'), sql);
+  });
+});
+
+// ── killAttachmentQuery / rollbackTransactionQuery ──────────────────────────────
+//
+// Live Profiler phase 3 (docs/roadmap/live-profiler.md) "Kill"/"Rollback" row actions.
+
+suite('killAttachmentQuery / rollbackTransactionQuery', function () {
+
+  test('killAttachmentQuery deletes the given attachment from MON$ATTACHMENTS', function () {
+    const sql = killAttachmentQuery(42);
+    assert.strictEqual(sql, 'DELETE FROM MON$ATTACHMENTS WHERE MON$ATTACHMENT_ID = 42;');
+  });
+
+  test('killAttachmentQuery rejects a non-integer id rather than interpolating it unchecked', function () {
+    assert.throws(() => killAttachmentQuery(1.5));
+    assert.throws(() => killAttachmentQuery(NaN));
+    assert.throws(() => killAttachmentQuery('42; DROP TABLE X' as any));
+  });
+
+  test('rollbackTransactionQuery deletes the given transaction from MON$TRANSACTIONS', function () {
+    const sql = rollbackTransactionQuery(7);
+    assert.strictEqual(sql, 'DELETE FROM MON$TRANSACTIONS WHERE MON$TRANSACTION_ID = 7;');
+  });
+
+  test('rollbackTransactionQuery rejects a non-integer id rather than interpolating it unchecked', function () {
+    assert.throws(() => rollbackTransactionQuery(1.5));
+    assert.throws(() => rollbackTransactionQuery(NaN));
+    assert.throws(() => rollbackTransactionQuery('7; DROP TABLE X' as any));
   });
 });
