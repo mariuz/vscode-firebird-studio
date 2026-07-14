@@ -56,6 +56,7 @@ body {
 }
 
 #main {
+  position: relative;
   flex: 1 1 auto;
   display: flex;
   min-height: 0;
@@ -64,6 +65,53 @@ body {
   position: relative;
   flex: 1 1 auto;
   overflow: hidden;
+}
+#table-wrapper {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0 8px;
+}
+#plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+#plan-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  padding: 6px 8px;
+  background: var(--vscode-editor-lineHighlightBackground, #333);
+  border-bottom: 1px solid var(--vscode-input-border, #555);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+#plan-table th:hover {
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+#plan-table th.fb-sorted::after {
+  content: " \25B4";
+}
+#plan-table th.fb-sorted.fb-desc::after {
+  content: " \25BE";
+}
+#plan-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-input-border, #333);
+  white-space: nowrap;
+}
+#plan-table tr {
+  cursor: pointer;
+}
+#plan-table tr:hover td {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+#plan-table tr.fb-natural-row td.fb-method-cell {
+  color: var(--vscode-errorForeground, #f44);
+}
+#plan-table tr.fb-selected-row td {
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.08));
 }
 #canvas {
   width: 100%;

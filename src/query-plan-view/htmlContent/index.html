@@ -9,11 +9,13 @@
 <body>
   <div id="toolbar">
     <button id="btn-refresh" title="Re-run EXPLAIN for the current query">Refresh</button>
+    <button id="btn-import" class="secondary" title="Load a plan previously saved as text -- no connection needed">Import Plan</button>
     <button id="btn-fit" class="secondary" title="Zoom and center so the whole plan is visible">Fit to View</button>
     <span class="zoom-controls">
       <button id="btn-zoom-out" class="secondary" title="Zoom out">−</button>
       <button id="btn-zoom-in" class="secondary" title="Zoom in">+</button>
     </span>
+    <button id="btn-toggle-table" class="secondary" title="Switch between the diagram and a sortable table">Table View</button>
     <button id="btn-toggle-raw" class="secondary" title="Show/hide the raw PLAN text">Raw Text</button>
     <span class="toolbar-spacer"></span>
     <span id="status"></span>
@@ -32,10 +34,27 @@
           <g id="nodes"></g>
         </g>
       </svg>
-      <div id="loading">Loading plan…</div>
-      <div id="error-banner" style="display:none;"></div>
-      <div id="empty-banner" style="display:none;">No plan to show.</div>
     </div>
+
+    <div id="table-wrapper" style="display:none;">
+      <table id="plan-table">
+        <thead>
+          <tr>
+            <th data-sort="order">#</th>
+            <th data-sort="kind">Node</th>
+            <th data-sort="table">Table</th>
+            <th data-sort="method">Access Method</th>
+            <th data-sort="detail">Index(es)</th>
+            <th data-sort="depth">Depth</th>
+          </tr>
+        </thead>
+        <tbody id="plan-table-body"></tbody>
+      </table>
+    </div>
+
+    <div id="loading">Loading plan…</div>
+    <div id="error-banner" style="display:none;"></div>
+    <div id="empty-banner" style="display:none;">No plan to show.</div>
 
     <div id="detail-panel">
       <h3 id="detail-heading">Node</h3>

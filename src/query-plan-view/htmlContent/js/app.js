@@ -3,18 +3,24 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
 
   const el = {
+    canvasWrapper: document.getElementById("canvas-wrapper"),
     canvas: document.getElementById("canvas"),
     viewport: document.getElementById("viewport"),
     edgesLayer: document.getElementById("edges"),
     nodesLayer: document.getElementById("nodes"),
+    tableWrapper: document.getElementById("table-wrapper"),
+    planTableBody: document.getElementById("plan-table-body"),
+    planTableHeaders: document.querySelectorAll("#plan-table th[data-sort]"),
     loading: document.getElementById("loading"),
     errorBanner: document.getElementById("error-banner"),
     emptyBanner: document.getElementById("empty-banner"),
     status: document.getElementById("status"),
     btnRefresh: document.getElementById("btn-refresh"),
+    btnImport: document.getElementById("btn-import"),
     btnFit: document.getElementById("btn-fit"),
     btnZoomIn: document.getElementById("btn-zoom-in"),
     btnZoomOut: document.getElementById("btn-zoom-out"),
+    btnToggleTable: document.getElementById("btn-toggle-table"),
     btnToggleRaw: document.getElementById("btn-toggle-raw"),
     detailPanel: document.getElementById("detail-panel"),
     detailHeading: document.getElementById("detail-heading"),
@@ -31,7 +37,13 @@
 
   let blocks = [];
   let rawText = "";
-  let selectedLayoutNode = null;
+  let importedFrom = null;
+  /** The underlying PlanNode currently selected -- stable across re-renders (unlike a layout-tree
+   *  node, which is rebuilt fresh on every render() call), so it stays in sync between the
+   *  diagram and table views and survives a re-render after selecting it. */
+  let selectedNode = null;
+  let viewMode = "diagram"; // "diagram" | "table"
+  let tableSort = { column: "order", dir: "asc" };
   const view = { x: 0, y: 0, scale: 1 };
 
   // ── Messaging ──────────────────────────────────────────────────────────────
@@ -51,8 +63,16 @@
   }
   el.btnRefresh.addEventListener("click", requestRefresh);
 
+  el.btnImport.addEventListener("click", () => {
+    vscode.postMessage({ command: "importPlan" });
+  });
+
   function setStatus(text) {
     el.status.textContent = text;
+  }
+
+  function fileBaseName(path) {
+    return String(path).split(/[\\/]/).pop();
   }
 
   // ── Handling plan data ────────────────────────────────────────────────────
@@ -60,12 +80,14 @@
   function handlePlanData(data) {
     el.loading.style.display = "none";
     rawText = data.raw || "";
+    importedFrom = data.importedFrom || null;
 
     if (data.error) {
       el.errorBanner.textContent = data.error;
       el.errorBanner.style.display = "block";
       el.emptyBanner.style.display = "none";
       clearDiagram();
+      el.planTableBody.innerHTML = "";
       setStatus("");
       return;
     }
@@ -75,16 +97,38 @@
     if (blocks.length === 0) {
       el.emptyBanner.style.display = "block";
       clearDiagram();
+      el.planTableBody.innerHTML = "";
       setStatus("");
       return;
     }
     el.emptyBanner.style.display = "none";
-    selectedLayoutNode = null;
+    selectedNode = null;
     el.detailPanel.style.display = "none";
-    render();
-    fitToView();
-    setStatus(`${blocks.length} plan block${blocks.length === 1 ? '' : 's'}`);
+    applyViewMode();
+    setStatus(`${blocks.length} plan block${blocks.length === 1 ? '' : 's'}` +
+      (importedFrom ? ` — imported from ${fileBaseName(importedFrom)}` : ''));
   }
+
+  // ── Diagram / table view toggle ──────────────────────────────────────────
+
+  function applyViewMode() {
+    if (viewMode === "table") {
+      el.canvasWrapper.style.display = "none";
+      el.tableWrapper.style.display = "block";
+      renderTableView();
+    } else {
+      el.tableWrapper.style.display = "none";
+      el.canvasWrapper.style.display = "block";
+      render();
+      fitToView();
+    }
+  }
+
+  el.btnToggleTable.addEventListener("click", () => {
+    viewMode = viewMode === "table" ? "diagram" : "table";
+    el.btnToggleTable.textContent = viewMode === "table" ? "Diagram View" : "Table View";
+    if (blocks.length > 0) { applyViewMode(); }
+  });
 
   function clearDiagram() {
     el.nodesLayer.innerHTML = "";
@@ -182,7 +226,7 @@
     g.setAttribute("class", "plan-node"
       + (isWrapper ? " fb-wrapper" : "")
       + (isNatural ? " fb-natural" : "")
-      + (selectedLayoutNode === layout ? " fb-selected" : ""));
+      + (selectedNode === node ? " fb-selected" : ""));
     g.setAttribute("transform", `translate(${layout.x - NODE_WIDTH / 2},${layout.y})`);
 
     const rect = document.createElementNS(SVG_NS, "rect");
@@ -206,7 +250,7 @@
 
     g.addEventListener("click", event => {
       event.stopPropagation();
-      selectedLayoutNode = layout;
+      selectedNode = node;
       showDetail(node);
       render();
     });
@@ -238,11 +282,105 @@
 
   el.canvas.addEventListener("mousedown", event => {
     if (event.target.closest(".plan-node")) { return; }
-    if (selectedLayoutNode) {
-      selectedLayoutNode = null;
+    if (selectedNode) {
+      selectedNode = null;
       el.detailPanel.style.display = "none";
       render();
     }
+  });
+
+  // ── Table view ────────────────────────────────────────────────────────────
+
+  /** Flattens the parsed tree(s) into one row per node, depth-first, for the sortable table view. */
+  function flattenBlocks(blocksArr) {
+    const rows = [];
+    let counter = 0;
+    function visit(node, depth) {
+      counter += 1;
+      if (node.kind === "scan") {
+        rows.push({
+          order: counter,
+          depth,
+          kind: "Scan",
+          table: node.table,
+          method: node.method,
+          detail: node.method === "INDEX" ? node.indexes.join(", ") : (node.method === "ORDER" ? node.index : ""),
+          node,
+        });
+      } else {
+        rows.push({
+          order: counter,
+          depth,
+          kind: node.kind,
+          table: "",
+          method: "",
+          detail: `${node.children.length} input${node.children.length === 1 ? '' : 's'}`,
+          node,
+        });
+        node.children.forEach(child => visit(child, depth + 1));
+      }
+    }
+    blocksArr.forEach(block => visit(block, 0));
+    return rows;
+  }
+
+  function sortRows(rows, column, dir) {
+    const numeric = column === "order" || column === "depth";
+    const sorted = rows.slice().sort((a, b) => {
+      const av = numeric ? a[column] : String(a[column]).toLowerCase();
+      const bv = numeric ? b[column] : String(b[column]).toLowerCase();
+      if (av < bv) { return -1; }
+      if (av > bv) { return 1; }
+      return 0;
+    });
+    if (dir === "desc") { sorted.reverse(); }
+    return sorted;
+  }
+
+  function renderTableView() {
+    const rows = sortRows(flattenBlocks(blocks), tableSort.column, tableSort.dir);
+    el.planTableBody.innerHTML = "";
+    rows.forEach(row => {
+      const tr = document.createElement("tr");
+      if (row.node === selectedNode) { tr.classList.add("fb-selected-row"); }
+      if (row.method === "NATURAL") { tr.classList.add("fb-natural-row"); }
+
+      const cells = [row.order, row.kind, row.table, row.method, row.detail, row.depth];
+      cells.forEach((text, i) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (i === 3) { td.classList.add("fb-method-cell"); }
+        tr.appendChild(td);
+      });
+
+      tr.addEventListener("click", () => {
+        selectedNode = row.node;
+        showDetail(row.node);
+        renderTableView();
+      });
+
+      el.planTableBody.appendChild(tr);
+    });
+    updateSortHeaders();
+  }
+
+  function updateSortHeaders() {
+    el.planTableHeaders.forEach(th => {
+      th.classList.toggle("fb-sorted", th.dataset.sort === tableSort.column);
+      th.classList.toggle("fb-desc", th.dataset.sort === tableSort.column && tableSort.dir === "desc");
+    });
+  }
+
+  el.planTableHeaders.forEach(th => {
+    th.addEventListener("click", () => {
+      const column = th.dataset.sort;
+      if (tableSort.column === column) {
+        tableSort.dir = tableSort.dir === "asc" ? "desc" : "asc";
+      } else {
+        tableSort = { column, dir: "asc" };
+      }
+      renderTableView();
+    });
   });
 
   // ── Raw text toggle ───────────────────────────────────────────────────────
@@ -341,6 +479,7 @@
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.__test__ = {
       layoutForest, countLeaves, nodeLabel, scanMethodLabel,
+      flattenBlocks, sortRows,
     };
   }
 })();

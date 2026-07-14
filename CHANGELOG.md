@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.58 - 2026-07-14
+
+### Added
+
+- **Graphical Query Plan Visualizer: sortable table view and "Import Plan".** A new "Table View" toolbar toggle shows the same parsed plan as a flat, sortable one-row-per-node table (Node/Table/Access Method/Index(es)/Depth) alongside the existing node diagram, with selection now synced between both views. A new "Import Plan" button loads a plan previously saved as plain text (e.g. copied from `firebird.explainPlan`'s output) with no live connection needed.
+
+### Fixed
+
+- The Query Plan Visualizer's node-diagram selection highlight (`fb-selected`) never actually applied — clicking a node updated the detail panel but the diagram's own re-render compared against a layout-tree object that no longer existed by the time it ran.
+
 ## 0.1.57 - 2026-07-14
 
 ### Added
