@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.60 - 2026-07-14
+
+### Added
+
+- **Query Plan Visualizer: Copilot "Analyze" action.** A "🤖 Analyze" button in both the standalone Query Plan panel and the result-view "Query Plan" tab asks Copilot to explain the execution plan in plain English, flag expensive operations (natural scans, unsupported sorts), and suggest concrete indexes.
+
 ## 0.1.59 - 2026-07-14
 
 ### Added

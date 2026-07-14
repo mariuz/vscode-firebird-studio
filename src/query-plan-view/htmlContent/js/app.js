@@ -22,6 +22,7 @@
     btnZoomOut: document.getElementById("btn-zoom-out"),
     btnToggleTable: document.getElementById("btn-toggle-table"),
     btnToggleRaw: document.getElementById("btn-toggle-raw"),
+    btnAnalyze: document.getElementById("btn-analyze"),
     detailPanel: document.getElementById("detail-panel"),
     detailHeading: document.getElementById("detail-heading"),
     detailBody: document.getElementById("detail-body"),
@@ -67,6 +68,16 @@
     vscode.postMessage({ command: "importPlan" });
   });
 
+  el.btnAnalyze.addEventListener("click", () => {
+    el.btnAnalyze.disabled = true;
+    el.btnAnalyze.textContent = "🤖 Analyzing…";
+    vscode.postMessage({ command: "analyzePlan" });
+    setTimeout(() => {
+      el.btnAnalyze.disabled = false;
+      el.btnAnalyze.textContent = "🤖 Analyze";
+    }, 3000);
+  });
+
   function setStatus(text) {
     el.status.textContent = text;
   }
@@ -88,6 +99,7 @@
       el.emptyBanner.style.display = "none";
       clearDiagram();
       el.planTableBody.innerHTML = "";
+      el.btnAnalyze.disabled = true;
       setStatus("");
       return;
     }
@@ -98,12 +110,14 @@
       el.emptyBanner.style.display = "block";
       clearDiagram();
       el.planTableBody.innerHTML = "";
+      el.btnAnalyze.disabled = true;
       setStatus("");
       return;
     }
     el.emptyBanner.style.display = "none";
     selectedNode = null;
     el.detailPanel.style.display = "none";
+    el.btnAnalyze.disabled = false;
     applyViewMode();
     setStatus(`${blocks.length} plan block${blocks.length === 1 ? '' : 's'}` +
       (importedFrom ? ` — imported from ${fileBaseName(importedFrom)}` : ''));

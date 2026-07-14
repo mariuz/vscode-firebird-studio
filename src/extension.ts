@@ -10,7 +10,7 @@ import {Global} from "./shared/global";
 import {CredentialStore} from "./shared/credential-store";
 import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
-import QueryResultsView, {AnalyzeResultsRequest} from "./result-view";
+import QueryResultsView, {AnalyzeResultsRequest, AnalyzePlanRequest} from "./result-view";
 import {SchemaDesigner} from "./schema-designer";
 import {QueryPlanView} from "./query-plan-view";
 import {ProfilerView} from "./profiler";
@@ -27,7 +27,7 @@ import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
 import {fetchSchemaSnapshot, diffSchemas, renderDiffReport} from "./schema-diff/schema-diff";
 import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
 import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
-import {registerAiQueryActions, runAnalyzeResultsAction} from "./copilot/ai-query-actions";
+import {registerAiQueryActions, runAnalyzeResultsAction, runAnalyzePlanAction} from "./copilot/ai-query-actions";
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
@@ -180,6 +180,14 @@ export function activate(context: ExtensionContext) {
   firebirdQueryResults.on("analyzeResults", (data: AnalyzeResultsRequest) => {
     runAnalyzeResultsAction(data, firebirdDatabaseWords).catch((err: any) => logger.error(err?.message ?? err));
   });
+
+  /* Query Plan Visualizer — Copilot "Analyze" action (phase 6), reachable from both the
+     standalone panel and the result-view "Query Plan" tab; same delegation pattern as above. */
+  const analyzePlanHandler = (data: AnalyzePlanRequest) => {
+    runAnalyzePlanAction(data, firebirdDatabaseWords).catch((err: any) => logger.error(err?.message ?? err));
+  };
+  firebirdQueryPlanView.on("analyzePlan", analyzePlanHandler);
+  firebirdQueryResults.on("analyzePlan", analyzePlanHandler);
 
   /* SQL Notebooks (.fbnb) — serializer + execution controller */
   context.subscriptions.push(...registerSqlNotebook(context));

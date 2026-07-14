@@ -486,6 +486,13 @@ body.vscode-high-contrast table.dataTable thead .sorting {
 .fb-plan-toolbar button:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
 }
+.fb-plan-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.fb-plan-toolbar button:disabled:hover {
+  background: var(--vscode-button-secondaryBackground, #444);
+}
 .fb-plan-zoom-controls {
   display: inline-flex;
   gap: 2px;

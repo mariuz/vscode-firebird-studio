@@ -7,7 +7,11 @@
  * closure create() returns rather than at module scope.
  *
  * No messaging of its own: the caller (app.js) already resolves plan data via the extension host
- * (interpretPlanText() on that side) and pushes the result in through show()/showError().
+ * (interpretPlanText() on that side) and pushes the result in through show()/showLoading(). The
+ * one exception is the "🤖 Analyze" button (phase 6, docs/roadmap/query-plan-visualizer.md) --
+ * it doesn't know the extension-host messaging shape either, so it just calls the `onAnalyze`
+ * callback passed into create(container, { onAnalyze }) with the plan's raw text; the caller
+ * decides what message to post.
  */
 window.FirebirdPlanView = (function () {
   const SVG_NS = "http://www.w3.org/2000/svg";
@@ -47,9 +51,11 @@ window.FirebirdPlanView = (function () {
     zoomWrap.append(btnZoomOut, btnZoomIn);
     const btnToggleTable = el("button", "secondary", "Table View");
     const btnToggleRaw = el("button", "secondary", "Raw Text");
+    const btnAnalyze = el("button", "secondary", "🤖 Analyze");
+    btnAnalyze.disabled = true;
     const spacer = el("span", "fb-plan-toolbar-spacer");
     const status = el("span", "fb-plan-status");
-    toolbar.append(btnFit, zoomWrap, btnToggleTable, btnToggleRaw, spacer, status);
+    toolbar.append(btnFit, zoomWrap, btnToggleTable, btnToggleRaw, btnAnalyze, spacer, status);
 
     const main = el("div", "fb-plan-main");
 
@@ -118,15 +124,16 @@ window.FirebirdPlanView = (function () {
     container.append(toolbar, main, rawOutput);
 
     return {
-      markerId, toolbar, btnFit, btnZoomOut, btnZoomIn, btnToggleTable, btnToggleRaw, status,
+      markerId, toolbar, btnFit, btnZoomOut, btnZoomIn, btnToggleTable, btnToggleRaw, btnAnalyze, status,
       canvasWrapper, svg, viewport, edgesLayer, nodesLayer,
       tableWrapper, tbody, headerCells,
       errorBanner, emptyBanner, detailPanel, detailHeading, detailBody, rawOutput,
     };
   }
 
-  function create(container) {
+  function create(container, options) {
     const dom = buildDom(container);
+    const onAnalyze = (options && options.onAnalyze) || null;
 
     // ── Per-instance state ────────────────────────────────────────────────────
     let blocks = [];
@@ -137,6 +144,20 @@ window.FirebirdPlanView = (function () {
     const view = { x: 0, y: 0, scale: 1 };
 
     function setStatus(text) { dom.status.textContent = text; }
+
+    if (onAnalyze) {
+      dom.btnAnalyze.addEventListener("click", () => {
+        dom.btnAnalyze.disabled = true;
+        dom.btnAnalyze.textContent = "🤖 Analyzing…";
+        onAnalyze(rawText);
+        setTimeout(() => {
+          dom.btnAnalyze.disabled = false;
+          dom.btnAnalyze.textContent = "🤖 Analyze";
+        }, 3000);
+      });
+    } else {
+      dom.btnAnalyze.style.display = "none";
+    }
 
     // ── Layout: each block is a tree (scans are leaves; JOIN/HASH/MERGE/SORT branch) ──
 
@@ -495,6 +516,7 @@ window.FirebirdPlanView = (function () {
       dom.emptyBanner.style.display = "none";
       clearDiagram();
       dom.tbody.innerHTML = "";
+      dom.btnAnalyze.disabled = true;
       setStatus("Loading…");
     }
 
@@ -507,6 +529,7 @@ window.FirebirdPlanView = (function () {
         dom.emptyBanner.style.display = "none";
         clearDiagram();
         dom.tbody.innerHTML = "";
+        dom.btnAnalyze.disabled = true;
         setStatus("");
         return;
       }
@@ -517,12 +540,14 @@ window.FirebirdPlanView = (function () {
         dom.emptyBanner.style.display = "block";
         clearDiagram();
         dom.tbody.innerHTML = "";
+        dom.btnAnalyze.disabled = true;
         setStatus("");
         return;
       }
       dom.emptyBanner.style.display = "none";
       selectedNode = null;
       dom.detailPanel.style.display = "none";
+      dom.btnAnalyze.disabled = false;
       applyViewMode();
       setStatus(`${blocks.length} plan block${blocks.length === 1 ? '' : 's'}`);
     }

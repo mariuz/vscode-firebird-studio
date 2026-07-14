@@ -43,6 +43,17 @@ export interface AnalyzeResultsRequest {
   rows: string[][];
 }
 
+/**
+ * Payload for the "analyzePlan" message. Sent by both this webview's "Query Plan" tab (`sql`
+ * always known -- the tab only exists alongside a specific statement) and, via the same
+ * EventEmitter base, QueryPlanView's standalone panel (`sql` often unset -- see its own emit call
+ * for why), so `sql` is optional here rather than required.
+ */
+export interface AnalyzePlanRequest {
+  sql?: string;
+  plan: string;
+}
+
 export default class ResultView extends QueryResultsView implements Disposable {
   private resultSet?: ResultSet;
   private resultTableName?: string;
@@ -113,6 +124,13 @@ export default class ResultView extends QueryResultsView implements Disposable {
 
     if (message.command === "getQueryPlan") {
       this.handleGetQueryPlan(message.data as { requestId: string; sql: string });
+      return;
+    }
+
+    if (message.command === "analyzePlan") {
+      // Same delegation pattern as "analyzeResults" above -- the "🤖 Analyze" button inside a
+      // "Query Plan" tab (phase 6, docs/roadmap/query-plan-visualizer.md).
+      this.emit("analyzePlan", message.data as AnalyzePlanRequest);
       return;
     }
   }

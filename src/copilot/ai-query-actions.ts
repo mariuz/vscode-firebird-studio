@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { KeywordsDb } from '../language-server/db-words.provider';
 import { buildSchemaContext } from './schema-context';
-import { buildOptimizeMessages, buildExplainMessages, buildAnalyzeResultsMessages } from './prompts';
+import { buildOptimizeMessages, buildExplainMessages, buildAnalyzeResultsMessages, buildAnalyzePlanMessages } from './prompts';
 import { getActiveEditorSql } from './copilot-chat-participant';
 import { logger } from '../logger/logger';
 
@@ -89,6 +89,30 @@ export async function runAnalyzeResultsAction(
     const schema = await getSchemaBlock(schemaProvider);
     const messages = buildAnalyzeResultsMessages(data.sql, data.headers, data.rows, schema);
     await sendToModelAndShowResult(messages, 'Analyzing results…');
+}
+
+/**
+ * "Query Plan Visualizer — Copilot 'Analyze' action" (phase 6, docs/roadmap/query-plan-visualizer.md).
+ * Reachable from both the standalone QueryPlanView panel and the result-view "Query Plan" tab
+ * (both emit "analyzePlan" on their EventEmitter base, wired up in extension.ts, the same pattern
+ * runAnalyzeResultsAction() above already established). `data.sql` is omitted by QueryPlanView
+ * when it doesn't know the exact SQL an already-fetched plan came from (its open() is normally
+ * called with no explicit SQL) — falls back to whatever's in the active SQL editor right now, the
+ * same resolution every other AI Query Action in this file already uses.
+ */
+export async function runAnalyzePlanAction(
+    data: { sql?: string; plan: string },
+    schemaProvider: KeywordsDb
+): Promise<void> {
+    if (!data.plan || !data.plan.trim()) {
+        logger.showError('No query plan to analyze.');
+        return;
+    }
+
+    const sql = data.sql || getActiveEditorSql();
+    const schema = await getSchemaBlock(schemaProvider);
+    const messages = buildAnalyzePlanMessages(sql, data.plan, schema);
+    await sendToModelAndShowResult(messages, 'Analyzing query plan…');
 }
 
 function handleModelError(err: unknown): void {

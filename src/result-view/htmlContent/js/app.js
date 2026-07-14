@@ -203,7 +203,11 @@ $(() => {
         const shown = $planPanel.toggle().is(":visible");
         $planToggle.toggleClass("active", shown);
         if (!shown) { return; }
-        if (!planView) { planView = window.FirebirdPlanView.create($planPanel[0]); }
+        if (!planView) {
+          planView = window.FirebirdPlanView.create($planPanel[0], {
+            onAnalyze: raw => vscode.postMessage({ command: "analyzePlan", data: { sql, plan: raw } }),
+          });
+        }
         if (!planRequested) {
           planRequested = true;
           planView.showLoading();

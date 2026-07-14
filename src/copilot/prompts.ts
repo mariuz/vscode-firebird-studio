@@ -95,3 +95,31 @@ export function buildAnalyzeResultsMessages(
         ),
     ];
 }
+
+/**
+ * "Query Plan Visualizer — Copilot 'Analyze' action" (phase 6, docs/roadmap/query-plan-visualizer.md).
+ * `sql` is best-effort — reachable from both the standalone QueryPlanView panel (which often
+ * doesn't know the exact SQL that produced an already-fetched plan; see runAnalyzePlanAction()'s
+ * getActiveEditorSql() fallback) and the result-view "Query Plan" tab (which always knows it
+ * exactly, since the tab only exists alongside a specific statement's result set) — so an empty
+ * string is tolerated rather than required.
+ */
+export function buildAnalyzePlanMessages(
+    sql: string,
+    planText: string,
+    schemaBlock: string
+): vscode.LanguageModelChatMessage[] {
+    const sqlBlock = sql.trim() ? '```sql\n' + sql + '\n```\n\n' : '';
+    return [
+        vscode.LanguageModelChatMessage.User(systemPrompt(schemaBlock)),
+        vscode.LanguageModelChatMessage.User(
+            'The user is looking at a Firebird query execution plan' + (sql.trim() ? ' for the query below' : '') + '. ' +
+            'Explain what the plan is doing in plain English — which tables are scanned and how, which ' +
+            'indexes are used, how joins/sorts are performed. Flag anything that looks expensive ' +
+            '(natural/full-table scans on tables that could use an index, sorts without a supporting ' +
+            'index, etc.) and suggest concrete optimizations — e.g. specific indexes to add — where ' +
+            'relevant. Be concise: a short paragraph or a few bullet points, not an exhaustive essay.\n\n' +
+            sqlBlock + 'Execution plan:\n```\n' + planText + '\n```'
+        ),
+    ];
+}

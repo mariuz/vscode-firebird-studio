@@ -34,6 +34,13 @@ body {
 #toolbar button:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
 }
+#toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#toolbar button:disabled:hover {
+  background: var(--vscode-button-secondaryBackground, #444);
+}
 #toolbar button.secondary {
   background: var(--vscode-button-secondaryBackground, #444);
   color: var(--vscode-button-secondaryForeground, #ccc);

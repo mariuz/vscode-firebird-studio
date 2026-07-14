@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { systemPrompt, buildOptimizeMessages, buildExplainMessages, buildAnalyzeResultsMessages, buildMigrateMessages } from '../copilot/prompts';
+import { systemPrompt, buildOptimizeMessages, buildExplainMessages, buildAnalyzeResultsMessages, buildMigrateMessages, buildAnalyzePlanMessages } from '../copilot/prompts';
 
 suite('copilot/prompts – systemPrompt()', function () {
   test('mentions Firebird SQL and code-block formatting with no schema', function () {
@@ -64,5 +64,33 @@ suite('copilot/prompts – buildAnalyzeResultsMessages()', function () {
     assert.ok(userContent.includes('| ID | NAME |'));
     assert.ok(userContent.includes('| 1 | Alice |'));
     assert.ok(userContent.toLowerCase().includes('summarize'));
+  });
+});
+
+// Query Plan Visualizer phase 6 (docs/roadmap/query-plan-visualizer.md) — the "🤖 Analyze"
+// action on a rendered plan, reachable from both QueryPlanView and ResultView's "Query Plan" tab.
+suite('copilot/prompts – buildAnalyzePlanMessages()', function () {
+  test('includes both the SQL and the raw plan text when SQL is known', function () {
+    const messages = buildAnalyzePlanMessages('SELECT * FROM EMP', 'PLAN (EMP NATURAL)', 'schema-block');
+    assert.strictEqual(messages.length, 2);
+    assert.ok((messages[0].content as unknown as string).includes('schema-block'));
+    const userContent = messages[1].content as unknown as string;
+    assert.ok(userContent.includes('```sql\nSELECT * FROM EMP\n```'));
+    assert.ok(userContent.includes('```\nPLAN (EMP NATURAL)\n```'));
+    assert.ok(userContent.toLowerCase().includes('execution plan'));
+  });
+
+  test('omits the SQL code block entirely when the SQL is unknown, rather than showing an empty one', function () {
+    const messages = buildAnalyzePlanMessages('', 'PLAN (EMP NATURAL)', 'schema-block');
+    const userContent = messages[1].content as unknown as string;
+    assert.ok(!userContent.includes('```sql'));
+    assert.ok(userContent.includes('```\nPLAN (EMP NATURAL)\n```'));
+  });
+
+  test('mentions flagging expensive operations and suggesting indexes', function () {
+    const messages = buildAnalyzePlanMessages('SELECT 1', 'PLAN (T NATURAL)', '');
+    const userContent = messages[1].content as unknown as string;
+    assert.ok(userContent.toLowerCase().includes('natural'));
+    assert.ok(userContent.toLowerCase().includes('index'));
   });
 });
