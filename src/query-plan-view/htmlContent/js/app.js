@@ -11,6 +11,8 @@
     tableWrapper: document.getElementById("table-wrapper"),
     planTableBody: document.getElementById("plan-table-body"),
     planTableHeaders: document.querySelectorAll("#plan-table th[data-sort]"),
+    icicleWrapper: document.getElementById("icicle-wrapper"),
+    icicleChart: document.getElementById("icicle-chart"),
     loading: document.getElementById("loading"),
     errorBanner: document.getElementById("error-banner"),
     emptyBanner: document.getElementById("empty-banner"),
@@ -20,7 +22,7 @@
     btnFit: document.getElementById("btn-fit"),
     btnZoomIn: document.getElementById("btn-zoom-in"),
     btnZoomOut: document.getElementById("btn-zoom-out"),
-    btnToggleTable: document.getElementById("btn-toggle-table"),
+    viewModeBtns: document.querySelectorAll(".view-mode-btn"),
     btnToggleRaw: document.getElementById("btn-toggle-raw"),
     btnAnalyze: document.getElementById("btn-analyze"),
     detailPanel: document.getElementById("detail-panel"),
@@ -99,6 +101,7 @@
       el.emptyBanner.style.display = "none";
       clearDiagram();
       el.planTableBody.innerHTML = "";
+      el.icicleChart.innerHTML = "";
       el.btnAnalyze.disabled = true;
       setStatus("");
       return;
@@ -110,6 +113,7 @@
       el.emptyBanner.style.display = "block";
       clearDiagram();
       el.planTableBody.innerHTML = "";
+      el.icicleChart.innerHTML = "";
       el.btnAnalyze.disabled = true;
       setStatus("");
       return;
@@ -123,25 +127,29 @@
       (importedFrom ? ` — imported from ${fileBaseName(importedFrom)}` : ''));
   }
 
-  // ── Diagram / table view toggle ──────────────────────────────────────────
+  // ── Diagram / table / icicle view switching ──────────────────────────────
 
   function applyViewMode() {
+    el.canvasWrapper.style.display = viewMode === "diagram" ? "block" : "none";
+    el.tableWrapper.style.display = viewMode === "table" ? "block" : "none";
+    el.icicleWrapper.style.display = viewMode === "icicle" ? "block" : "none";
+    el.viewModeBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === viewMode));
+
     if (viewMode === "table") {
-      el.canvasWrapper.style.display = "none";
-      el.tableWrapper.style.display = "block";
       renderTableView();
+    } else if (viewMode === "icicle") {
+      renderIcicleView();
     } else {
-      el.tableWrapper.style.display = "none";
-      el.canvasWrapper.style.display = "block";
       render();
       fitToView();
     }
   }
 
-  el.btnToggleTable.addEventListener("click", () => {
-    viewMode = viewMode === "table" ? "diagram" : "table";
-    el.btnToggleTable.textContent = viewMode === "table" ? "Diagram View" : "Table View";
-    if (blocks.length > 0) { applyViewMode(); }
+  el.viewModeBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      viewMode = btn.dataset.mode;
+      if (blocks.length > 0) { applyViewMode(); }
+    });
   });
 
   function clearDiagram() {
@@ -397,6 +405,88 @@
     });
   });
 
+  // ── Icicle chart view ─────────────────────────────────────────────────────
+  //
+  // Firebird's legacy PLAN text carries no cost/row-count estimates at all (unlike a modern
+  // optimizer's plan output), so there's no real "cost" to chart. This uses each node's share of
+  // the plan's total leaf scans (the same countLeaves() weight layoutNode() already uses for the
+  // diagram's node spacing) as the bar width instead -- a structural proxy, not a cost one. Rows
+  // stack by depth (root at top); natural scans are colored the same warning color the diagram
+  // and table already use, since for this plan format "which scans are unindexed" is the closest
+  // available answer to "what looks expensive."
+
+  const ICICLE_ROW_HEIGHT = 40;
+
+  /** One segment per node: depth (row), x0/width as a 0..1 fraction of the chart's total width. */
+  function icicleLayout(blocksArr) {
+    const totalLeaves = blocksArr.reduce((sum, b) => sum + countLeaves(b), 0) || 1;
+    const segments = [];
+
+    function visit(node, depth, x0, width) {
+      segments.push({ node, depth, x0, width });
+      if (node.kind === "scan") { return; }
+      const totalChildLeaves = node.children.reduce((sum, c) => sum + countLeaves(c), 0) || 1;
+      let childX = x0;
+      node.children.forEach(child => {
+        const childWidth = width * (countLeaves(child) / totalChildLeaves);
+        visit(child, depth + 1, childX, childWidth);
+        childX += childWidth;
+      });
+    }
+
+    let xCursor = 0;
+    blocksArr.forEach(block => {
+      const width = countLeaves(block) / totalLeaves;
+      visit(block, 0, xCursor, width);
+      xCursor += width;
+    });
+    return segments;
+  }
+
+  function renderIcicleView() {
+    const segments = icicleLayout(blocks);
+    const maxDepth = segments.reduce((m, s) => Math.max(m, s.depth), 0);
+    el.icicleChart.innerHTML = "";
+    el.icicleChart.style.height = `${(maxDepth + 1) * ICICLE_ROW_HEIGHT}px`;
+
+    segments.forEach(seg => {
+      const node = seg.node;
+      const label = nodeLabel(node);
+      const isWrapper = node.kind !== "scan";
+      const isNatural = node.kind === "scan" && node.method === "NATURAL";
+
+      const div = document.createElement("div");
+      div.className = "icicle-segment"
+        + (isWrapper ? " fb-wrapper" : "")
+        + (isNatural ? " fb-natural" : "")
+        + (selectedNode === node ? " fb-selected" : "");
+      div.style.top = `${seg.depth * ICICLE_ROW_HEIGHT}px`;
+      div.style.left = `${seg.x0 * 100}%`;
+      div.style.width = `${seg.width * 100}%`;
+      div.style.height = `${ICICLE_ROW_HEIGHT}px`;
+      div.title = [label.title, label.subtitle].filter(Boolean).join(" — ");
+      div.textContent = label.title;
+
+      div.addEventListener("click", event => {
+        event.stopPropagation();
+        selectedNode = node;
+        showDetail(node);
+        renderIcicleView();
+      });
+
+      el.icicleChart.appendChild(div);
+    });
+  }
+
+  el.icicleWrapper.addEventListener("mousedown", event => {
+    if (event.target.closest(".icicle-segment")) { return; }
+    if (selectedNode) {
+      selectedNode = null;
+      el.detailPanel.style.display = "none";
+      renderIcicleView();
+    }
+  });
+
   // ── Raw text toggle ───────────────────────────────────────────────────────
 
   el.btnToggleRaw.addEventListener("click", () => {
@@ -493,7 +583,7 @@
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.__test__ = {
       layoutForest, countLeaves, nodeLabel, scanMethodLabel,
-      flattenBlocks, sortRows,
+      flattenBlocks, sortRows, icicleLayout,
     };
   }
 })();

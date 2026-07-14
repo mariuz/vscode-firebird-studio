@@ -502,6 +502,14 @@ body.vscode-high-contrast table.dataTable thead .sorting {
   text-align: center;
   padding: 3px 0;
 }
+.fb-plan-view-mode-controls {
+  display: inline-flex;
+  gap: 2px;
+}
+.fb-plan-view-mode-btn.active {
+  background: var(--vscode-statusBarItem-prominentBackground, #00457a);
+  color: var(--vscode-button-foreground, #fff);
+}
 .fb-plan-toolbar-spacer {
   flex: 1 1 auto;
 }
@@ -619,6 +627,47 @@ body.vscode-high-contrast table.dataTable thead .sorting {
 }
 .fb-plan-table tr.fb-plan-row-selected td {
   background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.08));
+}
+
+.fb-plan-icicle-wrapper {
+  height: 100%;
+  overflow: auto;
+  padding: 10px 8px;
+}
+.fb-plan-icicle-chart {
+  position: relative;
+  min-width: 100%;
+}
+.fb-plan-icicle-segment {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-editor-background, #1e1e1e);
+  border-radius: 2px;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  background: var(--vscode-editorWidget-background, #252526);
+  color: var(--vscode-editor-foreground, #ccc);
+}
+.fb-plan-icicle-segment:hover {
+  filter: brightness(1.2);
+}
+.fb-plan-icicle-segment.fb-plan-wrapper {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+.fb-plan-icicle-segment.fb-plan-natural {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-inputValidation-errorForeground, #ff8080);
+}
+.fb-plan-icicle-segment.fb-plan-node-selected {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -2px;
 }
 
 .fb-plan-detail-panel {

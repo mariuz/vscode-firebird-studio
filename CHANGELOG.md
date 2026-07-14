@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.61 - 2026-07-14
+
+### Added
+
+- **Query Plan Visualizer: icicle chart view.** A third "Icicle" view mode (alongside Diagram and Table) renders the plan as stacked horizontal bars, sized by each node's share of the plan's scans (Firebird's plan text has no cost/row estimates, so this is a structural proxy) and color-flagging natural/unindexed scans — in both the standalone panel and the result-view "Query Plan" tab. This completes every phase of the original Query Plan Visualizer design doc except the actual-vs-estimated overlay.
+
 ## 0.1.60 - 2026-07-14
 
 ### Added

@@ -15,7 +15,11 @@
       <button id="btn-zoom-out" class="secondary" title="Zoom out">−</button>
       <button id="btn-zoom-in" class="secondary" title="Zoom in">+</button>
     </span>
-    <button id="btn-toggle-table" class="secondary" title="Switch between the diagram and a sortable table">Table View</button>
+    <span class="view-mode-controls">
+      <button class="secondary view-mode-btn active" data-mode="diagram" title="Node-link diagram">Diagram</button>
+      <button class="secondary view-mode-btn" data-mode="table" title="Sortable one-row-per-node table">Table</button>
+      <button class="secondary view-mode-btn" data-mode="icicle" title="Icicle chart -- bar width shows each node's share of the plan's scans, nesting shows depth; Firebird's plan text has no cost/row estimates, so this highlights structure and natural (unindexed) scans, not literal cost">Icicle</button>
+    </span>
     <button id="btn-toggle-raw" class="secondary" title="Show/hide the raw PLAN text">Raw Text</button>
     <button id="btn-analyze" class="secondary" title="Ask Copilot to explain this plan and suggest optimizations" disabled>🤖 Analyze</button>
     <span class="toolbar-spacer"></span>
@@ -51,6 +55,10 @@
         </thead>
         <tbody id="plan-table-body"></tbody>
       </table>
+    </div>
+
+    <div id="icicle-wrapper" style="display:none;">
+      <div id="icicle-chart"></div>
     </div>
 
     <div id="loading">Loading plan…</div>

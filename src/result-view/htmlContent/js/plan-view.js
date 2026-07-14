@@ -49,13 +49,25 @@ window.FirebirdPlanView = (function () {
     const btnZoomOut = el("button", "secondary", "−");
     const btnZoomIn = el("button", "secondary", "+");
     zoomWrap.append(btnZoomOut, btnZoomIn);
-    const btnToggleTable = el("button", "secondary", "Table View");
+
+    const viewModeWrap = el("span", "fb-plan-view-mode-controls");
+    const viewModeBtns = ["diagram", "table", "icicle"].map(mode => {
+      const label = mode === "diagram" ? "Diagram" : (mode === "table" ? "Table" : "Icicle");
+      const btn = el("button", "secondary fb-plan-view-mode-btn" + (mode === "diagram" ? " active" : ""), label);
+      btn.dataset.mode = mode;
+      return btn;
+    });
+    if (viewModeBtns[2]) {
+      viewModeBtns[2].title = "Bar width shows each node's share of the plan's scans (Firebird's plan text has no cost/row estimates, so this is a structural proxy, not a literal cost); natural (unindexed) scans are highlighted.";
+    }
+    viewModeWrap.append(...viewModeBtns);
+
     const btnToggleRaw = el("button", "secondary", "Raw Text");
     const btnAnalyze = el("button", "secondary", "🤖 Analyze");
     btnAnalyze.disabled = true;
     const spacer = el("span", "fb-plan-toolbar-spacer");
     const status = el("span", "fb-plan-status");
-    toolbar.append(btnFit, zoomWrap, btnToggleTable, btnToggleRaw, btnAnalyze, spacer, status);
+    toolbar.append(btnFit, zoomWrap, viewModeWrap, btnToggleRaw, btnAnalyze, spacer, status);
 
     const main = el("div", "fb-plan-main");
 
@@ -105,6 +117,11 @@ window.FirebirdPlanView = (function () {
     table.append(thead, tbody);
     tableWrapper.appendChild(table);
 
+    const icicleWrapper = el("div", "fb-plan-icicle-wrapper");
+    icicleWrapper.style.display = "none";
+    const icicleChart = el("div", "fb-plan-icicle-chart");
+    icicleWrapper.appendChild(icicleChart);
+
     const errorBanner = el("div", "fb-plan-error-banner");
     errorBanner.style.display = "none";
     const emptyBanner = el("div", "fb-plan-empty-banner", "No plan to show.");
@@ -116,7 +133,7 @@ window.FirebirdPlanView = (function () {
     const detailBody = document.createElement("dl");
     detailPanel.append(detailHeading, detailBody);
 
-    main.append(canvasWrapper, tableWrapper, errorBanner, emptyBanner, detailPanel);
+    main.append(canvasWrapper, tableWrapper, icicleWrapper, errorBanner, emptyBanner, detailPanel);
 
     const rawOutput = el("pre", "fb-plan-raw-output");
     rawOutput.style.display = "none";
@@ -124,9 +141,10 @@ window.FirebirdPlanView = (function () {
     container.append(toolbar, main, rawOutput);
 
     return {
-      markerId, toolbar, btnFit, btnZoomOut, btnZoomIn, btnToggleTable, btnToggleRaw, btnAnalyze, status,
+      markerId, toolbar, btnFit, btnZoomOut, btnZoomIn, viewModeBtns, btnToggleRaw, btnAnalyze, status,
       canvasWrapper, svg, viewport, edgesLayer, nodesLayer,
       tableWrapper, tbody, headerCells,
+      icicleWrapper, icicleChart,
       errorBanner, emptyBanner, detailPanel, detailHeading, detailBody, rawOutput,
     };
   }
@@ -396,25 +414,109 @@ window.FirebirdPlanView = (function () {
       });
     });
 
-    // ── Diagram / table view toggle ──────────────────────────────────────────
+    // ── Diagram / table / icicle view switching ──────────────────────────────
 
     function applyViewMode() {
+      dom.canvasWrapper.style.display = viewMode === "diagram" ? "block" : "none";
+      dom.tableWrapper.style.display = viewMode === "table" ? "block" : "none";
+      dom.icicleWrapper.style.display = viewMode === "icicle" ? "block" : "none";
+      dom.viewModeBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === viewMode));
+
       if (viewMode === "table") {
-        dom.canvasWrapper.style.display = "none";
-        dom.tableWrapper.style.display = "block";
         renderTableView();
+      } else if (viewMode === "icicle") {
+        renderIcicleView();
       } else {
-        dom.tableWrapper.style.display = "none";
-        dom.canvasWrapper.style.display = "block";
         render();
         fitToView();
       }
     }
 
-    dom.btnToggleTable.addEventListener("click", () => {
-      viewMode = viewMode === "table" ? "diagram" : "table";
-      dom.btnToggleTable.textContent = viewMode === "table" ? "Diagram View" : "Table View";
-      if (blocks.length > 0) { applyViewMode(); }
+    dom.viewModeBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        viewMode = btn.dataset.mode;
+        if (blocks.length > 0) { applyViewMode(); }
+      });
+    });
+
+    // ── Icicle chart view ─────────────────────────────────────────────────────
+    //
+    // Firebird's legacy PLAN text carries no cost/row-count estimates at all, so there's no real
+    // "cost" to chart. This uses each node's share of the plan's total leaf scans (the same
+    // countLeaves() weight layoutNode() already uses for the diagram's node spacing) as the bar
+    // width instead -- a structural proxy, not a cost one. Rows stack by depth (root at top);
+    // natural scans get the same warning color the diagram/table already use, since for this plan
+    // format "which scans are unindexed" is the closest available answer to "what looks expensive."
+
+    const ICICLE_ROW_HEIGHT = 40;
+
+    /** One segment per node: depth (row), x0/width as a 0..1 fraction of the chart's total width. */
+    function icicleLayout(blocksArr) {
+      const totalLeaves = blocksArr.reduce((sum, b) => sum + countLeaves(b), 0) || 1;
+      const segments = [];
+
+      function visit(node, depth, x0, width) {
+        segments.push({ node, depth, x0, width });
+        if (node.kind === "scan") { return; }
+        const totalChildLeaves = node.children.reduce((sum, c) => sum + countLeaves(c), 0) || 1;
+        let childX = x0;
+        node.children.forEach(child => {
+          const childWidth = width * (countLeaves(child) / totalChildLeaves);
+          visit(child, depth + 1, childX, childWidth);
+          childX += childWidth;
+        });
+      }
+
+      let xCursor = 0;
+      blocksArr.forEach(block => {
+        const width = countLeaves(block) / totalLeaves;
+        visit(block, 0, xCursor, width);
+        xCursor += width;
+      });
+      return segments;
+    }
+
+    function renderIcicleView() {
+      const segments = icicleLayout(blocks);
+      const maxDepth = segments.reduce((m, s) => Math.max(m, s.depth), 0);
+      dom.icicleChart.innerHTML = "";
+      dom.icicleChart.style.height = `${(maxDepth + 1) * ICICLE_ROW_HEIGHT}px`;
+
+      segments.forEach(seg => {
+        const node = seg.node;
+        const label = nodeLabel(node);
+        const isWrapper = node.kind !== "scan";
+        const isNatural = node.kind === "scan" && node.method === "NATURAL";
+
+        const segEl = el("div", "fb-plan-icicle-segment"
+          + (isWrapper ? " fb-plan-wrapper" : "")
+          + (isNatural ? " fb-plan-natural" : "")
+          + (selectedNode === node ? " fb-plan-node-selected" : ""));
+        segEl.style.top = `${seg.depth * ICICLE_ROW_HEIGHT}px`;
+        segEl.style.left = `${seg.x0 * 100}%`;
+        segEl.style.width = `${seg.width * 100}%`;
+        segEl.style.height = `${ICICLE_ROW_HEIGHT}px`;
+        segEl.title = [label.title, label.subtitle].filter(Boolean).join(" — ");
+        segEl.textContent = label.title;
+
+        segEl.addEventListener("click", event => {
+          event.stopPropagation();
+          selectedNode = node;
+          showDetail(node);
+          renderIcicleView();
+        });
+
+        dom.icicleChart.appendChild(segEl);
+      });
+    }
+
+    dom.icicleWrapper.addEventListener("mousedown", event => {
+      if (event.target.closest(".fb-plan-icicle-segment")) { return; }
+      if (selectedNode) {
+        selectedNode = null;
+        dom.detailPanel.style.display = "none";
+        renderIcicleView();
+      }
     });
 
     // ── Raw text toggle ───────────────────────────────────────────────────────
@@ -516,6 +618,7 @@ window.FirebirdPlanView = (function () {
       dom.emptyBanner.style.display = "none";
       clearDiagram();
       dom.tbody.innerHTML = "";
+      dom.icicleChart.innerHTML = "";
       dom.btnAnalyze.disabled = true;
       setStatus("Loading…");
     }
@@ -529,6 +632,7 @@ window.FirebirdPlanView = (function () {
         dom.emptyBanner.style.display = "none";
         clearDiagram();
         dom.tbody.innerHTML = "";
+        dom.icicleChart.innerHTML = "";
         dom.btnAnalyze.disabled = true;
         setStatus("");
         return;
@@ -540,6 +644,7 @@ window.FirebirdPlanView = (function () {
         dom.emptyBanner.style.display = "block";
         clearDiagram();
         dom.tbody.innerHTML = "";
+        dom.icicleChart.innerHTML = "";
         dom.btnAnalyze.disabled = true;
         setStatus("");
         return;
@@ -552,7 +657,7 @@ window.FirebirdPlanView = (function () {
       setStatus(`${blocks.length} plan block${blocks.length === 1 ? '' : 's'}`);
     }
 
-    return { show, showLoading, __test__: { flattenBlocks, sortRows, layoutForest, countLeaves, nodeLabel, scanMethodLabel } };
+    return { show, showLoading, __test__: { flattenBlocks, sortRows, layoutForest, countLeaves, nodeLabel, scanMethodLabel, icicleLayout } };
   }
 
   return { create };
