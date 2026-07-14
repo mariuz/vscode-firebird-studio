@@ -6,6 +6,7 @@ import { QueryResultsView, Message } from "./queryResultsView";
 import { BatchResult, Driver, extractTableNames } from "../shared/driver";
 import { getPrimaryKeyColumnsQuery } from "../shared/queries";
 import { RowChange, buildStatementForChange } from "../shared/row-edit";
+import { interpretPlanText, PlanInterpretation } from "../shared/plan-parser";
 import { logger } from "../logger/logger";
 import { getOptions } from "../config";
 
@@ -47,6 +48,10 @@ export default class ResultView extends QueryResultsView implements Disposable {
   private resultTableName?: string;
   private batchResults?: PreparedResultSet[];
   private recordsPerPage!: string;
+  /** Keyed by statement SQL text, so switching back to an already-viewed "Query Plan" tab (or
+   *  another statement that happens to share identical SQL) doesn't re-fetch. Cleared on every
+   *  new display()/displayBatch() — a fresh set of results means any cached plan is stale. */
+  private planCache = new Map<string, PlanInterpretation>();
 
   constructor(private extensionPath: string) {
     super("resultview", "Firebird Query Results");
@@ -58,6 +63,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
     this.resultTableName = tableName;
     this.batchResults = undefined;
     this.recordsPerPage = recordsPerPage;
+    this.planCache.clear();
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
   }
 
@@ -66,6 +72,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
     this.batchResults = batchResults.map(r => this.prepareBatchResult(r));
     this.resultSet = undefined;
     this.recordsPerPage = recordsPerPage;
+    this.planCache.clear();
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
   }
 
@@ -103,6 +110,32 @@ export default class ResultView extends QueryResultsView implements Disposable {
       this.emit("analyzeResults", message.data as AnalyzeResultsRequest);
       return;
     }
+
+    if (message.command === "getQueryPlan") {
+      this.handleGetQueryPlan(message.data as { requestId: string; sql: string });
+      return;
+    }
+  }
+
+  /**
+   * Phase 4 of docs/roadmap/query-plan-visualizer.md — the per-statement "Query Plan" tab, as an
+   * alternative to opening the standalone QueryPlanView panel via firebird.showEstimatedPlan.
+   * Fetches/parses through the exact same interpretPlanText() path that panel uses, so the two
+   * surfaces render identically for the same plan.
+   */
+  private async handleGetQueryPlan(data: { requestId: string; sql: string }): Promise<void> {
+    const { requestId, sql } = data;
+    let result = this.planCache.get(sql);
+    if (!result) {
+      try {
+        const planText = await Driver.getQueryPlan(sql);
+        result = interpretPlanText(planText);
+      } catch (err: any) {
+        result = { error: err?.message ?? String(err), raw: "" };
+      }
+      this.planCache.set(sql, result);
+    }
+    this.send({ command: "queryPlanResult", data: { requestId, ...result } });
   }
 
   /** Looks up a table's primary key columns, for targeting UPDATE/DELETE at a single row. */

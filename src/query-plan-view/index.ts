@@ -4,23 +4,17 @@ import { readFile } from "fs/promises";
 import { QueryResultsView, Message } from "../result-view/queryResultsView";
 import { ConnectionOptions } from "../interfaces";
 import { Driver } from "../shared/driver";
-import { parsePlan, PlanNode } from "../shared/plan-parser";
+import { interpretPlanText } from "../shared/plan-parser";
 import { logger } from "../logger/logger";
-
-/**
- * Prefixes NativeClient/NodeClient's getQueryPlan() uses for its "this isn't a real plan"
- * fallback text (see driver.ts) — not real Firebird plan syntax, so parsePlan() would just throw
- * on it anyway, but checking first lets this show a clearer, more actionable message.
- */
-const FALLBACK_PREFIXES = ["-- PLAN not available", "-- Firebird Index Metadata"];
 
 /**
  * Graphical execution-plan viewer: parses Firebird's legacy `PLAN (...)` syntax
  * (`src/shared/plan-parser.ts`) and renders it as a node diagram, in place of dumping the plan
- * as plain text into an editor (which `firebird.explainPlan` still does, unchanged). Phases 2
- * and (partially) 5 of `docs/roadmap/query-plan-visualizer.md` — estimated plan only, no
- * actual-plan monitoring overlay, result-view tab integration, or Copilot analysis yet (see that
- * doc for what's deferred and why).
+ * as plain text into an editor (which `firebird.explainPlan` still does, unchanged). Phases 2 and
+ * 5 of `docs/roadmap/query-plan-visualizer.md` are done; phase 4's result-view tab integration is
+ * also done (see `ResultView`'s "Query Plan" tab) — this standalone panel remains for the
+ * dedicated `firebird.showEstimatedPlan` command. No actual-plan monitoring overlay or Copilot
+ * analysis yet (see that doc for what's deferred and why).
  */
 export class QueryPlanView extends QueryResultsView implements vscode.Disposable {
   private sql?: string;
@@ -89,27 +83,11 @@ export class QueryPlanView extends QueryResultsView implements vscode.Disposable
 
   /** Shared by both a live fetch and a file import: fallback-text detection, parsing, and error reporting. */
   private parseAndSend(planText: string, importedFrom?: string): void {
-    if (FALLBACK_PREFIXES.some(prefix => planText.startsWith(prefix))) {
-      this.send({
-        command: "planData",
-        data: {
-          error: 'Graphical plans need the native driver. Enable "firebird.useNativeDriver" in settings, then try again.',
-          raw: planText
-        }
-      });
+    const result = interpretPlanText(planText);
+    if ("error" in result) {
+      this.send({ command: "planData", data: { error: result.error, raw: result.raw } });
       return;
     }
-
-    let blocks: PlanNode[];
-    try {
-      blocks = parsePlan(planText);
-    } catch (err: any) {
-      this.send({
-        command: "planData",
-        data: { error: `Couldn't parse the plan: ${err?.message ?? err}`, raw: planText }
-      });
-      return;
-    }
-    this.send({ command: "planData", data: { blocks, raw: planText, importedFrom } });
+    this.send({ command: "planData", data: { blocks: result.blocks, raw: result.raw, importedFrom } });
   }
 }

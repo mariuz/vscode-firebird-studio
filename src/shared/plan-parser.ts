@@ -187,3 +187,37 @@ export function parsePlan(planText: string): PlanNode[] {
   }
   return new Parser(tokens).parseBlocks();
 }
+
+/**
+ * Prefixes NativeClient/NodeClient's `Driver.getQueryPlan()` uses for its "this isn't a real
+ * plan" fallback text (see `driver.ts`) — not real Firebird plan syntax, so `parsePlan()` would
+ * just throw on it anyway, but checking first lets callers show a clearer, more actionable
+ * message than a parse error.
+ */
+export const PLAN_FALLBACK_PREFIXES = ["-- PLAN not available", "-- Firebird Index Metadata"];
+
+export type PlanInterpretation =
+  | { blocks: PlanNode[]; raw: string }
+  | { error: string; raw: string };
+
+/**
+ * Interprets raw plan text (from a live `Driver.getQueryPlan()` fetch, or a plan file someone
+ * saved earlier) into either a parsed tree or a user-facing error — the fallback-detection,
+ * parsing, and error-message shape shared by every plan-diagram consumer, currently
+ * `QueryPlanView` (the standalone diagram panel) and `ResultView` (the per-statement "Query Plan"
+ * result-view tab), so both surface identical errors for identical inputs instead of two
+ * independently-drifting copies of the same three checks.
+ */
+export function interpretPlanText(planText: string): PlanInterpretation {
+  if (PLAN_FALLBACK_PREFIXES.some(prefix => planText.startsWith(prefix))) {
+    return {
+      error: 'Graphical plans need the native driver. Enable "firebird.useNativeDriver" in settings, then try again.',
+      raw: planText,
+    };
+  }
+  try {
+    return { blocks: parsePlan(planText), raw: planText };
+  } catch (err: any) {
+    return { error: `Couldn't parse the plan: ${err?.message ?? err}`, raw: planText };
+  }
+}

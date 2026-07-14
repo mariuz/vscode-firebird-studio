@@ -6,7 +6,7 @@
  */
 
 import * as assert from 'assert';
-import { parsePlan, PlanNode } from '../shared/plan-parser';
+import { parsePlan, PlanNode, interpretPlanText } from '../shared/plan-parser';
 
 suite('parsePlan()', function () {
 
@@ -97,5 +97,48 @@ suite('parsePlan()', function () {
   test('throws (rather than silently misparsing) on the pure-JS driver\'s heuristic fallback text', function () {
     const fallback = '-- PLAN not available via node-firebird driver.\n-- Use the native driver (firebird.useNativeDriver) for execution plans.\n-- Query:\nSELECT 1 FROM RDB$DATABASE';
     assert.throws(() => parsePlan(fallback));
+  });
+});
+
+// ── interpretPlanText() ──────────────────────────────────────────────────────
+//
+// Shared by QueryPlanView and ResultView's "Query Plan" tab (docs/roadmap/query-plan-visualizer.md
+// phase 4) so both surface identical fallback/parse-error messages for identical inputs.
+
+suite('interpretPlanText()', function () {
+
+  test('a real, parseable plan yields blocks and the original raw text', function () {
+    const result = interpretPlanText('PLAN (EMP NATURAL)');
+    assert.ok('blocks' in result, JSON.stringify(result));
+    if ('blocks' in result) {
+      assert.deepStrictEqual(result.blocks, [{ kind: 'scan', table: 'EMP', method: 'NATURAL' }]);
+      assert.strictEqual(result.raw, 'PLAN (EMP NATURAL)');
+    }
+  });
+
+  test('the pure-JS driver\'s heuristic fallback text is detected before parsing is even attempted, with an actionable message', function () {
+    const fallback = '-- PLAN not available via node-firebird driver.\n-- Use the native driver (firebird.useNativeDriver) for execution plans.';
+    const result = interpretPlanText(fallback);
+    assert.ok('error' in result, JSON.stringify(result));
+    if ('error' in result) {
+      assert.match(result.error, /native driver/);
+      assert.strictEqual(result.raw, fallback);
+    }
+  });
+
+  test('the index-metadata fallback prefix is detected too', function () {
+    const fallback = '-- Firebird Index Metadata (pure-JS driver heuristic)\nSELECT 1 FROM RDB$DATABASE';
+    const result = interpretPlanText(fallback);
+    assert.ok('error' in result, JSON.stringify(result));
+  });
+
+  test('malformed plan text (not a fallback, not valid syntax) yields a parse-error message, not a thrown exception', function () {
+    const result = interpretPlanText('PLAN (EMP)');
+    assert.ok('error' in result, JSON.stringify(result));
+    if ('error' in result) {
+      assert.match(result.error, /Couldn't parse the plan/);
+      assert.match(result.error, /Expected NATURAL, INDEX, or ORDER/);
+      assert.strictEqual(result.raw, 'PLAN (EMP)');
+    }
   });
 });

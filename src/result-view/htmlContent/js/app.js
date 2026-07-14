@@ -80,7 +80,7 @@ $(() => {
       return;
     }
 
-    if (msg.command === "primaryKey" || msg.command === "applyResult") {
+    if (msg.command === "primaryKey" || msg.command === "applyResult" || msg.command === "queryPlanResult") {
       resolveRequest(msg.data.requestId, msg.data);
       return;
     }
@@ -179,9 +179,10 @@ $(() => {
     const $status       = $("<span>").addClass("edit-status");
     $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle);
 
-    // "🤖 Analyze" only makes sense when we actually know the SQL that produced this result set
-    // (the single/legacy display() path — predefined actions like Show Table Info — doesn't track
-    // it, only batch results from firebird.runQuery do).
+    // "🤖 Analyze" and "🧭 Query Plan" only make sense when we actually know the SQL that produced
+    // this result set (the single/legacy display() path — predefined actions like Show Table Info
+    // — doesn't track it, only batch results from firebird.runQuery do).
+    let $planPanel = null;
     if (sql) {
       const $analyzeBtn = $("<button>").addClass("btn-grid-action btn-analyze-results").text("🤖 Analyze");
       $analyzeBtn.on("click", () => {
@@ -193,6 +194,23 @@ $(() => {
         setTimeout(() => $analyzeBtn.prop("disabled", false).text("🤖 Analyze"), 3000);
       });
       $editToolbar.append($analyzeBtn);
+
+      const $planToggle = $("<button>").addClass("btn-grid-action btn-plan-toggle").text("🧭 Query Plan");
+      $planPanel = $("<div>").addClass("fb-plan-panel").hide();
+      let planView = null;
+      let planRequested = false;
+      $planToggle.on("click", () => {
+        const shown = $planPanel.toggle().is(":visible");
+        $planToggle.toggleClass("active", shown);
+        if (!shown) { return; }
+        if (!planView) { planView = window.FirebirdPlanView.create($planPanel[0]); }
+        if (!planRequested) {
+          planRequested = true;
+          planView.showLoading();
+          requestFromExtension("getQueryPlan", { sql }).then(result => planView.show(result));
+        }
+      });
+      $editToolbar.append($planToggle);
     }
 
     $editToolbar.append($status);
@@ -229,7 +247,8 @@ $(() => {
     const numericColumns = detectNumericColumns(headers, tableBody);
     if (numericColumns.length > 0) { $chartYSelect.val(String(numericColumns[0])); }
 
-    $wrapper.append($editToolbar, $table, $chartPanel);
+    // $planPanel is null when sql is unknown (see above) -- jQuery's append() no-ops on a null arg.
+    $wrapper.append($editToolbar, $table, $chartPanel, $planPanel);
     $container.append($wrapper);
 
     // A leading "actions" column (row-delete toggle) is always present but

@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.59 - 2026-07-14
+
+### Added
+
+- **Query Plan Visualizer: a "Query Plan" tab in the results panel.** Every batch query result now has a "🧭 Query Plan" toggle (alongside the existing "🤖 Analyze" button) that shows that specific statement's execution plan — diagram, sortable table, zoom/pan, detail panel — inline, without opening the separate `firebird.showEstimatedPlan` panel. Plans are fetched and cached per statement.
+
+### Internal
+
+- Extracted `interpretPlanText()` into `src/shared/plan-parser.ts` (fallback-text detection + parsing + error formatting), shared by the standalone Query Plan panel and the new result-view tab instead of two independently-drifting copies.
+
 ## 0.1.58 - 2026-07-14
 
 ### Added

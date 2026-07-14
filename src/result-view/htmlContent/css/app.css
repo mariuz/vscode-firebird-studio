@@ -452,3 +452,222 @@ body.vscode-high-contrast table.dataTable thead .sorting {
 .btn-chart-toggle.active {
   background: var(--vscode-statusBarItem-prominentBackground, #00457a);
 }
+.btn-plan-toggle.active {
+  background: var(--vscode-statusBarItem-prominentBackground, #00457a);
+}
+
+/* ── Query Plan panel (docs/roadmap/query-plan-visualizer.md phase 4) ───────
+   Scoped under .fb-plan-view throughout so nothing here leaks onto (or is
+   affected by) the DataTables grid's own table/th/td styling. */
+.fb-plan-panel {
+  margin-top: 10px;
+  border: 1px solid var(--vscode-tab-border, #444);
+  border-radius: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  overflow: hidden;
+}
+.fb-plan-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  border-bottom: 1px solid var(--vscode-widget-border, #444);
+}
+.fb-plan-toolbar button {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #444);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+}
+.fb-plan-toolbar button:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+.fb-plan-zoom-controls {
+  display: inline-flex;
+  gap: 2px;
+}
+.fb-plan-zoom-controls button {
+  width: 24px;
+  text-align: center;
+  padding: 3px 0;
+}
+.fb-plan-toolbar-spacer {
+  flex: 1 1 auto;
+}
+.fb-plan-status {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.fb-plan-main {
+  position: relative;
+  height: 420px;
+}
+.fb-plan-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.fb-plan-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  background:
+    linear-gradient(var(--vscode-editorWidget-border, #2a2a2a) 1px, transparent 1px) 0 0 / 24px 24px,
+    linear-gradient(90deg, var(--vscode-editorWidget-border, #2a2a2a) 1px, transparent 1px) 0 0 / 24px 24px;
+  background-color: var(--vscode-editor-background, #1e1e1e);
+}
+.fb-plan-canvas.panning {
+  cursor: grabbing;
+}
+
+.fb-plan-node rect {
+  fill: var(--vscode-editorWidget-background, #252526);
+  stroke: var(--vscode-widget-border, #454545);
+  stroke-width: 1;
+}
+.fb-plan-node.fb-plan-wrapper rect {
+  fill: var(--vscode-button-background, #0e639c);
+}
+.fb-plan-node.fb-plan-wrapper text {
+  fill: var(--vscode-button-foreground, #fff);
+}
+.fb-plan-node.fb-plan-natural rect {
+  stroke: var(--vscode-errorForeground, #f44);
+  stroke-width: 1.5;
+}
+.fb-plan-node text {
+  fill: var(--vscode-editor-foreground, #ccc);
+  font-size: 11px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+.fb-plan-node .fb-plan-node-title {
+  font-weight: 600;
+}
+.fb-plan-node {
+  cursor: pointer;
+}
+.fb-plan-node.fb-plan-node-selected rect {
+  stroke: var(--vscode-focusBorder, #007acc);
+  stroke-width: 2.5;
+}
+.fb-plan-arrow-fill {
+  fill: var(--vscode-widget-border, #666);
+}
+.fb-plan-edge {
+  fill: none;
+  stroke: var(--vscode-widget-border, #666);
+  stroke-width: 1.5;
+}
+
+.fb-plan-table-wrapper {
+  height: 100%;
+  overflow: auto;
+  padding: 0 8px;
+}
+.fb-plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.fb-plan-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  padding: 6px 8px;
+  background: var(--vscode-editor-lineHighlightBackground, #333);
+  border-bottom: 1px solid var(--vscode-input-border, #555);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.fb-plan-table th:hover {
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+.fb-plan-table th.fb-plan-sorted::after {
+  content: " \25B4";
+}
+.fb-plan-table th.fb-plan-sorted.fb-plan-desc::after {
+  content: " \25BE";
+}
+.fb-plan-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-input-border, #333);
+  white-space: nowrap;
+}
+.fb-plan-table tr {
+  cursor: pointer;
+}
+.fb-plan-table tr:hover td {
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+.fb-plan-table tr.fb-plan-row-natural td.fb-plan-method-cell {
+  color: var(--vscode-errorForeground, #f44);
+}
+.fb-plan-table tr.fb-plan-row-selected td {
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.08));
+}
+
+.fb-plan-detail-panel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 260px;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--vscode-widget-border, #444);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, #252526);
+}
+.fb-plan-detail-heading {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+}
+.fb-plan-detail-panel dl {
+  margin: 0;
+  font-size: 12px;
+}
+.fb-plan-detail-panel dt {
+  font-weight: 600;
+  margin-top: 6px;
+}
+.fb-plan-detail-panel dd {
+  margin: 2px 0 0 0;
+  color: var(--vscode-descriptionForeground, #ccc);
+}
+
+.fb-plan-error-banner,
+.fb-plan-empty-banner {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #999);
+  text-align: center;
+  max-width: 80%;
+}
+.fb-plan-error-banner {
+  color: var(--vscode-errorForeground, #f44);
+  white-space: pre-wrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.fb-plan-raw-output {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0;
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  color: var(--vscode-editor-foreground);
+  padding: 10px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 12px);
+  white-space: pre;
+}
