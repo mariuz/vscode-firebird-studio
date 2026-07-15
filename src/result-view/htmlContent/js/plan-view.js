@@ -50,16 +50,17 @@ window.FirebirdPlanView = (function () {
     const btnZoomIn = el("button", "secondary", "+");
     zoomWrap.append(btnZoomOut, btnZoomIn);
 
+    const VIEW_MODE_LABELS = { diagram: "Diagram", table: "Table", icicle: "Icicle", actual: "Actual" };
     const viewModeWrap = el("span", "fb-plan-view-mode-controls");
-    const viewModeBtns = ["diagram", "table", "icicle"].map(mode => {
-      const label = mode === "diagram" ? "Diagram" : (mode === "table" ? "Table" : "Icicle");
-      const btn = el("button", "secondary fb-plan-view-mode-btn" + (mode === "diagram" ? " active" : ""), label);
+    const viewModeBtns = ["diagram", "table", "icicle", "actual"].map(mode => {
+      const btn = el("button", "secondary fb-plan-view-mode-btn" + (mode === "diagram" ? " active" : ""), VIEW_MODE_LABELS[mode]);
       btn.dataset.mode = mode;
       return btn;
     });
-    if (viewModeBtns[2]) {
-      viewModeBtns[2].title = "Bar width shows each node's share of the plan's scans (Firebird's plan text has no cost/row estimates, so this is a structural proxy, not a literal cost); natural (unindexed) scans are highlighted.";
-    }
+    const icicleBtn = viewModeBtns.find(b => b.dataset.mode === "icicle");
+    icicleBtn.title = "Bar width shows each node's share of the plan's scans (Firebird's plan text has no cost/row estimates, so this is a structural proxy, not a literal cost); natural (unindexed) scans are highlighted.";
+    const actualBtn = viewModeBtns.find(b => b.dataset.mode === "actual");
+    actualBtn.title = "Actual Plan -- re-runs the query for real and shows Firebird 5.0+'s real per-node execution stats (RDB$PROFILER). Needs Firebird 5.0 or newer, and only works for a single read-only SELECT.";
     viewModeWrap.append(...viewModeBtns);
 
     const btnToggleRaw = el("button", "secondary", "Raw Text");
@@ -122,6 +123,33 @@ window.FirebirdPlanView = (function () {
     const icicleChart = el("div", "fb-plan-icicle-chart");
     icicleWrapper.appendChild(icicleChart);
 
+    const actualWrapper = el("div", "fb-plan-table-wrapper fb-plan-actual-wrapper");
+    actualWrapper.style.display = "none";
+    const actualTable = el("table", "fb-plan-table");
+    const actualThead = document.createElement("thead");
+    const actualHeadRow = document.createElement("tr");
+    const actualColumns = [
+      ["order", "#"], ["label", "Node"], ["openCount", "Open Count"], ["openElapsedMs", "Open (ms)"],
+      ["fetchCount", "Fetch Count"], ["fetchElapsedMs", "Fetch (ms)"], ["level", "Depth"],
+    ];
+    const actualHeaderCells = actualColumns.map(([key, label]) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      th.dataset.sort = key;
+      actualHeadRow.appendChild(th);
+      return th;
+    });
+    actualThead.appendChild(actualHeadRow);
+    const actualTbody = document.createElement("tbody");
+    actualTable.append(actualThead, actualTbody);
+    const actualLoading = el("div", "fb-plan-actual-loading", "Re-running the query to collect actual execution stats…");
+    actualLoading.style.display = "none";
+    const actualErrorBanner = el("div", "fb-plan-actual-error-banner");
+    actualErrorBanner.style.display = "none";
+    const actualEmptyBanner = el("div", "fb-plan-actual-empty-banner", "No actual plan to show.");
+    actualEmptyBanner.style.display = "none";
+    actualWrapper.append(actualTable, actualLoading, actualErrorBanner, actualEmptyBanner);
+
     const errorBanner = el("div", "fb-plan-error-banner");
     errorBanner.style.display = "none";
     const emptyBanner = el("div", "fb-plan-empty-banner", "No plan to show.");
@@ -133,7 +161,7 @@ window.FirebirdPlanView = (function () {
     const detailBody = document.createElement("dl");
     detailPanel.append(detailHeading, detailBody);
 
-    main.append(canvasWrapper, tableWrapper, icicleWrapper, errorBanner, emptyBanner, detailPanel);
+    main.append(canvasWrapper, tableWrapper, icicleWrapper, actualWrapper, errorBanner, emptyBanner, detailPanel);
 
     const rawOutput = el("pre", "fb-plan-raw-output");
     rawOutput.style.display = "none";
@@ -145,6 +173,7 @@ window.FirebirdPlanView = (function () {
       canvasWrapper, svg, viewport, edgesLayer, nodesLayer,
       tableWrapper, tbody, headerCells,
       icicleWrapper, icicleChart,
+      actualWrapper, actualTbody, actualHeaderCells, actualLoading, actualErrorBanner, actualEmptyBanner,
       errorBanner, emptyBanner, detailPanel, detailHeading, detailBody, rawOutput,
     };
   }
@@ -152,14 +181,22 @@ window.FirebirdPlanView = (function () {
   function create(container, options) {
     const dom = buildDom(container);
     const onAnalyze = (options && options.onAnalyze) || null;
+    const onGetActualPlan = (options && options.onGetActualPlan) || null;
 
     // ── Per-instance state ────────────────────────────────────────────────────
     let blocks = [];
     let rawText = "";
     let selectedNode = null;
-    let viewMode = "diagram"; // "diagram" | "table"
+    let viewMode = "diagram"; // "diagram" | "table" | "icicle" | "actual"
     let tableSort = { column: "order", dir: "asc" };
     const view = { x: 0, y: 0, scale: 1 };
+
+    /** "Actual Plan" (phase 3) state -- fetched lazily via onGetActualPlan() on first switch to
+     *  that view mode, since it re-executes the query for real. */
+    let actualNodes = null;
+    let actualError = null;
+    let actualRequested = false;
+    let actualSort = { column: "order", dir: "asc" };
 
     function setStatus(text) { dom.status.textContent = text; }
 
@@ -175,6 +212,11 @@ window.FirebirdPlanView = (function () {
       });
     } else {
       dom.btnAnalyze.style.display = "none";
+    }
+
+    if (!onGetActualPlan) {
+      const actualBtn = dom.viewModeBtns.find(b => b.dataset.mode === "actual");
+      if (actualBtn) { actualBtn.style.display = "none"; }
     }
 
     // ── Layout: each block is a tree (scans are leaves; JOIN/HASH/MERGE/SORT branch) ──
@@ -420,12 +462,15 @@ window.FirebirdPlanView = (function () {
       dom.canvasWrapper.style.display = viewMode === "diagram" ? "block" : "none";
       dom.tableWrapper.style.display = viewMode === "table" ? "block" : "none";
       dom.icicleWrapper.style.display = viewMode === "icicle" ? "block" : "none";
+      dom.actualWrapper.style.display = viewMode === "actual" ? "block" : "none";
       dom.viewModeBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === viewMode));
 
       if (viewMode === "table") {
         renderTableView();
       } else if (viewMode === "icicle") {
         renderIcicleView();
+      } else if (viewMode === "actual") {
+        applyActualViewState();
       } else {
         render();
         fitToView();
@@ -518,6 +563,144 @@ window.FirebirdPlanView = (function () {
         renderIcicleView();
       }
     });
+
+    // ── Actual Plan view (phase 3) ────────────────────────────────────────────
+    //
+    // Unlike the diagram/table/icicle views above, this doesn't render already-fetched `blocks`
+    // -- it lazily calls onGetActualPlan() (the caller's request/response round-trip to
+    // Driver.getActualPlan(), via Firebird 5.0+'s RDB$PROFILER) the first time the user switches
+    // to this mode, since re-running the query has a real cost. The tree shape (ActualPlanNode:
+    // recordSourceId/label/accessPath/open+fetch counters) is unrelated to PlanNode, so it gets
+    // its own flatten/render/sort, matching the standalone webview's equivalent.
+
+    function applyActualViewState() {
+      if (!onGetActualPlan) { return; }
+      if (!actualRequested) {
+        actualRequested = true;
+        dom.actualLoading.style.display = "block";
+        dom.actualErrorBanner.style.display = "none";
+        dom.actualEmptyBanner.style.display = "none";
+        dom.actualTbody.innerHTML = "";
+        setStatus("Re-running the query for actual execution stats…");
+        onGetActualPlan().then(result => {
+          actualError = result.error || null;
+          actualNodes = result.nodes || null;
+          if (viewMode === "actual") { applyActualViewState(); }
+        });
+        return;
+      }
+      if (actualError) {
+        dom.actualLoading.style.display = "none";
+        dom.actualErrorBanner.textContent = actualError;
+        dom.actualErrorBanner.style.display = "block";
+        dom.actualEmptyBanner.style.display = "none";
+        dom.actualTbody.innerHTML = "";
+        setStatus("");
+        return;
+      }
+      dom.actualLoading.style.display = "none";
+      dom.actualErrorBanner.style.display = "none";
+      if (!actualNodes || actualNodes.length === 0) {
+        dom.actualEmptyBanner.style.display = "block";
+        dom.actualTbody.innerHTML = "";
+        setStatus("");
+        return;
+      }
+      dom.actualEmptyBanner.style.display = "none";
+      renderActualTable();
+      setStatus(`${flattenActualPlan(actualNodes).length} record source(s)`);
+    }
+
+    function flattenActualPlan(nodes) {
+      const rows = [];
+      let counter = 0;
+      function visit(node) {
+        counter += 1;
+        rows.push({
+          order: counter, label: node.label, accessPath: node.accessPath,
+          openCount: node.openCount, openElapsedMs: node.openElapsedMs,
+          fetchCount: node.fetchCount, fetchElapsedMs: node.fetchElapsedMs,
+          level: node.level, node,
+        });
+        node.children.forEach(visit);
+      }
+      nodes.forEach(visit);
+      return rows;
+    }
+
+    function sortActualRows(rows, column, dir) {
+      const numeric = column !== "label";
+      const sorted = rows.slice().sort((a, b) => {
+        const av = numeric ? a[column] : String(a[column]).toLowerCase();
+        const bv = numeric ? b[column] : String(b[column]).toLowerCase();
+        if (av < bv) { return -1; }
+        if (av > bv) { return 1; }
+        return 0;
+      });
+      if (dir === "desc") { sorted.reverse(); }
+      return sorted;
+    }
+
+    function renderActualTable() {
+      const rows = sortActualRows(flattenActualPlan(actualNodes), actualSort.column, actualSort.dir);
+      dom.actualTbody.innerHTML = "";
+      rows.forEach(row => {
+        const tr = document.createElement("tr");
+        if (row.node === selectedNode) { tr.classList.add("fb-plan-row-selected"); }
+
+        const cells = [
+          row.order, row.label,
+          row.openCount, row.openElapsedMs.toFixed(3),
+          row.fetchCount, row.fetchElapsedMs.toFixed(3),
+          row.level,
+        ];
+        cells.forEach(text => {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        tr.title = row.accessPath;
+
+        tr.addEventListener("click", () => {
+          selectedNode = row.node;
+          showActualDetail(row.node);
+          renderActualTable();
+        });
+
+        dom.actualTbody.appendChild(tr);
+      });
+      updateActualSortHeaders();
+    }
+
+    function updateActualSortHeaders() {
+      dom.actualHeaderCells.forEach(th => {
+        th.classList.toggle("fb-plan-sorted", th.dataset.sort === actualSort.column);
+        th.classList.toggle("fb-plan-desc", th.dataset.sort === actualSort.column && actualSort.dir === "desc");
+      });
+    }
+
+    dom.actualHeaderCells.forEach(th => {
+      th.addEventListener("click", () => {
+        const column = th.dataset.sort;
+        if (actualSort.column === column) {
+          actualSort.dir = actualSort.dir === "asc" ? "desc" : "asc";
+        } else {
+          actualSort = { column, dir: "asc" };
+        }
+        renderActualTable();
+      });
+    });
+
+    function showActualDetail(node) {
+      dom.detailPanel.style.display = "block";
+      dom.detailHeading.textContent = node.label;
+      const rows = [
+        ["Open", `${node.openCount} time(s), ${node.openElapsedMs.toFixed(3)} ms total`],
+        ["Fetch", `${node.fetchCount} time(s), ${node.fetchElapsedMs.toFixed(3)} ms total`],
+        ["Access path", node.accessPath],
+      ];
+      dom.detailBody.innerHTML = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
+    }
 
     // ── Raw text toggle ───────────────────────────────────────────────────────
 
@@ -657,7 +840,13 @@ window.FirebirdPlanView = (function () {
       setStatus(`${blocks.length} plan block${blocks.length === 1 ? '' : 's'}`);
     }
 
-    return { show, showLoading, __test__: { flattenBlocks, sortRows, layoutForest, countLeaves, nodeLabel, scanMethodLabel, icicleLayout } };
+    return {
+      show, showLoading,
+      __test__: {
+        flattenBlocks, sortRows, layoutForest, countLeaves, nodeLabel, scanMethodLabel, icicleLayout,
+        flattenActualPlan, sortActualRows,
+      },
+    };
   }
 
   return { create };

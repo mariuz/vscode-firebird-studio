@@ -629,6 +629,17 @@ body.vscode-high-contrast table.dataTable thead .sorting {
   background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.08));
 }
 
+.fb-plan-actual-loading, .fb-plan-actual-error-banner, .fb-plan-actual-empty-banner {
+  padding: 16px 8px;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+.fb-plan-actual-error-banner {
+  color: var(--vscode-errorForeground, #f44);
+  white-space: pre-wrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
 .fb-plan-icicle-wrapper {
   height: 100%;
   overflow: auto;
@@ -697,6 +708,7 @@ body.vscode-high-contrast table.dataTable thead .sorting {
 .fb-plan-detail-panel dd {
   margin: 2px 0 0 0;
   color: var(--vscode-descriptionForeground, #ccc);
+  white-space: pre-wrap;
 }
 
 .fb-plan-error-banner,

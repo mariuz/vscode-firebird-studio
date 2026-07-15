@@ -80,7 +80,7 @@ $(() => {
       return;
     }
 
-    if (msg.command === "primaryKey" || msg.command === "applyResult" || msg.command === "queryPlanResult") {
+    if (msg.command === "primaryKey" || msg.command === "applyResult" || msg.command === "queryPlanResult" || msg.command === "actualPlanResult") {
       resolveRequest(msg.data.requestId, msg.data);
       return;
     }
@@ -206,6 +206,7 @@ $(() => {
         if (!planView) {
           planView = window.FirebirdPlanView.create($planPanel[0], {
             onAnalyze: raw => vscode.postMessage({ command: "analyzePlan", data: { sql, plan: raw } }),
+            onGetActualPlan: () => requestFromExtension("getActualPlan", { sql }),
           });
         }
         if (!planRequested) {

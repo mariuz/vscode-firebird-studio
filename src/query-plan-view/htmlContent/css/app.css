@@ -83,17 +83,17 @@ body {
   flex: 1 1 auto;
   overflow: hidden;
 }
-#table-wrapper {
+#table-wrapper, #actual-wrapper {
   flex: 1 1 auto;
   overflow: auto;
   padding: 0 8px;
 }
-#plan-table {
+#plan-table, #actual-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
 }
-#plan-table th {
+#plan-table th, #actual-table th {
   position: sticky;
   top: 0;
   text-align: left;
@@ -104,31 +104,41 @@ body {
   cursor: pointer;
   user-select: none;
 }
-#plan-table th:hover {
+#plan-table th:hover, #actual-table th:hover {
   color: var(--vscode-textLink-foreground, #3794ff);
 }
-#plan-table th.fb-sorted::after {
+#plan-table th.fb-sorted::after, #actual-table th.fb-sorted::after {
   content: " \25B4";
 }
-#plan-table th.fb-sorted.fb-desc::after {
+#plan-table th.fb-sorted.fb-desc::after, #actual-table th.fb-sorted.fb-desc::after {
   content: " \25BE";
 }
-#plan-table td {
+#plan-table td, #actual-table td {
   padding: 4px 8px;
   border-bottom: 1px solid var(--vscode-input-border, #333);
   white-space: nowrap;
 }
-#plan-table tr {
+#plan-table tr, #actual-table tr {
   cursor: pointer;
 }
-#plan-table tr:hover td {
+#plan-table tr:hover td, #actual-table tr:hover td {
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
 }
 #plan-table tr.fb-natural-row td.fb-method-cell {
   color: var(--vscode-errorForeground, #f44);
 }
-#plan-table tr.fb-selected-row td {
+#plan-table tr.fb-selected-row td, #actual-table tr.fb-selected-row td {
   background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.08));
+}
+#actual-loading, #actual-error-banner, #actual-empty-banner {
+  padding: 16px 8px;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+#actual-error-banner {
+  color: var(--vscode-errorForeground, #f44);
+  white-space: pre-wrap;
+  font-family: var(--vscode-editor-font-family, monospace);
 }
 #icicle-wrapper {
   flex: 1 1 auto;
@@ -232,7 +242,7 @@ body {
 #detail-panel h3 { margin-top: 0; }
 #detail-panel dl { margin: 0; }
 #detail-panel dt { font-weight: 600; margin-top: 8px; }
-#detail-panel dd { margin: 2px 0 0 0; color: var(--vscode-descriptionForeground, #ccc); }
+#detail-panel dd { margin: 2px 0 0 0; color: var(--vscode-descriptionForeground, #ccc); white-space: pre-wrap; }
 
 #loading, #error-banner, #empty-banner {
   position: absolute;

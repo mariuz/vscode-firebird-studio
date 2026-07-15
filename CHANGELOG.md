@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.62 - 2026-07-15
+
+### Added
+
+- **Query Plan Visualizer: Actual Plan.** A new "Actual" view mode (alongside Diagram/Table/Icicle, in both the standalone Query Plan panel and the result-view "Query Plan" tab) re-runs a read-only `SELECT` for real and shows Firebird 5.0+'s genuine per-node execution stats (open/fetch counts and elapsed time) via the engine's built-in `RDB$PROFILER` package — not just the estimated plan. Requires Firebird 5.0 or newer; shows a clear message on older servers.
+
 ## 0.1.61 - 2026-07-14
 
 ### Added

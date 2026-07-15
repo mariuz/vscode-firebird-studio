@@ -8,10 +8,15 @@ import { TransactionIsolation, TransactionOptions as NativeTransactionOptions } 
 import {simpleCallbackToPromise, getConnectionLabel} from './utils';
 import {CredentialStore} from './credential-store';
 import {splitStatements} from './sql-splitter';
-import {extractTableNames as extractTableNamesImpl, buildIndexMetadataQuery, renderIndexMetadataPlan} from './sql-analysis';
+import {extractTableNames as extractTableNamesImpl, buildIndexMetadataQuery, renderIndexMetadataPlan, validateReadOnlyStatement} from './sql-analysis';
 import {PooledClient, ConnectionPoolOptions} from './connection-pool';
 import {SshTunnelClient} from './ssh-tunnel';
 import {getOptions} from '../config';
+import {
+  ActualPlanNode, buildActualPlanTree, parseEngineMajorVersion, isProfilerSupported, profilerSchemaPrefix,
+  startProfilerSessionQuery, flushProfilerQuery, finishProfilerSessionQuery, profiledStatementIdQuery,
+  profilerRecordSourcesQuery, profilerRecordSourceStatsQuery, cleanupProfilerSessionQuery,
+} from './actual-plan';
 import * as fs from 'fs';
 import path = require('path');
 
@@ -466,6 +471,79 @@ export class Driver {
     try {
       const rows: any[] = await (this.client as NodeClient).queryPromise(connection, metaSql, tables);
       return renderIndexMetadataPlan(stmt, tables, rows);
+    } finally {
+      this.client.detach(connection);
+    }
+  }
+
+  /**
+   * "Actual Plan" (docs/roadmap/query-plan-visualizer.md phase 3) — per-node execution stats via
+   * Firebird 5.0+'s `RDB$PROFILER` package (see `actual-plan.ts`'s header comment for the full
+   * session-lifecycle reasoning, verified against a live server). Unlike getQueryPlan(), this
+   * doesn't just prepare the statement — it actually executes and fully fetches it, so it's
+   * restricted to a single read-only SELECT the same way the MCP server's run_query tool is
+   * (`validateReadOnlyStatement()`), and works identically over the native or pure-JS driver
+   * since it's plain SQL against the profiler's own tables, not a native-only API.
+   */
+  public static async getActualPlan(
+    sql?: string,
+    connectionOptions?: ConnectionOptions
+  ): Promise<ActualPlanNode[]> {
+    const resolved = await this.resolveSqlAndConnection(sql, connectionOptions);
+    const stmt = resolved.sql;
+
+    const readOnlyError = validateReadOnlyStatement(stmt);
+    if (readOnlyError) {
+      throw new Error(`Actual Plan re-executes the query to collect real stats, so it only supports a single read-only SELECT: ${readOnlyError}`);
+    }
+
+    const connection = await this.client.createConnection(resolved.connectionOptions);
+    try {
+      const versionRows: any[] = await this.client.queryPromise(
+        connection, `SELECT RDB$GET_CONTEXT('SYSTEM', 'ENGINE_VERSION') AS V FROM RDB$DATABASE;`
+      );
+      const majorVersion = parseEngineMajorVersion(String(versionRows[0]?.V ?? ""));
+      if (!isProfilerSupported(majorVersion)) {
+        throw new Error("Actual Plan requires Firebird 5.0 or newer — the RDB$PROFILER package isn't available on this server.");
+      }
+      const schemaPrefix = profilerSchemaPrefix(majorVersion);
+
+      const sessionRows: any[] = await this.client.queryPromise(
+        connection, startProfilerSessionQuery(`Firebird Studio Actual Plan - ${new Date().toISOString()}`)
+      );
+      const profileId = Number(sessionRows[0]?.PROFILE_ID);
+      if (!Number.isInteger(profileId)) {
+        throw new Error("Could not start a profiler session.");
+      }
+
+      try {
+        await this.client.queryPromise(connection, stmt);
+        await this.client.queryPromise(connection, flushProfilerQuery);
+        // Must stop the session before any of the diagnostic queries below run — see
+        // finishProfilerSessionQuery's doc comment for why (they'd otherwise profile themselves).
+        await this.client.queryPromise(connection, finishProfilerSessionQuery);
+
+        const stmtIdRows: any[] = await this.client.queryPromise(
+          connection, profiledStatementIdQuery(schemaPrefix, profileId, stmt)
+        );
+        const statementId = Number(stmtIdRows[0]?.STATEMENT_ID);
+        if (!Number.isInteger(statementId)) {
+          throw new Error("Could not identify the profiled statement.");
+        }
+
+        const [recordSources, stats] = await Promise.all([
+          this.client.queryPromise(connection, profilerRecordSourcesQuery(schemaPrefix, profileId, statementId)),
+          this.client.queryPromise(connection, profilerRecordSourceStatsQuery(schemaPrefix, profileId, statementId)),
+        ]);
+
+        return buildActualPlanTree(recordSources as any, stats as any);
+      } finally {
+        // Best-effort: RDB$PROFILER.CANCEL_SESSION alone doesn't delete already-flushed rows, so
+        // without this the PLG$PROF_* tables would grow forever in the user's own database. Not
+        // worth failing the whole request over — the data we needed has already been returned.
+        await this.client.queryPromise(connection, cleanupProfilerSessionQuery(schemaPrefix, profileId))
+          .catch(err => logger.error(`Actual Plan cleanup failed: ${err?.message ?? err}`));
+      }
     } finally {
       this.client.detach(connection);
     }

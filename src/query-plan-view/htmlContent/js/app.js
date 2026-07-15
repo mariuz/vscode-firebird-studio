@@ -13,6 +13,12 @@
     planTableHeaders: document.querySelectorAll("#plan-table th[data-sort]"),
     icicleWrapper: document.getElementById("icicle-wrapper"),
     icicleChart: document.getElementById("icicle-chart"),
+    actualWrapper: document.getElementById("actual-wrapper"),
+    actualTableBody: document.getElementById("actual-table-body"),
+    actualTableHeaders: document.querySelectorAll("#actual-table th[data-sort]"),
+    actualLoading: document.getElementById("actual-loading"),
+    actualErrorBanner: document.getElementById("actual-error-banner"),
+    actualEmptyBanner: document.getElementById("actual-empty-banner"),
     loading: document.getElementById("loading"),
     errorBanner: document.getElementById("error-banner"),
     emptyBanner: document.getElementById("empty-banner"),
@@ -45,15 +51,23 @@
    *  node, which is rebuilt fresh on every render() call), so it stays in sync between the
    *  diagram and table views and survives a re-render after selecting it. */
   let selectedNode = null;
-  let viewMode = "diagram"; // "diagram" | "table"
+  let viewMode = "diagram"; // "diagram" | "table" | "icicle" | "actual"
   let tableSort = { column: "order", dir: "asc" };
   const view = { x: 0, y: 0, scale: 1 };
+
+  /** "Actual Plan" (phase 3) state -- fetched lazily on first switch to that view mode, since it
+   *  re-executes the query for real rather than just re-rendering already-fetched data. */
+  let actualNodes = null;
+  let actualError = null;
+  let actualRequested = false;
+  let actualSort = { column: "order", dir: "asc" };
 
   // ── Messaging ──────────────────────────────────────────────────────────────
 
   window.addEventListener("message", event => {
     const msg = event.data;
     if (msg.command === "planData") { handlePlanData(msg.data); }
+    if (msg.command === "actualPlanData") { handleActualPlanData(msg.data); }
   });
 
   vscode.postMessage({ command: "ready" });
@@ -94,6 +108,11 @@
     el.loading.style.display = "none";
     rawText = data.raw || "";
     importedFrom = data.importedFrom || null;
+    // A new plan (refresh/import) may be for a different query -- any previously-fetched Actual
+    // Plan data is now stale.
+    actualNodes = null;
+    actualError = null;
+    actualRequested = false;
 
     if (data.error) {
       el.errorBanner.textContent = data.error;
@@ -133,12 +152,15 @@
     el.canvasWrapper.style.display = viewMode === "diagram" ? "block" : "none";
     el.tableWrapper.style.display = viewMode === "table" ? "block" : "none";
     el.icicleWrapper.style.display = viewMode === "icicle" ? "block" : "none";
+    el.actualWrapper.style.display = viewMode === "actual" ? "block" : "none";
     el.viewModeBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === viewMode));
 
     if (viewMode === "table") {
       renderTableView();
     } else if (viewMode === "icicle") {
       renderIcicleView();
+    } else if (viewMode === "actual") {
+      applyActualViewState();
     } else {
       render();
       fitToView();
@@ -487,6 +509,152 @@
     }
   });
 
+  // ── Actual Plan view (phase 3) ────────────────────────────────────────────
+  //
+  // Unlike the diagram/table/icicle views above, this doesn't render already-fetched `blocks` --
+  // it lazily requests a live re-execution (Driver.getActualPlan(), via Firebird 5.0+'s
+  // RDB$PROFILER) the first time the user switches to this mode, since re-running the query has a
+  // real cost. The tree shape (ActualPlanNode: recordSourceId/label/accessPath/open+fetch
+  // counters) is unrelated to PlanNode, so it gets its own flatten/render/sort, not a variant of
+  // flattenBlocks()/renderTableView() above.
+
+  function applyActualViewState() {
+    if (!actualRequested) {
+      actualRequested = true;
+      el.actualLoading.style.display = "block";
+      el.actualErrorBanner.style.display = "none";
+      el.actualEmptyBanner.style.display = "none";
+      el.actualTableBody.innerHTML = "";
+      setStatus("Re-running the query for actual execution stats…");
+      vscode.postMessage({ command: "getActualPlan" });
+      return;
+    }
+    if (actualError) {
+      el.actualLoading.style.display = "none";
+      el.actualErrorBanner.textContent = actualError;
+      el.actualErrorBanner.style.display = "block";
+      el.actualEmptyBanner.style.display = "none";
+      el.actualTableBody.innerHTML = "";
+      setStatus("");
+      return;
+    }
+    el.actualLoading.style.display = "none";
+    el.actualErrorBanner.style.display = "none";
+    if (!actualNodes || actualNodes.length === 0) {
+      el.actualEmptyBanner.style.display = "block";
+      el.actualTableBody.innerHTML = "";
+      setStatus("");
+      return;
+    }
+    el.actualEmptyBanner.style.display = "none";
+    renderActualTable();
+    setStatus(`${flattenActualPlan(actualNodes).length} record source(s)`);
+  }
+
+  function handleActualPlanData(data) {
+    actualError = data.error || null;
+    actualNodes = data.nodes || null;
+    if (viewMode === "actual") { applyActualViewState(); }
+  }
+
+  /** Depth-first flatten of the ActualPlanNode tree, mirroring flattenBlocks()'s shape for the
+   *  estimated-plan table above (an "order" column for stable default sort, one row per node). */
+  function flattenActualPlan(nodes) {
+    const rows = [];
+    let counter = 0;
+    function visit(node) {
+      counter += 1;
+      rows.push({
+        order: counter,
+        label: node.label,
+        accessPath: node.accessPath,
+        openCount: node.openCount,
+        openElapsedMs: node.openElapsedMs,
+        fetchCount: node.fetchCount,
+        fetchElapsedMs: node.fetchElapsedMs,
+        level: node.level,
+        node,
+      });
+      node.children.forEach(visit);
+    }
+    nodes.forEach(visit);
+    return rows;
+  }
+
+  function sortActualRows(rows, column, dir) {
+    const numeric = column !== "label";
+    const sorted = rows.slice().sort((a, b) => {
+      const av = numeric ? a[column] : String(a[column]).toLowerCase();
+      const bv = numeric ? b[column] : String(b[column]).toLowerCase();
+      if (av < bv) { return -1; }
+      if (av > bv) { return 1; }
+      return 0;
+    });
+    if (dir === "desc") { sorted.reverse(); }
+    return sorted;
+  }
+
+  function renderActualTable() {
+    const rows = sortActualRows(flattenActualPlan(actualNodes), actualSort.column, actualSort.dir);
+    el.actualTableBody.innerHTML = "";
+    rows.forEach(row => {
+      const tr = document.createElement("tr");
+      if (row.node === selectedNode) { tr.classList.add("fb-selected-row"); }
+
+      const cells = [
+        row.order, row.label,
+        row.openCount, row.openElapsedMs.toFixed(3),
+        row.fetchCount, row.fetchElapsedMs.toFixed(3),
+        row.level,
+      ];
+      cells.forEach(text => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      tr.title = row.accessPath;
+
+      tr.addEventListener("click", () => {
+        selectedNode = row.node;
+        showActualDetail(row.node);
+        renderActualTable();
+      });
+
+      el.actualTableBody.appendChild(tr);
+    });
+    updateActualSortHeaders();
+  }
+
+  function updateActualSortHeaders() {
+    el.actualTableHeaders.forEach(th => {
+      th.classList.toggle("fb-sorted", th.dataset.sort === actualSort.column);
+      th.classList.toggle("fb-desc", th.dataset.sort === actualSort.column && actualSort.dir === "desc");
+    });
+  }
+
+  el.actualTableHeaders.forEach(th => {
+    th.addEventListener("click", () => {
+      const column = th.dataset.sort;
+      if (actualSort.column === column) {
+        actualSort.dir = actualSort.dir === "asc" ? "desc" : "asc";
+      } else {
+        actualSort = { column, dir: "asc" };
+      }
+      renderActualTable();
+    });
+  });
+
+  function showActualDetail(node) {
+    el.detailPanel.style.display = "block";
+    el.detailHeading.textContent = node.label;
+    const rows = [
+      ["Open", `${node.openCount} time(s), ${node.openElapsedMs.toFixed(3)} ms total`],
+      ["Fetch", `${node.fetchCount} time(s), ${node.fetchElapsedMs.toFixed(3)} ms total`],
+      ["Access path", node.accessPath],
+    ];
+    el.detailBody.innerHTML = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
+  }
+
   // ── Raw text toggle ───────────────────────────────────────────────────────
 
   el.btnToggleRaw.addEventListener("click", () => {
@@ -584,6 +752,7 @@
     module.exports.__test__ = {
       layoutForest, countLeaves, nodeLabel, scanMethodLabel,
       flattenBlocks, sortRows, icicleLayout,
+      flattenActualPlan, sortActualRows,
     };
   }
 })();

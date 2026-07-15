@@ -7,8 +7,11 @@ import { BatchResult, Driver, extractTableNames } from "../shared/driver";
 import { getPrimaryKeyColumnsQuery } from "../shared/queries";
 import { RowChange, buildStatementForChange } from "../shared/row-edit";
 import { interpretPlanText, PlanInterpretation } from "../shared/plan-parser";
+import { ActualPlanNode } from "../shared/actual-plan";
 import { logger } from "../logger/logger";
 import { getOptions } from "../config";
+
+type ActualPlanResult = { nodes: ActualPlanNode[] } | { error: string };
 
 type ResultSet = Array<any>;
 
@@ -63,6 +66,9 @@ export default class ResultView extends QueryResultsView implements Disposable {
    *  another statement that happens to share identical SQL) doesn't re-fetch. Cleared on every
    *  new display()/displayBatch() — a fresh set of results means any cached plan is stale. */
   private planCache = new Map<string, PlanInterpretation>();
+  /** Same idea as planCache, for the "Actual Plan" tab (phase 3) — also avoids re-running the
+   *  query (a real re-execution, not just a re-fetch) every time the user switches back to it. */
+  private actualPlanCache = new Map<string, ActualPlanResult>();
 
   constructor(private extensionPath: string) {
     super("resultview", "Firebird Query Results");
@@ -75,6 +81,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
     this.batchResults = undefined;
     this.recordsPerPage = recordsPerPage;
     this.planCache.clear();
+    this.actualPlanCache.clear();
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
   }
 
@@ -84,6 +91,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
     this.resultSet = undefined;
     this.recordsPerPage = recordsPerPage;
     this.planCache.clear();
+    this.actualPlanCache.clear();
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
   }
 
@@ -133,6 +141,11 @@ export default class ResultView extends QueryResultsView implements Disposable {
       this.emit("analyzePlan", message.data as AnalyzePlanRequest);
       return;
     }
+
+    if (message.command === "getActualPlan") {
+      this.handleGetActualPlan(message.data as { requestId: string; sql: string });
+      return;
+    }
   }
 
   /**
@@ -154,6 +167,27 @@ export default class ResultView extends QueryResultsView implements Disposable {
       this.planCache.set(sql, result);
     }
     this.send({ command: "queryPlanResult", data: { requestId, ...result } });
+  }
+
+  /**
+   * "Actual Plan" (phase 3) — re-runs the statement for real via Driver.getActualPlan() to
+   * collect Firebird 5.0+'s RDB$PROFILER per-record-source stats. Distinct cache from
+   * planCache/getQueryPlan above: a different data shape (ActualPlanNode[], not PlanNode[]) and a
+   * genuinely different cost to repeat (a live re-execution, not just a re-parse).
+   */
+  private async handleGetActualPlan(data: { requestId: string; sql: string }): Promise<void> {
+    const { requestId, sql } = data;
+    let result = this.actualPlanCache.get(sql);
+    if (!result) {
+      try {
+        const nodes = await Driver.getActualPlan(sql);
+        result = { nodes };
+      } catch (err: any) {
+        result = { error: err?.message ?? String(err) };
+      }
+      this.actualPlanCache.set(sql, result);
+    }
+    this.send({ command: "actualPlanResult", data: { requestId, ...result } });
   }
 
   /** Looks up a table's primary key columns, for targeting UPDATE/DELETE at a single row. */

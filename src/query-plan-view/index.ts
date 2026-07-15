@@ -47,6 +47,9 @@ export class QueryPlanView extends QueryResultsView implements vscode.Disposable
     if (message.command === "analyzePlan") {
       this.emitAnalyzePlan();
     }
+    if (message.command === "getActualPlan") {
+      this.fetchActualPlan().catch(err => logger.error(err));
+    }
   }
 
   /**
@@ -105,6 +108,23 @@ export class QueryPlanView extends QueryResultsView implements vscode.Disposable
       return;
     }
     this.parseAndSend(planText, filePath);
+  }
+
+  /**
+   * "Actual Plan" (phase 3) — re-runs the query for real via Driver.getActualPlan() and sends
+   * back the per-record-source tree from Firebird 5.0+'s RDB$PROFILER, distinct from the
+   * estimated blocks/diagram data ("planData") above. Lazy: only fetched when the webview's
+   * "Actual" view-mode button is clicked, not on every "ready"/"refresh".
+   */
+  private async fetchActualPlan(): Promise<void> {
+    try {
+      const nodes = await Driver.getActualPlan(this.sql, this.dbDetails);
+      this.send({ command: "actualPlanData", data: { nodes } });
+    } catch (err: any) {
+      const message = err?.message ?? String(err);
+      logger.error(`Actual plan fetch failed: ${message}`);
+      this.send({ command: "actualPlanData", data: { error: message } });
+    }
   }
 
   /** Shared by both a live fetch and a file import: fallback-text detection, parsing, and error reporting. */

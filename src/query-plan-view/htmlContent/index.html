@@ -19,6 +19,7 @@
       <button class="secondary view-mode-btn active" data-mode="diagram" title="Node-link diagram">Diagram</button>
       <button class="secondary view-mode-btn" data-mode="table" title="Sortable one-row-per-node table">Table</button>
       <button class="secondary view-mode-btn" data-mode="icicle" title="Icicle chart -- bar width shows each node's share of the plan's scans, nesting shows depth; Firebird's plan text has no cost/row estimates, so this highlights structure and natural (unindexed) scans, not literal cost">Icicle</button>
+      <button class="secondary view-mode-btn" data-mode="actual" title="Actual Plan -- re-runs the query for real and shows Firebird 5.0+'s real per-node execution stats (RDB$PROFILER). Needs Firebird 5.0 or newer, and only works for a single read-only SELECT.">Actual</button>
     </span>
     <button id="btn-toggle-raw" class="secondary" title="Show/hide the raw PLAN text">Raw Text</button>
     <button id="btn-analyze" class="secondary" title="Ask Copilot to explain this plan and suggest optimizations" disabled>🤖 Analyze</button>
@@ -59,6 +60,26 @@
 
     <div id="icicle-wrapper" style="display:none;">
       <div id="icicle-chart"></div>
+    </div>
+
+    <div id="actual-wrapper" style="display:none;">
+      <table id="actual-table">
+        <thead>
+          <tr>
+            <th data-sort="order">#</th>
+            <th data-sort="label">Node</th>
+            <th data-sort="openCount">Open Count</th>
+            <th data-sort="openElapsedMs">Open (ms)</th>
+            <th data-sort="fetchCount">Fetch Count</th>
+            <th data-sort="fetchElapsedMs">Fetch (ms)</th>
+            <th data-sort="level">Depth</th>
+          </tr>
+        </thead>
+        <tbody id="actual-table-body"></tbody>
+      </table>
+      <div id="actual-loading" style="display:none;">Re-running the query to collect actual execution stats…</div>
+      <div id="actual-error-banner" style="display:none;"></div>
+      <div id="actual-empty-banner" style="display:none;">No actual plan to show.</div>
     </div>
 
     <div id="loading">Loading plan…</div>
