@@ -23,6 +23,9 @@
     queriesMetricHeader: document.getElementById("queries-metric-header"),
     queriesBody: document.getElementById("queries-body"),
     queriesEmptyBanner: document.getElementById("queries-empty-banner"),
+    sessionsWrapper: document.getElementById("sessions-wrapper"),
+    sessionsBody: document.getElementById("sessions-body"),
+    sessionsEmptyBanner: document.getElementById("sessions-empty-banner"),
     loading: document.getElementById("loading"),
     errorBanner: document.getElementById("error-banner"),
     emptyBanner: document.getElementById("empty-banner"),
@@ -37,7 +40,7 @@
     4: "Read Committed (Read Consistency)",
   };
 
-  /** attachmentId -> { reads, writes, fetches, seqReads, idxReads, capturedAt } from the last poll, for delta/rate computation. */
+  /** attachmentId -> { reads, writes, fetches, seqReads, idxReads, waits, conflicts, capturedAt } from the last poll, for delta/rate computation. */
   let previous = new Map();
   let pollTimer = null;
   let pollIntervalMs = 3000;
@@ -48,7 +51,7 @@
   /** Pinned ATTACHMENT_IDs -- pinned rows sort first among whatever the current filter shows. */
   let pinned = new Set();
   let filterText = "";
-  let viewMode = "table"; // "table" | "dashboard" | "queries"
+  let viewMode = "table"; // "table" | "dashboard" | "queries" | "sessions"
 
   /** Dashboard (phase 4) history -- one sample per poll, kept regardless of which view is
    *  currently showing so switching to Dashboard doesn't start with an empty chart. Capped so a
@@ -162,6 +165,7 @@
   function renderCurrentView() {
     if (viewMode === "dashboard") { renderDashboard(); }
     else if (viewMode === "queries") { renderQueries(); }
+    else if (viewMode === "sessions") { renderSessions(); }
     else { renderTable(); }
   }
 
@@ -169,6 +173,7 @@
     el.tableWrapper.style.display = viewMode === "table" ? "block" : "none";
     el.dashboardWrapper.style.display = viewMode === "dashboard" ? "block" : "none";
     el.queriesWrapper.style.display = viewMode === "queries" ? "block" : "none";
+    el.sessionsWrapper.style.display = viewMode === "sessions" ? "block" : "none";
     el.viewModeBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === viewMode));
     // #filtered-banner is table-only but (like #loading/#error-banner/#empty-banner) lives at the
     // #main level, not inside #table-wrapper -- hide it up front so it can't stay stale/visible
@@ -227,6 +232,8 @@
           fetches: rate(row.PAGE_FETCHES, prev.fetches, elapsedSec),
           seq: rate(row.SEQ_READS, prev.seqReads, elapsedSec),
           idx: rate(row.IDX_READS, prev.idxReads, elapsedSec),
+          waits: rate(row.RECORD_WAITS, prev.waits, elapsedSec),
+          conflicts: rate(row.RECORD_CONFLICTS, prev.conflicts, elapsedSec),
         };
       }
     }
@@ -236,6 +243,8 @@
       fetches: row.PAGE_FETCHES || 0,
       seqReads: row.SEQ_READS || 0,
       idxReads: row.IDX_READS || 0,
+      waits: row.RECORD_WAITS || 0,
+      conflicts: row.RECORD_CONFLICTS || 0,
       capturedAt: now,
     });
     return rates;
@@ -511,11 +520,76 @@
     renderQueries();
   });
 
+  // ── Sessions (phase 5) ────────────────────────────────────────────────────
+  //
+  // One row per open transaction, from the same lastRendered the other views already share.
+  // Firebird's monitoring tables don't expose a lock-wait graph (no way to name *who* a given
+  // transaction is waiting on -- see profilerActivityQuery()'s doc comment), so "blocking" here
+  // is two proxies instead: per-attachment record wait/conflict rates, and flagging whichever
+  // transaction is the database's current MON$OLDEST_ACTIVE, i.e. most likely holding back
+  // garbage collection for every other connection.
+
+  function renderSessions() {
+    const sessions = lastRendered.filter(({ row }) => row.TRANSACTION_ID != null);
+
+    el.sessionsBody.innerHTML = "";
+    el.sessionsEmptyBanner.style.display = sessions.length === 0 ? "block" : "none";
+
+    sessions.forEach(({ row, rates }) => {
+      const tr = document.createElement("tr");
+      const isOldestActive = row.DB_OLDEST_ACTIVE != null && row.TRANSACTION_ID === row.DB_OLDEST_ACTIVE;
+      if (isOldestActive) { tr.classList.add("fb-oldest-active-row"); }
+
+      const flags = [];
+      if (isOldestActive) { flags.push("Oldest Active"); }
+      if (row.TX_READ_ONLY) { flags.push("Read-Only"); }
+      if (row.TX_AUTO_COMMIT) { flags.push("Auto-Commit"); }
+
+      const cells = [
+        row.USER_NAME || "",
+        row.REMOTE_ADDRESS || "",
+        row.ISOLATION_MODE != null ? isolationLabel(row.ISOLATION_MODE) : "",
+        lockTimeoutLabel(row.LOCK_TIMEOUT),
+        flags.join(", "),
+        row.TX_STARTED_AT ? formatDuration(Date.now() - new Date(row.TX_STARTED_AT).getTime()) : "",
+        fmtRate(rates && rates.waits),
+        fmtRate(rates && rates.conflicts),
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (i === 4 && isOldestActive) { td.classList.add("fb-oldest-active-flag"); }
+        tr.appendChild(td);
+      });
+
+      tr.appendChild(renderActionsCell(row));
+      el.sessionsBody.appendChild(tr);
+    });
+  }
+
+  function lockTimeoutLabel(seconds) {
+    if (seconds == null) { return ""; }
+    if (seconds === -1) { return "Infinite"; }
+    if (seconds === 0) { return "No Wait"; }
+    return `${seconds}s`;
+  }
+
+  function formatDuration(ms) {
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) { return `${h}h ${m}m`; }
+    if (m > 0) { return `${m}m ${s}s`; }
+    return `${s}s`;
+  }
+
   // Test-only hook: no-op in a real webview (there is no `module` global there).
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.__test__ = {
       rate, truncateOneLine, isolationLabel, handleActivityData, matchesFilter,
       recordHistorySample, buildSparklineSvg, lastDefined,
+      lockTimeoutLabel, formatDuration,
       getPrevious: () => previous,
       getPinned: () => pinned,
       getHistory: () => history,

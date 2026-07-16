@@ -15,6 +15,7 @@
       <button class="secondary view-mode-btn active" data-mode="table" title="Raw per-connection activity table">Table</button>
       <button class="secondary view-mode-btn" data-mode="dashboard" title="Live charts of connection count, cache hit ratio, and page I/O over time">Dashboard</button>
       <button class="secondary view-mode-btn" data-mode="queries" title="Currently active statements ranked by a chosen metric">Queries</button>
+      <button class="secondary view-mode-btn" data-mode="sessions" title="Open transactions, lock wait/conflict rates, and which one is oldest-active">Sessions</button>
     </span>
     <span class="toolbar-spacer"></span>
     <span id="status"></span>
@@ -96,6 +97,32 @@
         <tbody id="queries-body"></tbody>
       </table>
       <div id="queries-empty-banner" style="display:none;">No active statements with rate data yet.</div>
+    </div>
+
+    <div id="sessions-wrapper" style="display:none;">
+      <div id="sessions-hint">
+        Firebird's monitoring tables have no lock-wait graph (no "session A is blocked by session B"), so
+        this shows each open transaction's own state plus two proxies for contention: record lock
+        wait/conflict rates, and which transaction is currently the database's <em>oldest active</em> —
+        the one most likely holding back garbage collection for everyone else.
+      </div>
+      <table id="sessions-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Remote Address</th>
+            <th>Isolation</th>
+            <th>Lock Timeout</th>
+            <th>Flags</th>
+            <th>Duration</th>
+            <th>Waits/s</th>
+            <th>Conflicts/s</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sessions-body"></tbody>
+      </table>
+      <div id="sessions-empty-banner" style="display:none;">No open transactions.</div>
     </div>
 
     <div id="loading">Loading…</div>

@@ -389,6 +389,26 @@ suite('profilerActivityQuery', function () {
     assert.ok(sql.includes('WHERE MON$STATE = 1'), sql);
     assert.ok(sql.includes('MAX(MON$TRANSACTION_ID)'), sql);
   });
+
+  // Live Profiler "Sessions" view (phase 5) — record lock waits/conflicts and transaction-level
+  // fields, plus the database's oldest-active-transaction number for flagging the connection
+  // most likely to be holding back garbage collection.
+
+  test('includes record lock wait/conflict counters from the attachment-level stat row', function () {
+    assert.ok(sql.includes('rs.MON$RECORD_WAITS AS RECORD_WAITS'), sql);
+    assert.ok(sql.includes('rs.MON$RECORD_CONFLICTS AS RECORD_CONFLICTS'), sql);
+  });
+
+  test('includes transaction start time, lock timeout, auto-commit, and read-only flags', function () {
+    assert.ok(sql.includes('tx.MON$TIMESTAMP AS TX_STARTED_AT'), sql);
+    assert.ok(sql.includes('tx.MON$LOCK_TIMEOUT AS LOCK_TIMEOUT'), sql);
+    assert.ok(sql.includes('tx.MON$AUTO_COMMIT AS TX_AUTO_COMMIT'), sql);
+    assert.ok(sql.includes('tx.MON$READ_ONLY AS TX_READ_ONLY'), sql);
+  });
+
+  test('includes the database\'s oldest-active-transaction number via a scalar subquery', function () {
+    assert.ok(sql.includes('(SELECT MON$OLDEST_ACTIVE FROM MON$DATABASE) AS DB_OLDEST_ACTIVE'), sql);
+  });
 });
 
 // ── killAttachmentQuery / rollbackTransactionQuery ──────────────────────────────

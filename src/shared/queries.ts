@@ -675,6 +675,20 @@ export function getForeignKeysQuery(): string {
  * by design, to keep the activity grain at "one row per connection" rather than "one row per
  * statement" (multiplying out every combination would be noisier, not more useful, for a
  * connection-level activity view).
+ *
+ * The transaction-level columns added for the Live Profiler's "Sessions" view (phase 5,
+ * `docs/roadmap/live-profiler.md`) — MON$RECORD_WAITS/MON$RECORD_CONFLICTS (also from the
+ * already-joined attachment-level MON$RECORD_STATS row), MON$TIMESTAMP/MON$LOCK_TIMEOUT/
+ * MON$AUTO_COMMIT/MON$READ_ONLY off `tx`, and MON$DATABASE.MON$OLDEST_ACTIVE (the database's
+ * single row, via a scalar subquery so this stays one query) — were checked against Firebird's
+ * official monitoring-tables reference (`doc/README.monitoring_tables` in the firebird-sql/firebird
+ * repo) rather than a live server, since none was reachable in the environment this was written
+ * in; re-verify against a real server per the note above if you touch this again. Firebird's
+ * monitoring tables have no blocker/waiter identity (no lock-wait graph like PostgreSQL's
+ * pg_locks) — MON$RECORD_WAITS/CONFLICTS are just per-attachment cumulative counters, and
+ * MON$OLDEST_ACTIVE flags whichever transaction is currently the oldest, i.e. most likely to be
+ * holding back garbage collection — the closest analog Firebird exposes to "this session may be
+ * blocking others".
  */
 export function profilerActivityQuery(): string {
   return `SELECT a.MON$ATTACHMENT_ID AS ATTACHMENT_ID,
@@ -688,10 +702,17 @@ export function profilerActivityQuery(): string {
                  io.MON$PAGE_MARKS AS PAGE_MARKS,
                  rs.MON$RECORD_SEQ_READS AS SEQ_READS,
                  rs.MON$RECORD_IDX_READS AS IDX_READS,
+                 rs.MON$RECORD_WAITS AS RECORD_WAITS,
+                 rs.MON$RECORD_CONFLICTS AS RECORD_CONFLICTS,
                  stmt.MON$STATEMENT_ID AS STATEMENT_ID,
                  CAST(stmt.MON$SQL_TEXT AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS SQL_TEXT,
                  tx.MON$TRANSACTION_ID AS TRANSACTION_ID,
-                 tx.MON$ISOLATION_MODE AS ISOLATION_MODE
+                 tx.MON$ISOLATION_MODE AS ISOLATION_MODE,
+                 tx.MON$TIMESTAMP AS TX_STARTED_AT,
+                 tx.MON$LOCK_TIMEOUT AS LOCK_TIMEOUT,
+                 tx.MON$AUTO_COMMIT AS TX_AUTO_COMMIT,
+                 tx.MON$READ_ONLY AS TX_READ_ONLY,
+                 (SELECT MON$OLDEST_ACTIVE FROM MON$DATABASE) AS DB_OLDEST_ACTIVE
             FROM MON$ATTACHMENTS a
        LEFT JOIN MON$IO_STATS io ON io.MON$STAT_ID = a.MON$STAT_ID AND io.MON$STAT_GROUP = 1
        LEFT JOIN MON$RECORD_STATS rs ON rs.MON$STAT_ID = a.MON$STAT_ID AND rs.MON$STAT_GROUP = 1

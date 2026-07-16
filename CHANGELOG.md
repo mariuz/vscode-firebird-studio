@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.64 - 2026-07-17
+
+### Added
+
+- **Live Profiler: Sessions view.** A new `Sessions` view mode lists open transactions with isolation mode, lock timeout, Auto-Commit/Read-Only flags, duration, and record lock wait/conflict rates, flagging whichever transaction is the database's oldest active one (the most likely to be holding back garbage collection) — Firebird's monitoring tables have no true lock-wait graph, so this surfaces the closest proxies it does expose.
+
 ## 0.1.63 - 2026-07-16
 
 ### Added
