@@ -668,27 +668,46 @@ export function getForeignKeysQuery(): string {
  * a given MON$STAT_ID (0 = database, 1 = attachment, 2 = transaction, 3 = statement); without
  * it, a MON$STAT_ID could in principle join to the wrong "level" of stats.
  *
- * "Most recent active statement/transaction" is approximated as the highest MON$STATEMENT_ID /
- * MON$TRANSACTION_ID currently in state 1 (active) for that attachment — ids are assigned
- * sequentially, so the max id among active ones is the most recently started. An attachment can
- * genuinely have more than one active statement or transaction at once; this only surfaces one,
+ * "Most recent active statement" is approximated as the highest MON$STATEMENT_ID currently in
+ * state 1 (active, i.e. a request is genuinely executing right now) for that attachment — ids
+ * are assigned sequentially, so the max id among active ones is the most recently started. An
+ * attachment can genuinely have more than one active statement at once; this only surfaces one,
  * by design, to keep the activity grain at "one row per connection" rather than "one row per
  * statement" (multiplying out every combination would be noisier, not more useful, for a
  * connection-level activity view).
+ *
+ * The transaction side deliberately does *not* filter on MON$STATE = 1: unlike a statement,
+ * every row MON$TRANSACTIONS holds at all is already an open (not yet committed/rolled-back)
+ * transaction — MON$STATE there means "a request is executing under this transaction right now"
+ * (1) vs. "open but idle between statements" (0), not "open vs. done". Filtering to state 1 would
+ * silently hide the single most common case the Sessions view (phase 5, below) exists to show: a
+ * connection sitting on an open transaction between statements. This was tried with the filter
+ * first and caught live against a real server — see that phase's note.
  *
  * The transaction-level columns added for the Live Profiler's "Sessions" view (phase 5,
  * `docs/roadmap/live-profiler.md`) — MON$RECORD_WAITS/MON$RECORD_CONFLICTS (also from the
  * already-joined attachment-level MON$RECORD_STATS row), MON$TIMESTAMP/MON$LOCK_TIMEOUT/
  * MON$AUTO_COMMIT/MON$READ_ONLY off `tx`, and MON$DATABASE.MON$OLDEST_ACTIVE (the database's
- * single row, via a scalar subquery so this stays one query) — were checked against Firebird's
- * official monitoring-tables reference (`doc/README.monitoring_tables` in the firebird-sql/firebird
- * repo) rather than a live server, since none was reachable in the environment this was written
- * in; re-verify against a real server per the note above if you touch this again. Firebird's
- * monitoring tables have no blocker/waiter identity (no lock-wait graph like PostgreSQL's
- * pg_locks) — MON$RECORD_WAITS/CONFLICTS are just per-attachment cumulative counters, and
- * MON$OLDEST_ACTIVE flags whichever transaction is currently the oldest, i.e. most likely to be
- * holding back garbage collection — the closest analog Firebird exposes to "this session may be
- * blocking others".
+ * single row, via a scalar subquery so this stays one query) — verified against a real Firebird
+ * 6.0 server at `/opt/firebird` (a scratch database, via `isql`/`node-firebird`). Findings:
+ *   - MON$LOCK_TIMEOUT reads back exactly what each transaction was opened with (-1 infinite /
+ *     0 no-wait / N seconds), and MON$DATABASE.MON$OLDEST_ACTIVE correctly names the oldest open
+ *     transaction across all attachments.
+ *   - MON$RECORD_WAITS increments on a plain READ COMMITTED WAIT (or NO WAIT) lock conflict
+ *     against a row another transaction has already updated. MON$RECORD_CONFLICTS, despite the
+ *     name, did **not** increment for that same scenario — only for a SNAPSHOT/CONCURRENCY
+ *     isolation transaction whose snapshot was invalidated by another transaction's committed
+ *     update in between (the classic MVCC optimistic-conflict case). Both incremented together
+ *     there. So "Conflicts/s" in the Sessions view is a signal for snapshot invalidation
+ *     specifically, not every kind of lock contention — "Waits/s" is the broader one.
+ *   - This same run is what caught the MON$STATE = 1 bug described above: an idle-in-transaction
+ *     connection had a real open transaction but showed every tx-derived column as NULL until
+ *     the filter was removed.
+ * Firebird's monitoring tables have no blocker/waiter identity (no lock-wait graph like
+ * PostgreSQL's pg_locks) — MON$RECORD_WAITS/CONFLICTS are just per-attachment cumulative
+ * counters, and MON$OLDEST_ACTIVE flags whichever transaction is currently the oldest, i.e. most
+ * likely to be holding back garbage collection — the closest analog Firebird exposes to "this
+ * session may be blocking others".
  */
 export function profilerActivityQuery(): string {
   return `SELECT a.MON$ATTACHMENT_ID AS ATTACHMENT_ID,
@@ -726,7 +745,6 @@ export function profilerActivityQuery(): string {
        LEFT JOIN (
                  SELECT MON$ATTACHMENT_ID, MAX(MON$TRANSACTION_ID) AS MON$TRANSACTION_ID
                    FROM MON$TRANSACTIONS
-                  WHERE MON$STATE = 1
                GROUP BY MON$ATTACHMENT_ID
                ) active_tx ON active_tx.MON$ATTACHMENT_ID = a.MON$ATTACHMENT_ID
        LEFT JOIN MON$TRANSACTIONS tx ON tx.MON$TRANSACTION_ID = active_tx.MON$TRANSACTION_ID
