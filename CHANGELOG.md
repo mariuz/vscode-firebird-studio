@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.63 - 2026-07-16
+
+### Added
+
+- **Live Profiler: charted dashboard and Queries drill-down.** The Live Profiler (**Monitor Database**) now has `Table` / `Dashboard` / `Queries` view modes. Dashboard shows live sparkline charts (connections, cache hit %, page reads/writes per sec) with a 1 min / 5 min / 15 min / All time-range selector, over the same polled data the activity table already fetches. Queries ranks currently active statements by a chosen metric (reads/writes/fetches/seq/idx per sec).
+
 ## 0.1.62 - 2026-07-15
 
 ### Added

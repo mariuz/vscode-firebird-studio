@@ -4,7 +4,7 @@
 
 ## Current state in Firebird Studio
 
-**Phases 1, 2, and 3 are done.** `src/profiler/` (`ProfilerView`) replaces the one-shot `MON$ATTACHMENTS` snapshot `NodeDatabase#monitorDatabase()` used to run (`monitorConnectionsQuery` is gone from `queries.ts` — superseded, not kept alongside) with a continuously polling activity table:
+**Phases 1 through 4 are done.** `src/profiler/` (`ProfilerView`) replaces the one-shot `MON$ATTACHMENTS` snapshot `NodeDatabase#monitorDatabase()` used to run (`monitorConnectionsQuery` is gone from `queries.ts` — superseded, not kept alongside) with a continuously polling activity table:
 
 - `profilerActivityQuery()` (`src/shared/queries.ts`) — one row per connection (attachment-level, excluding the profiler's own dedicated connection and internal engine attachments), with cumulative page/record I-O counters and, if there is one, the most recently started active statement and transaction. **Verified directly against a real Firebird 3.0 server** (a scratch database, via `isql-fb`) before being written, the same way `plan-parser.ts`'s grammar was — see the query's doc comment for exactly what was checked (in particular, `MON$STAT_GROUP = 1` to select the attachment-level stat row for a given `MON$STAT_ID`, and picking the highest active `MON$STATEMENT_ID`/`MON$TRANSACTION_ID` per attachment rather than every combination, to keep the grain at one row per connection).
 - `ProfilerView` uses its **own dedicated connection** (created lazily on first poll, reused across polls, closed on dispose) rather than going through `Driver.runQuery()`'s per-call connect/detach, so repeated polling doesn't pay a fresh-connection cost every few seconds and never contends with the user's own query execution or the connection pool.
@@ -20,10 +20,16 @@
 - **Kill / Rollback**: a "Kill" button on every row and a "Rollback" button on rows with an active transaction (`row.TRANSACTION_ID != null`) post `killAttachment`/`rollbackTransaction` messages to the extension host. `ProfilerView.runAdminAction()` (`src/profiler/index.ts`) is the shared confirm-then-execute path: a modal `vscode.window.showWarningMessage()` (naming the user/address being affected) gates the action — the webview itself never confirms, matching this repo's convention that a webview posts an intent and the extension host owns any destructive confirmation. On confirm, it runs `killAttachmentQuery(attachmentId)` / `rollbackTransactionQuery(transactionId)` (new in `src/shared/queries.ts` — `DELETE FROM MON$ATTACHMENTS`/`MON$TRANSACTIONS`, Firebird's documented mechanism for forced detach/rollback, each guarding its numeric id with `Number.isInteger()` before interpolating) over the profiler's existing dedicated connection, then triggers an immediate re-poll. (The `killAttachmentQuery()` helper mentioned as "drafted and removed" in an earlier revision of this doc is now implemented for real, with a caller.)
 - **Verified against a live server**: a standalone script opened a "victim" connection, force-detached it via the same `DELETE FROM MON$ATTACHMENTS` statement `killAttachmentQuery()` builds, and confirmed the victim's next query was rejected ("Connection shutdown, Killed by database administrator.") and it no longer appeared in `MON$ATTACHMENTS`; separately, started a transaction, rolled it back via the same `DELETE FROM MON$TRANSACTIONS` statement, and confirmed it no longer appeared in `MON$TRANSACTIONS`.
 
-### Explicitly deferred (not done)
+### Phase 4 — Charted dashboard and Queries drill-down
 
-- **Phase 4 — Charted dashboard**: still a plain table, not the live line-chart view (grouped sections, time-range selector) vscode-pgsql's dashboard uses. The metrics this phase would chart (connections, cache hit ratio, block I/O) are exactly the ones already polled — charting is presentation on top of data this phase already fetches, not new data access.
-- **Phase 5 — Sessions/blocking view**: no dedicated blocking-tree view; `MON$TRANSACTIONS`' state is available in the query but not yet surfaced distinctly from the main activity row.
+- **View mode switcher**: a `Table` / `Dashboard` / `Queries` button group in the toolbar (`.view-mode-btn`, `viewMode` in `app.js`) toggles which of three sibling panels under `#main` is visible; switching views never re-polls, it just re-renders from state (`lastRendered`/`history`) already held in memory.
+- **Dashboard**: three chart cards — Connections, Cache Hit % (approximate: `(fetches − physical page reads) / fetches`, aggregated across all connections since the last poll), and Page I/O (reads/writes per sec, two series on one chart) — each a hand-rolled inline SVG polyline (`buildSparklineSvg()`), no charting library. A time-range selector (1 min / 5 min / 15 min / All) filters a webview-local `history` array — one aggregate sample recorded per poll (`recordHistorySample()`), capped at `MAX_HISTORY` (600 samples) so a long-running panel doesn't grow it unboundedly. Like pins (phase 3), history is session-local and not persisted — `retainContextWhenHidden: false` discards it on hide, matching this webview's existing state-lifetime convention.
+- **Queries drill-down**: ranks the *current* poll's active, rated connections by a chosen metric (Reads/Writes/Fetches/Seq/Idx per sec, via a `<select>`) — no new polling, just a different sort/view over the same `lastRendered` the activity table already computes.
+- **Verification**: no automated coverage for the same reason as the rest of the webview's inline JS (see Testing below); manually exercised by running the extension against a live server, switching between all three view modes while a workload was active, and confirming the dashboard's charts and the queries ranking updated each poll and the time-range buttons re-filtered the existing history without a re-poll.
+
+### Phase 5 — Sessions/blocking view (not done)
+
+No dedicated blocking-tree view; `MON$TRANSACTIONS`' state is available in the query but not yet surfaced distinctly from the main activity row.
 
 ### Testing
 
@@ -32,7 +38,7 @@
 ## Technical notes
 
 - Reused the existing dedicated-connection pattern already established for user-management actions that "bypass the extension's normal query-execution path" (per the 0.1.19 changelog entry), rather than inventing a new one.
-- No charting library is vendored in this extension — if/when phase 4 is picked up, a hand-rolled SVG line chart (a handful of `<path>` elements against fixed axes) matches how `src/schema-designer/`'s canvas and `src/query-plan-view/`'s diagram both already avoid a charting dependency.
+- No charting library is vendored in this extension — phase 4's dashboard charts are hand-rolled inline SVG polylines (`buildSparklineSvg()` in `app.js`), matching how `src/schema-designer/`'s canvas and `src/query-plan-view/`'s diagram both already avoid a charting dependency.
 - If you need to re-verify or extend `profilerActivityQuery()`, a Firebird 3.0 server is reachable in this environment via `isql-fb` — the query's doc comment documents the scratch-database setup used to validate it.
 
 ## Suggested phases (remaining)
@@ -40,5 +46,5 @@
 1. ~~Static "Activity Snapshot" query, richer than the old one-shot `MON$ATTACHMENTS` query.~~ — **done** (`profilerActivityQuery()`).
 2. ~~Interval-based polling + delta-stat computation.~~ — **done**.
 3. ~~Add filter/pin and the kill/rollback action.~~ — **done**.
-4. Add the charted dashboard view (line charts + time-range selector) over the same polled data, plus a Queries drill-down ranking statements by a chosen metric.
+4. ~~Add the charted dashboard view (line charts + time-range selector) over the same polled data, plus a Queries drill-down ranking statements by a chosen metric.~~ — **done**.
 5. (Stretch, scoped down per the original note here) a Sessions/blocking view.

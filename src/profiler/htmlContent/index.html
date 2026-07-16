@@ -11,30 +11,93 @@
     <button id="btn-refresh">Refresh Now</button>
     <button id="btn-pause" class="secondary">Pause</button>
     <input id="filter" type="text" placeholder="Filter by user, address, state, statement…" />
+    <span class="view-mode-controls">
+      <button class="secondary view-mode-btn active" data-mode="table" title="Raw per-connection activity table">Table</button>
+      <button class="secondary view-mode-btn" data-mode="dashboard" title="Live charts of connection count, cache hit ratio, and page I/O over time">Dashboard</button>
+      <button class="secondary view-mode-btn" data-mode="queries" title="Currently active statements ranked by a chosen metric">Queries</button>
+    </span>
     <span class="toolbar-spacer"></span>
     <span id="status"></span>
   </div>
 
-  <div id="table-wrapper">
-    <table id="activity-table">
-      <thead>
-        <tr>
-          <th class="fb-pin-col"></th>
-          <th>User</th>
-          <th>Remote Address</th>
-          <th>State</th>
-          <th>Isolation</th>
-          <th>Current Statement</th>
-          <th>Reads/s</th>
-          <th>Writes/s</th>
-          <th>Fetches/s</th>
-          <th>Seq/s</th>
-          <th>Idx/s</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="activity-body"></tbody>
-    </table>
+  <div id="main">
+    <div id="table-wrapper">
+      <table id="activity-table">
+        <thead>
+          <tr>
+            <th class="fb-pin-col"></th>
+            <th>User</th>
+            <th>Remote Address</th>
+            <th>State</th>
+            <th>Isolation</th>
+            <th>Current Statement</th>
+            <th>Reads/s</th>
+            <th>Writes/s</th>
+            <th>Fetches/s</th>
+            <th>Seq/s</th>
+            <th>Idx/s</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="activity-body"></tbody>
+      </table>
+    </div>
+
+    <div id="dashboard-wrapper" style="display:none;">
+      <div id="dashboard-toolbar">
+        <span>Time range:</span>
+        <span class="time-range-controls">
+          <button class="secondary time-range-btn" data-range="60000">1 min</button>
+          <button class="secondary time-range-btn active" data-range="300000">5 min</button>
+          <button class="secondary time-range-btn" data-range="900000">15 min</button>
+          <button class="secondary time-range-btn" data-range="0">All</button>
+        </span>
+      </div>
+      <div id="dashboard-charts">
+        <div class="chart-card">
+          <h4>Connections</h4>
+          <div class="chart-value" id="chart-value-connections"></div>
+          <div class="chart-container" id="chart-connections"></div>
+        </div>
+        <div class="chart-card">
+          <h4>Cache Hit % <span class="chart-hint" title="Approximate: (fetches − physical page reads) / fetches, aggregated across all connections since the last poll.">?</span></h4>
+          <div class="chart-value" id="chart-value-cachehit"></div>
+          <div class="chart-container" id="chart-cachehit"></div>
+        </div>
+        <div class="chart-card">
+          <h4>Page I/O (reads/writes per sec)</h4>
+          <div class="chart-value" id="chart-value-io"></div>
+          <div class="chart-container" id="chart-io"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="queries-wrapper" style="display:none;">
+      <div id="queries-toolbar">
+        <span>Rank by:</span>
+        <select id="queries-metric">
+          <option value="reads">Reads/s</option>
+          <option value="writes">Writes/s</option>
+          <option value="fetches">Fetches/s</option>
+          <option value="seq">Seq/s</option>
+          <option value="idx">Idx/s</option>
+        </select>
+      </div>
+      <table id="queries-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>User</th>
+            <th>Remote Address</th>
+            <th>Statement</th>
+            <th id="queries-metric-header">Reads/s</th>
+          </tr>
+        </thead>
+        <tbody id="queries-body"></tbody>
+      </table>
+      <div id="queries-empty-banner" style="display:none;">No active statements with rate data yet.</div>
+    </div>
+
     <div id="loading">Loading…</div>
     <div id="error-banner" style="display:none;"></div>
     <div id="empty-banner" style="display:none;">No other active connections.</div>
