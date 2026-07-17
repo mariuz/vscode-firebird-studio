@@ -10,8 +10,14 @@ interface FbnbCell {
   languageId: string;
 }
 
+/** Document-level metadata — currently just the bound connection id (docs/roadmap/sql-notebooks.md phase 3). */
+interface FbnbMetadata {
+  connectionId?: string;
+}
+
 interface FbnbFile {
   cells: FbnbCell[];
+  metadata?: FbnbMetadata;
 }
 
 export class FirebirdNotebookSerializer implements NotebookSerializer {
@@ -30,7 +36,11 @@ export class FirebirdNotebookSerializer implements NotebookSerializer {
       cells.push(new NotebookCellData(NotebookCellKind.Code, "", "sql"));
     }
 
-    return new NotebookData(cells);
+    const notebook = new NotebookData(cells);
+    if (parsed.metadata) {
+      notebook.metadata = parsed.metadata;
+    }
+    return notebook;
   }
 
   serializeNotebook(data: NotebookData, _token: CancellationToken): Uint8Array {
@@ -41,6 +51,13 @@ export class FirebirdNotebookSerializer implements NotebookSerializer {
         languageId: cell.languageId,
       })),
     };
+    // Only round-trip the one key this extension actually writes (NotebookData.metadata is an
+    // untyped bag other extensions/VS Code itself could in principle also stash things in) —
+    // narrow rather than dumping the whole object back out verbatim.
+    const connectionId = data.metadata?.connectionId;
+    if (typeof connectionId === "string") {
+      file.metadata = { connectionId };
+    }
     return Buffer.from(JSON.stringify(file, null, 2), "utf8");
   }
 }

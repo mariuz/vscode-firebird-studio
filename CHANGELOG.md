@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.66 - 2026-07-17
+
+### Added
+
+- **SQL Notebooks: persisted connection binding.** A `.fbnb` notebook now remembers which saved connection it's bound to across reopening the file or restarting VS Code — previously it re-prompted every time. The connection id (never its password) is stored in the notebook's own metadata.
+
+### Fixed
+
+- **Code completion could silently fail with no active connection.** `firebird.codeCompletion.database` (on by default) queried the database for completions even before any connection was active, throwing internally on every keystroke (caught and logged, but completions never populated). Now correctly requires an active connection.
+
 ## 0.1.65 - 2026-07-17
 
 ### Fixed

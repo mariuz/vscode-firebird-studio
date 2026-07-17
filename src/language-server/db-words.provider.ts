@@ -10,7 +10,10 @@ type ResultSet = Array<any>;
 export class KeywordsDb {
     public async getSchema(): Promise<Schema.Database> {
         try {
-            if (!Global.activeConnection && !getOptions().codeCompletionDatabase) {
+            // No active connection means there's nothing to query regardless of the
+            // codeCompletionDatabase setting — without this check, build() below would be called
+            // with conOptions === undefined and throw on conOptions.database.
+            if (!Global.activeConnection || !getOptions().codeCompletionDatabase) {
                 return { reservedKeywords: getOptions().codeCompletionKeywords, path: "", tables: [] };
             }
             const schema = await this.build(Global.activeConnection, getOptions().codeCompletionKeywords, getOptions().maxTablesCount);
