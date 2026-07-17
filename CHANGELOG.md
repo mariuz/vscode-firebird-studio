@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.73 - 2026-07-18
+
+### Added
+
+- **Database Projects: safer column-type changes in Publish.** A column type change Firebird's own `ALTER COLUMN ... TYPE` would reject outright (narrowing a `VARCHAR`, `VARCHAR` → `INTEGER`, anything involving `BLOB`, widening a `NUMERIC`'s decimal places, ...) is now migrated via an add-copy-drop-rename sequence instead, so the generated script actually runs rather than failing loudly. A change Firebird already accepts directly (e.g. widening a `VARCHAR`) is unaffected. Skipped for a column that's part of a primary key or foreign key — those still use the previous behavior.
+
 ## 0.1.72 - 2026-07-18
 
 ### Added

@@ -271,6 +271,21 @@ export function buildPublishScript(
     rel => pkChangedTables.has(rel.refTable) && !diff.droppedForeignKeys.some(d => fkKey(d) === fkKey(rel))
   );
 
+  // Which columns (per table) currently participate in a foreign key, on either side — used by
+  // buildColumnAlterStatements() below to skip the add-copy-drop-rename safety net for a
+  // constrained column rather than try to reconstruct the constraint drop/recreate ordering that'd
+  // need (see that function's doc comment).
+  const columnsInForeignKeysByTable = new Map<string, Set<string>>();
+  const addFkColumn = (tableName: string, columnName: string) => {
+    const set = columnsInForeignKeysByTable.get(tableName) ?? new Set<string>();
+    set.add(columnName);
+    columnsInForeignKeysByTable.set(tableName, set);
+  };
+  for (const rel of target.graph.relationships) {
+    addFkColumn(rel.table, rel.column);
+    addFkColumn(rel.refTable, rel.refColumn);
+  }
+
   if (diff.droppedForeignKeys.length > 0 || keptFksNeedingCycle.length > 0) {
     note("Drop foreign keys (removed, or referencing a table whose primary key is changing)");
     for (const rel of diff.droppedForeignKeys) {
@@ -289,7 +304,8 @@ export function buildPublishScript(
       tableStatements.push(`ALTER TABLE ${table.name} DROP ${name};`);
     }
     for (const change of table.changedColumns) {
-      tableStatements.push(...buildColumnAlterStatements(table.name, change));
+      const columnsInForeignKeys = columnsInForeignKeysByTable.get(table.name) ?? new Set<string>();
+      tableStatements.push(...buildColumnAlterStatements(table.name, change, columnsInForeignKeys));
     }
     for (const column of table.addedColumns) {
       const parts = [`${column.name} ${columnTypeToDDL(column)}`];
@@ -455,16 +471,108 @@ export function buildPublishScript(
   return statements.join("\n\n");
 }
 
+export type ColumnTypeShape = Pick<SchemaColumn, "type" | "length" | "subType" | "precision" | "scale">;
+
+/** SMALLINT < INTEGER < INT64(BIGINT) — used only to detect integer-family widening. */
+const INTEGER_WIDTH: Record<string, number> = { SMALLINT: 1, INTEGER: 2, INT64: 3 };
+const CHARACTER_TYPES = new Set(["VARCHAR", "CHAR", "CSTRING"]);
+
 /**
- * A column type/length/subtype change is emitted as a single ALTER COLUMN ... TYPE statement;
- * NOT NULL and DEFAULT changes are their own separate ALTER COLUMN statements — all three
- * confirmed as distinct, valid Firebird 4/5 syntax directly against a live server (there is no
- * combined single-statement form). Order: type, then NOT NULL, then default — a NOT NULL change on
- * a column whose type is also changing is safe to issue right after the type change since Firebird
- * validates NOT NULL against the table's *current* data at the time the statement runs, not a
- * cached pre-change state.
+ * Whether Firebird's plain `ALTER TABLE ... ALTER COLUMN ... TYPE` can be trusted to accept this
+ * specific before → after change directly, verified against a real Firebird 6.0 server (see
+ * docs/roadmap/database-projects.md's "Column-type-change data safety" write-up) rather than
+ * assumed — the actual rules turned out far more specific than a simple "same family" test:
+ * VARCHAR/CHAR narrowing is rejected outright *regardless of whether the existing data would fit*;
+ * integer/numeric narrowing is rejected outright; a NUMERIC/DECIMAL's scale (decimal places) can't
+ * be *increased* even though its precision can; BLOB is entirely excluded from ALTER COLUMN TYPE in
+ * both directions; and a non-character, non-BLOB type converting *to* character is accepted
+ * (confirmed live for INTEGER and BOOLEAN) while the reverse — character converting to
+ * non-character — is rejected outright, even for an all-numeric string.
+ *
+ * Anything not covered by one of the shapes verified safe below defaults to *unsafe*: getting this
+ * wrong in the "marked safe but Firebird actually rejects it" direction would just reintroduce the
+ * exact failure this feature exists to close, so an unverified combination falls back to the
+ * add-copy-drop-rename sequence in buildColumnAlterStatements() instead of a bare guess.
  */
-function buildColumnAlterStatements(tableName: string, change: ColumnChange): string[] {
+export function isColumnTypeChangeSafeInPlace(from: ColumnTypeShape, to: ColumnTypeShape): boolean {
+  if (from.type === "BLOB" || to.type === "BLOB") {
+    return false;
+  }
+
+  const fromIsCharacter = CHARACTER_TYPES.has(from.type);
+  const toIsCharacter = CHARACTER_TYPES.has(to.type);
+
+  if (fromIsCharacter && toIsCharacter) {
+    // Character -> character: safe only when widening (or same length) — Firebird rejects *any*
+    // narrowing outright, even when every existing value would still fit.
+    return to.length >= from.length;
+  }
+  if (fromIsCharacter) {
+    // Character -> anything else: always rejected by Firebird's ALTER COLUMN TYPE.
+    return false;
+  }
+  if (toIsCharacter) {
+    // Non-character, non-BLOB -> character: accepted (verified live for INTEGER, BOOLEAN).
+    return true;
+  }
+
+  if ((from.type === "DATE" && to.type === "TIMESTAMP") || (from.type === "TIMESTAMP" && to.type === "DATE")) {
+    return true; // both directions verified safe live.
+  }
+  if (from.type === "FLOAT" && (to.type === "DOUBLE" || to.type === "D_FLOAT")) {
+    return true; // verified safe widening; the reverse isn't verified, so it isn't whitelisted.
+  }
+
+  const fromWidth = INTEGER_WIDTH[from.type];
+  const toWidth = INTEGER_WIDTH[to.type];
+  const fromPlainInteger = fromWidth !== undefined && !from.subType;
+  const toPlainInteger = toWidth !== undefined && !to.subType;
+  if (fromPlainInteger && toPlainInteger) {
+    // Integer-family widening (SMALLINT -> INTEGER -> BIGINT): verified for both adjacent steps.
+    return toWidth >= fromWidth;
+  }
+
+  const toNumeric = to.subType === 1 || to.subType === 2;
+  if (fromPlainInteger && toNumeric) {
+    return true; // plain integer -> NUMERIC/DECIMAL: verified safe (INTEGER -> NUMERIC(10,2)).
+  }
+
+  const fromNumeric = from.subType === 1 || from.subType === 2;
+  if (fromNumeric && toNumeric) {
+    // NUMERIC/DECIMAL -> NUMERIC/DECIMAL: precision may only grow, scale (decimal places, stored
+    // negative — see SchemaColumn.scale's doc comment) may only shrink. Verified live: increasing
+    // precision alone succeeds; increasing scale (more decimal places) alone is rejected.
+    return (to.precision ?? 0) >= (from.precision ?? 0) && (to.scale ?? 0) >= (from.scale ?? 0);
+  }
+
+  return false;
+}
+
+/**
+ * A column type/length/subtype change is normally emitted as a single ALTER COLUMN ... TYPE
+ * statement — but only when isColumnTypeChangeSafeInPlace() has actually verified Firebird accepts
+ * it directly. For everything else, an add-copy-drop-rename sequence is used instead (verified live
+ * against a real server): ADD a differently-named column of the new type, UPDATE it from a CAST of
+ * the old column (so the exact same data-fidelity check Firebird's CAST already performs is what
+ * fails loudly on a genuinely incompatible value, not a silently-accepted truncation), DROP the old
+ * column, then rename the new one back to the original name (`ALTER COLUMN ... TO ...`, Firebird's
+ * column-rename syntax) — after which the NOT NULL/DEFAULT statements below still correctly target
+ * `change.name`, now the renamed column, with no changes needed to that logic at all.
+ *
+ * Skipped (falls back to the old, occasionally-unsafe plain ALTER COLUMN TYPE) whenever the column
+ * is part of a primary key or any foreign key relationship, since renaming it out from under an
+ * active constraint needs its own drop/recreate ordering this pass doesn't attempt — a disclosed,
+ * deliberately narrower scope cut than trying to reconstruct every constraint that might reference
+ * a column, see docs/roadmap/database-projects.md.
+ *
+ * NOT NULL and DEFAULT changes are their own separate ALTER COLUMN statements — all three confirmed
+ * as distinct, valid Firebird 4/5 syntax directly against a live server (there is no combined
+ * single-statement form). Order: type, then NOT NULL, then default — a NOT NULL change on a column
+ * whose type is also changing is safe to issue right after the type change since Firebird validates
+ * NOT NULL against the table's *current* data at the time the statement runs, not a cached
+ * pre-change state.
+ */
+function buildColumnAlterStatements(tableName: string, change: ColumnChange, columnsInForeignKeys: Set<string>): string[] {
   const statements: string[] = [];
   const { source, target } = change;
 
@@ -473,7 +581,17 @@ function buildColumnAlterStatements(tableName: string, change: ColumnChange): st
     || (source.precision ?? 0) !== (target.precision ?? 0)
     || (source.scale ?? 0) !== (target.scale ?? 0);
   if (typeChanged) {
-    statements.push(`ALTER TABLE ${tableName} ALTER COLUMN ${change.name} TYPE ${columnTypeToDDL(source)};`);
+    const constrained = source.isPrimaryKey || target.isPrimaryKey || columnsInForeignKeys.has(change.name);
+    if (!constrained && !isColumnTypeChangeSafeInPlace(target, source)) {
+      const tempName = `${change.name}__tmp`;
+      const newTypeDDL = columnTypeToDDL(source);
+      statements.push(`ALTER TABLE ${tableName} ADD ${tempName} ${newTypeDDL};`);
+      statements.push(`UPDATE ${tableName} SET ${tempName} = CAST(${change.name} AS ${newTypeDDL});`);
+      statements.push(`ALTER TABLE ${tableName} DROP ${change.name};`);
+      statements.push(`ALTER TABLE ${tableName} ALTER COLUMN ${tempName} TO ${change.name};`);
+    } else {
+      statements.push(`ALTER TABLE ${tableName} ALTER COLUMN ${change.name} TYPE ${columnTypeToDDL(source)};`);
+    }
   }
 
   if (source.notNull !== target.notNull) {

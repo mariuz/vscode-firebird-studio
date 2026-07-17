@@ -1,7 +1,7 @@
 import * as assert from 'assert';
-import { diffProjects, buildPublishScript, PublishDiff } from '../database-projects/publish-model';
+import { diffProjects, buildPublishScript, isColumnTypeChangeSafeInPlace, PublishDiff, ColumnTypeShape } from '../database-projects/publish-model';
 import { ProjectInput, DomainSource } from '../database-projects/project-model';
-import { SchemaColumn, SchemaTable, SchemaGraph } from '../schema-designer/schema-graph';
+import { SchemaColumn, SchemaTable, SchemaGraph, SchemaRelationship } from '../schema-designer/schema-graph';
 
 function column(overrides: Partial<SchemaColumn> = {}): SchemaColumn {
   return { name: 'ID', type: 'INTEGER', length: 4, notNull: true, isPrimaryKey: false, ...overrides };
@@ -22,6 +22,92 @@ function input(overrides: Partial<ProjectInput> = {}): ProjectInput {
     exceptions: [], roles: [], users: [], pkConstraintNames: {}, ...overrides,
   };
 }
+
+// ── isColumnTypeChangeSafeInPlace() ──────────────────────────────────────────
+//
+// Every case below mirrors a result actually observed against a real Firebird 6.0 server (see
+// docs/roadmap/database-projects.md's "Column-type-change data safety" write-up) — this is a
+// verified compatibility matrix, not a guessed-at "same family" heuristic.
+
+function shape(overrides: Partial<ColumnTypeShape> & { type: string }): ColumnTypeShape {
+  return { length: 0, ...overrides };
+}
+
+suite('database-project-publish – isColumnTypeChangeSafeInPlace()', function () {
+  test('VARCHAR widening is safe', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'VARCHAR', length: 10 }), shape({ type: 'VARCHAR', length: 30 })), true);
+  });
+
+  test('VARCHAR same length is safe', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'VARCHAR', length: 10 }), shape({ type: 'VARCHAR', length: 10 })), true);
+  });
+
+  test('VARCHAR narrowing is unsafe, even though Firebird could in principle check the data', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'VARCHAR', length: 30 }), shape({ type: 'VARCHAR', length: 10 })), false);
+  });
+
+  test('CHAR <-> VARCHAR at the same length is safe', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'CHAR', length: 10 }), shape({ type: 'VARCHAR', length: 10 })), true);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'VARCHAR', length: 10 }), shape({ type: 'CHAR', length: 10 })), true);
+  });
+
+  test('character -> non-character is always unsafe, even an all-numeric-looking string', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'VARCHAR', length: 20 }), shape({ type: 'INTEGER' })), false);
+  });
+
+  test('non-character, non-BLOB -> character is safe (verified for INTEGER and BOOLEAN)', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'INTEGER' }), shape({ type: 'VARCHAR', length: 20 })), true);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'BOOLEAN' }), shape({ type: 'VARCHAR', length: 5 })), true);
+  });
+
+  test('BLOB is always unsafe in either direction', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'BLOB' }), shape({ type: 'VARCHAR', length: 100 })), false);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'VARCHAR', length: 100 }), shape({ type: 'BLOB' })), false);
+  });
+
+  test('DATE <-> TIMESTAMP is safe in both directions', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'DATE' }), shape({ type: 'TIMESTAMP' })), true);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'TIMESTAMP' }), shape({ type: 'DATE' })), true);
+  });
+
+  test('FLOAT -> DOUBLE PRECISION is safe; the reverse is not verified and stays unsafe', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'FLOAT' }), shape({ type: 'DOUBLE' })), true);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'DOUBLE' }), shape({ type: 'FLOAT' })), false);
+  });
+
+  test('integer-family widening (SMALLINT -> INTEGER -> BIGINT) is safe', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'SMALLINT' }), shape({ type: 'INTEGER' })), true);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'INTEGER' }), shape({ type: 'INT64' })), true);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'SMALLINT' }), shape({ type: 'INT64' })), true);
+  });
+
+  test('integer-family narrowing is unsafe', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'INT64' }), shape({ type: 'INTEGER' })), false);
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'INTEGER' }), shape({ type: 'SMALLINT' })), false);
+  });
+
+  test('plain integer -> NUMERIC/DECIMAL is safe', function () {
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(shape({ type: 'INTEGER' }), shape({ type: 'INTEGER', subType: 1, precision: 10, scale: -2 })), true);
+  });
+
+  test('NUMERIC/DECIMAL precision increase (scale unchanged) is safe', function () {
+    const from = shape({ type: 'INTEGER', subType: 1, precision: 9, scale: -2 });
+    const to = shape({ type: 'INTEGER', subType: 1, precision: 18, scale: -2 });
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(from, to), true);
+  });
+
+  test('NUMERIC/DECIMAL scale increase (more decimal places) is unsafe even with precision unchanged', function () {
+    const from = shape({ type: 'INTEGER', subType: 1, precision: 10, scale: -2 });
+    const to = shape({ type: 'INTEGER', subType: 1, precision: 10, scale: -4 });
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(from, to), false);
+  });
+
+  test('NUMERIC/DECIMAL precision decrease is unsafe', function () {
+    const from = shape({ type: 'INTEGER', subType: 1, precision: 18, scale: -2 });
+    const to = shape({ type: 'INTEGER', subType: 1, precision: 9, scale: -2 });
+    assert.strictEqual(isColumnTypeChangeSafeInPlace(from, to), false);
+  });
+});
 
 suite('database-project-publish – diffProjects()', function () {
   test('detects a table only in the source as new', function () {
@@ -302,6 +388,84 @@ suite('database-project-publish – buildPublishScript()', function () {
     };
     const script = buildPublishScript(diff, input());
     assert.ok(script.includes('ALTER TABLE T ALTER COLUMN NOTE TYPE VARCHAR(100);'));
+  });
+
+  // ── Column-type-change data safety (docs/roadmap/database-projects.md) ─────────────────────
+  // A change isColumnTypeChangeSafeInPlace() rejects is emitted as an add-copy-drop-rename
+  // sequence instead of a plain ALTER COLUMN TYPE Firebird would reject outright.
+
+  test('an unsafe type change (VARCHAR narrowing) uses add-copy-drop-rename instead of a plain ALTER COLUMN TYPE', function () {
+    const src = column({ name: 'NOTE', type: 'VARCHAR', length: 10 });
+    const tgt = column({ name: 'NOTE', type: 'VARCHAR', length: 30 });
+    const diff = {
+      ...emptyDiff(),
+      modifiedTables: [{ name: 'T', addedColumns: [], droppedColumns: [], changedColumns: [{ name: 'NOTE', source: src, target: tgt }], pkChanged: false, newPkColumns: [] }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(!script.includes('ALTER COLUMN NOTE TYPE'), script);
+    assert.ok(script.includes('ALTER TABLE T ADD NOTE__tmp VARCHAR(10);'), script);
+    assert.ok(script.includes('UPDATE T SET NOTE__tmp = CAST(NOTE AS VARCHAR(10));'), script);
+    assert.ok(script.includes('ALTER TABLE T DROP NOTE;'), script);
+    assert.ok(script.includes('ALTER TABLE T ALTER COLUMN NOTE__tmp TO NOTE;'), script);
+    // Statement order matters: the ADD must come before the UPDATE that reads from the not-yet-dropped
+    // original column, which must come before the DROP, which must come before the rename.
+    const idx = (needle: string) => script.indexOf(needle);
+    assert.ok(idx('ADD NOTE__tmp') < idx('UPDATE T SET NOTE__tmp'));
+    assert.ok(idx('UPDATE T SET NOTE__tmp') < idx('DROP NOTE;'));
+    assert.ok(idx('DROP NOTE;') < idx('ALTER COLUMN NOTE__tmp TO NOTE'));
+  });
+
+  test('a NOT NULL/DEFAULT change alongside an unsafe type change still targets the renamed column correctly', function () {
+    const src = column({ name: 'NOTE', type: 'VARCHAR', length: 10, notNull: true, dflt: "'x'" });
+    const tgt = column({ name: 'NOTE', type: 'VARCHAR', length: 30, notNull: false });
+    const diff = {
+      ...emptyDiff(),
+      modifiedTables: [{ name: 'T', addedColumns: [], droppedColumns: [], changedColumns: [{ name: 'NOTE', source: src, target: tgt }], pkChanged: false, newPkColumns: [] }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('ALTER TABLE T ALTER COLUMN NOTE__tmp TO NOTE;'), script);
+    assert.ok(script.includes('ALTER TABLE T ALTER COLUMN NOTE SET NOT NULL;'), script);
+    assert.ok(script.includes("ALTER TABLE T ALTER COLUMN NOTE SET DEFAULT 'x';"), script);
+    // The rename must land before either follow-up statement can target the (now renamed) column.
+    assert.ok(script.indexOf('TO NOTE;') < script.indexOf('SET NOT NULL'));
+  });
+
+  test('an unsafe type change on a primary key column falls back to the old plain ALTER COLUMN TYPE (not attempted)', function () {
+    const src = column({ name: 'CODE', type: 'VARCHAR', length: 10, isPrimaryKey: true });
+    const tgt = column({ name: 'CODE', type: 'VARCHAR', length: 30, isPrimaryKey: true });
+    const diff = {
+      ...emptyDiff(),
+      modifiedTables: [{ name: 'T', addedColumns: [], droppedColumns: [], changedColumns: [{ name: 'CODE', source: src, target: tgt }], pkChanged: false, newPkColumns: ['CODE'] }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('ALTER TABLE T ALTER COLUMN CODE TYPE VARCHAR(10);'), script);
+    assert.ok(!script.includes('CODE__tmp'), script);
+  });
+
+  test('an unsafe type change on a column referenced by a foreign key falls back to the old plain ALTER COLUMN TYPE', function () {
+    const src = column({ name: 'REF_ID', type: 'VARCHAR', length: 10 });
+    const tgt = column({ name: 'REF_ID', type: 'VARCHAR', length: 30 });
+    const rel: SchemaRelationship = { constraintName: 'FK_T_REF', table: 'T', column: 'REF_ID', refTable: 'PARENT', refColumn: 'ID' };
+    const diff = {
+      ...emptyDiff(),
+      modifiedTables: [{ name: 'T', addedColumns: [], droppedColumns: [], changedColumns: [{ name: 'REF_ID', source: src, target: tgt }], pkChanged: false, newPkColumns: [] }],
+    };
+    const targetInput = input({ graph: { tables: [], relationships: [rel] } });
+    const script = buildPublishScript(diff, targetInput);
+    assert.ok(script.includes('ALTER TABLE T ALTER COLUMN REF_ID TYPE VARCHAR(10);'), script);
+    assert.ok(!script.includes('REF_ID__tmp'), script);
+  });
+
+  test('a safe type change (widening) is unaffected and still uses a plain ALTER COLUMN TYPE', function () {
+    const src = column({ name: 'NOTE', type: 'VARCHAR', length: 100 });
+    const tgt = column({ name: 'NOTE', type: 'VARCHAR', length: 20 });
+    const diff = {
+      ...emptyDiff(),
+      modifiedTables: [{ name: 'T', addedColumns: [], droppedColumns: [], changedColumns: [{ name: 'NOTE', source: src, target: tgt }], pkChanged: false, newPkColumns: [] }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('ALTER TABLE T ALTER COLUMN NOTE TYPE VARCHAR(100);'), script);
+    assert.ok(!script.includes('NOTE__tmp'), script);
   });
 
   test('emits SET NOT NULL when a column becomes required', function () {
