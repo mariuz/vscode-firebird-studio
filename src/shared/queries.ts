@@ -16,6 +16,24 @@ export function getTablesQuery(maxTableCount: number): string {
   }
 }
 
+/**
+ * FIELD_LENGTH here (and at every other `RDB$FIELD_LENGTH AS FIELD_LENGTH` site in this file —
+ * fieldsQuery(), viewColumnsQuery(), procedureParametersQuery()/getAllProcedureParametersQuery(),
+ * getDomainsQuery(), getSchemaColumnsQuery()) is `COALESCE(RDB$CHARACTER_LENGTH, RDB$FIELD_LENGTH)`,
+ * not bare RDB$FIELD_LENGTH: confirmed directly against a live Firebird 6.0 server that
+ * RDB$FIELD_LENGTH is the column's storage size in **bytes**, not characters — for a UTF8-charset
+ * VARCHAR(150), RDB$FIELD_LENGTH reports 600 (150 × 4 bytes/char), while RDB$CHARACTER_LENGTH
+ * correctly reports 150. Every caller that builds a `VARCHAR(n)`/`CHAR(n)` DDL fragment from this
+ * value (columnTypeToDDL() in database-projects/project-model.ts chief among them) was reading the
+ * byte count as if it were the character count — a real, pre-existing bug for any UTF8-charset
+ * database (the modern recommended default), caught by Database Projects' Publish round-trip
+ * actually re-diffing a database it had just rebuilt from its own Extract output and finding a
+ * spurious "changed" column/domain purely from this 4×-inflated length. RDB$CHARACTER_LENGTH is
+ * only ever non-null for CHAR(14)/VARCHAR(37) (confirmed live across INTEGER/BIGINT/BLOB/NUMERIC/
+ * TIMESTAMP/BOOLEAN too) — exactly the two RDB$FIELD_TYPE values every consumer of FIELD_LENGTH
+ * actually uses it for — so the COALESCE fallback to the old RDB$FIELD_LENGTH value for every other
+ * type changes nothing for them.
+ */
 export function tableInfoQuery(tableName: string): string {
   return `SELECT TRIM(r.RDB$FIELD_NAME) AS FIELD_NAME,
          CASE f.RDB$FIELD_TYPE
@@ -36,7 +54,7 @@ export function tableInfoQuery(tableName: string): string {
            WHEN 23  THEN 'BOOLEAN'
            ELSE 'UNKNOWN'
          END AS FIELD_TYPE,
-            f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+            COALESCE(f.RDB$CHARACTER_LENGTH, f.RDB$FIELD_LENGTH) AS FIELD_LENGTH,
             f.RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE,
             f.RDB$FIELD_PRECISION AS FIELD_PRECISION,
             f.RDB$FIELD_SCALE AS FIELD_SCALE,
@@ -83,7 +101,7 @@ export function fieldsQuery(tables: string[]): string {
               WHEN 37  THEN 'VARCHAR'
               ELSE 'UNKNOWN'
             END AS FIELD_TYPE,
-            f.RDB$FIELD_LENGTH as FIELD_LENGTH
+            COALESCE(f.RDB$CHARACTER_LENGTH, f.RDB$FIELD_LENGTH) as FIELD_LENGTH
        FROM RDB$RELATION_FIELDS r
       left join RDB$FIELDS f on f.RDB$FIELD_NAME = r.RDB$FIELD_SOURCE
       WHERE (r.rdb$system_flag IS NULL OR r.rdb$system_flag = 0) 
@@ -143,7 +161,7 @@ export function viewColumnsQuery(viewName: string): string {
            WHEN 37  THEN 'VARCHAR'
            ELSE 'UNKNOWN'
          END AS FIELD_TYPE,
-            f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+            COALESCE(f.RDB$CHARACTER_LENGTH, f.RDB$FIELD_LENGTH) AS FIELD_LENGTH,
             CASE WHEN r.RDB$NULL_FLAG = 1 THEN 1 ELSE 0 END AS NOT_NULL,
             r.RDB$FIELD_POSITION AS FIELD_POSITION
        FROM RDB$RELATION_FIELDS r
@@ -179,7 +197,7 @@ export function procedureParametersQuery(procedureName: string): string {
                    WHEN 37  THEN 'VARCHAR'
                    ELSE 'UNKNOWN'
                  END AS FIELD_TYPE,
-                 f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+                 COALESCE(f.RDB$CHARACTER_LENGTH, f.RDB$FIELD_LENGTH) AS FIELD_LENGTH,
                  f.RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE,
                  f.RDB$FIELD_PRECISION AS FIELD_PRECISION,
                  f.RDB$FIELD_SCALE AS FIELD_SCALE
@@ -206,6 +224,15 @@ export function getGeneratorsQuery(): string {
         ORDER BY 1;`;
 }
 
+/**
+ * DEFAULT_SOURCE/CHECK_SOURCE are cast the same way procedure/trigger/view source text already is
+ * elsewhere in this file (VARCHAR(MAX_SOURCE_CAST_LENGTH) CHARACTER SET UTF8) — a domain's CHECK
+ * expression, in particular, has no inherent length cap. Both come back as literal DDL-fragment
+ * text ("DEFAULT 0", "CHECK (VALUE >= 0)"), confirmed directly against a live Firebird 6.0 server —
+ * DEFAULT_SOURCE needs its "DEFAULT " prefix stripped before reuse the same way
+ * schema-graph.ts's normalizeDefault() already does for table columns; CHECK_SOURCE already
+ * includes its own "CHECK (...)" wrapper and can be appended to CREATE/ALTER DOMAIN as-is.
+ */
 export function getDomainsQuery(): string {
   return `SELECT TRIM(RDB$FIELD_NAME) AS DOMAIN_NAME,
                  CASE RDB$FIELD_TYPE
@@ -223,13 +250,16 @@ export function getDomainsQuery(): string {
                    WHEN 13  THEN 'TIME'
                    WHEN 35  THEN 'TIMESTAMP'
                    WHEN 37  THEN 'VARCHAR'
+                   WHEN 23  THEN 'BOOLEAN'
                    ELSE 'UNKNOWN'
                  END AS DOMAIN_TYPE,
-                 RDB$FIELD_LENGTH AS FIELD_LENGTH,
+                 COALESCE(RDB$CHARACTER_LENGTH, RDB$FIELD_LENGTH) AS FIELD_LENGTH,
                  RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE,
                  RDB$FIELD_PRECISION AS FIELD_PRECISION,
                  RDB$FIELD_SCALE AS FIELD_SCALE,
-                 CASE WHEN RDB$NULL_FLAG = 1 THEN 1 ELSE 0 END AS NOT_NULL
+                 CASE WHEN RDB$NULL_FLAG = 1 THEN 1 ELSE 0 END AS NOT_NULL,
+                 CAST(RDB$DEFAULT_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS DEFAULT_SOURCE,
+                 CAST(RDB$VALIDATION_SOURCE AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS CHECK_SOURCE
             FROM RDB$FIELDS
            WHERE RDB$FIELD_NAME NOT STARTING WITH 'RDB$'
              AND (RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0)
@@ -266,9 +296,12 @@ export function getUsersQuery(): string {
  * Only for cases like CREATE/ALTER USER's PASSWORD clause, which has no parameterized-query
  * equivalent since it's DDL — identifiers in these same statements are validated separately via
  * assertValidIdentifier(), never string-escaped, since Firebird identifiers can't be
- * parameterized either and must instead be restricted to a safe character set.
+ * parameterized either and must instead be restricted to a safe character set. Exported so
+ * project-model.ts's CREATE EXCEPTION/CREATE USER DDL builders (Database Projects, which also
+ * embed values in single-quoted literals with no parameterized-DDL alternative) can reuse it
+ * rather than a second, drifting copy.
  */
-function escapeSqlLiteral(value: string): string {
+export function escapeSqlLiteral(value: string): string {
   return value.replace(/'/g, "''");
 }
 
@@ -414,7 +447,7 @@ export function getAllProcedureParametersQuery(): string {
                    WHEN 37  THEN 'VARCHAR'
                    ELSE 'UNKNOWN'
                  END AS FIELD_TYPE,
-                 f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+                 COALESCE(f.RDB$CHARACTER_LENGTH, f.RDB$FIELD_LENGTH) AS FIELD_LENGTH,
                  f.RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE,
                  f.RDB$FIELD_PRECISION AS FIELD_PRECISION,
                  f.RDB$FIELD_SCALE AS FIELD_SCALE
@@ -614,7 +647,7 @@ export function getSchemaColumnsQuery(): string {
                    WHEN 37  THEN 'VARCHAR'
                    ELSE 'UNKNOWN'
                  END AS FIELD_TYPE,
-                 f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
+                 COALESCE(f.RDB$CHARACTER_LENGTH, f.RDB$FIELD_LENGTH) AS FIELD_LENGTH,
                  f.RDB$FIELD_SUB_TYPE AS FIELD_SUB_TYPE,
                  f.RDB$FIELD_PRECISION AS FIELD_PRECISION,
                  f.RDB$FIELD_SCALE AS FIELD_SCALE,

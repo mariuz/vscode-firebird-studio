@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { diffProjects, buildPublishScript, PublishDiff } from '../database-projects/publish-model';
-import { ProjectInput } from '../database-projects/project-model';
+import { ProjectInput, DomainSource } from '../database-projects/project-model';
 import { SchemaColumn, SchemaTable, SchemaGraph } from '../schema-designer/schema-graph';
 
 function column(overrides: Partial<SchemaColumn> = {}): SchemaColumn {
@@ -11,9 +11,16 @@ function table(name: string, columns: SchemaColumn[]): SchemaTable {
   return { name, columns };
 }
 
+function domain(overrides: Partial<DomainSource> & { name: string }): DomainSource {
+  return { type: 'INTEGER', length: 4, notNull: false, ...overrides };
+}
+
 function input(overrides: Partial<ProjectInput> = {}): ProjectInput {
   const graph: SchemaGraph = { tables: [], relationships: [] };
-  return { graph, procedures: [], triggers: [], views: [], generators: [], pkConstraintNames: {}, ...overrides };
+  return {
+    graph, domains: [], procedures: [], triggers: [], views: [], generators: [],
+    exceptions: [], roles: [], users: [], pkConstraintNames: {}, ...overrides,
+  };
 }
 
 suite('database-project-publish – diffProjects()', function () {
@@ -111,6 +118,120 @@ suite('database-project-publish – diffProjects()', function () {
     assert.deepStrictEqual(diff.modifiedTables[0].droppedColumns, ['OLD_NAME']);
     assert.strictEqual(diff.modifiedTables[0].addedColumns[0].name, 'NEW_NAME');
   });
+
+  // ── domains ──────────────────────────────────────────────────────────────
+
+  test('detects a domain only in the source as new', function () {
+    const source = input({ domains: [domain({ name: 'D_NEW' })] });
+    const target = input();
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.newDomains.length, 1);
+    assert.strictEqual(diff.newDomains[0].name, 'D_NEW');
+  });
+
+  test('detects a domain only in the target as dropped', function () {
+    const source = input();
+    const target = input({ domains: [domain({ name: 'D_OLD' })] });
+    const diff = diffProjects(source, target);
+    assert.deepStrictEqual(diff.droppedDomains, ['D_OLD']);
+  });
+
+  test('an identical domain in both is not reported as changed', function () {
+    const source = input({ domains: [domain({ name: 'D1', type: 'VARCHAR', length: 50 })] });
+    const target = input({ domains: [domain({ name: 'D1', type: 'VARCHAR', length: 50 })] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedDomains.length, 0);
+  });
+
+  test('detects a domain type change', function () {
+    const source = input({ domains: [domain({ name: 'D1', type: 'VARCHAR', length: 100 })] });
+    const target = input({ domains: [domain({ name: 'D1', type: 'VARCHAR', length: 20 })] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedDomains.length, 1);
+    assert.strictEqual(diff.changedDomains[0].name, 'D1');
+  });
+
+  test('detects a domain NOT NULL change', function () {
+    const source = input({ domains: [domain({ name: 'D1', notNull: true })] });
+    const target = input({ domains: [domain({ name: 'D1', notNull: false })] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedDomains.length, 1);
+  });
+
+  test('detects a domain default change', function () {
+    const source = input({ domains: [domain({ name: 'D1', dflt: '1' })] });
+    const target = input({ domains: [domain({ name: 'D1', dflt: '0' })] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedDomains.length, 1);
+  });
+
+  test('detects a domain check-constraint change', function () {
+    const source = input({ domains: [domain({ name: 'D1', check: 'CHECK (VALUE >= 0)' })] });
+    const target = input({ domains: [domain({ name: 'D1', check: 'CHECK (VALUE >= 10)' })] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedDomains.length, 1);
+  });
+
+  test('detects a domain check constraint being added where there was none', function () {
+    const source = input({ domains: [domain({ name: 'D1', check: 'CHECK (VALUE >= 0)' })] });
+    const target = input({ domains: [domain({ name: 'D1' })] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedDomains.length, 1);
+    assert.strictEqual(diff.changedDomains[0].target.check, undefined);
+    assert.strictEqual(diff.changedDomains[0].source.check, 'CHECK (VALUE >= 0)');
+  });
+
+  test('detects a domain check constraint being removed', function () {
+    const source = input({ domains: [domain({ name: 'D1' })] });
+    const target = input({ domains: [domain({ name: 'D1', check: 'CHECK (VALUE >= 0)' })] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedDomains.length, 1);
+  });
+
+  // ── exceptions ───────────────────────────────────────────────────────────
+
+  test('detects new/changed/dropped exceptions by message', function () {
+    const source = input({ exceptions: [{ name: 'EXC_A', message: 'new message' }, { name: 'EXC_SAME', message: 'unchanged' }] });
+    const target = input({ exceptions: [{ name: 'EXC_SAME', message: 'unchanged' }, { name: 'EXC_OLD', message: 'gone' }] });
+    const diff = diffProjects(source, target);
+    assert.deepStrictEqual(diff.newExceptions.map(e => e.name), ['EXC_A']);
+    assert.deepStrictEqual(diff.droppedExceptions, ['EXC_OLD']);
+    assert.strictEqual(diff.changedExceptions.length, 0);
+  });
+
+  test('detects a changed exception message for a name present in both', function () {
+    const source = input({ exceptions: [{ name: 'EXC_1', message: 'new text' }] });
+    const target = input({ exceptions: [{ name: 'EXC_1', message: 'old text' }] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.changedExceptions.length, 1);
+    assert.strictEqual(diff.changedExceptions[0].message, 'new text');
+  });
+
+  // ── roles/users (existence only — see DomainSource/UserSource doc comments for why there's no "changed" case) ──
+
+  test('detects new/dropped roles', function () {
+    const source = input({ roles: [{ name: 'ROLE_NEW' }] });
+    const target = input({ roles: [{ name: 'ROLE_OLD' }] });
+    const diff = diffProjects(source, target);
+    assert.deepStrictEqual(diff.newRoles.map(r => r.name), ['ROLE_NEW']);
+    assert.deepStrictEqual(diff.droppedRoles, ['ROLE_OLD']);
+  });
+
+  test('a role present in both is neither new nor dropped', function () {
+    const source = input({ roles: [{ name: 'SAME_ROLE' }] });
+    const target = input({ roles: [{ name: 'SAME_ROLE' }] });
+    const diff = diffProjects(source, target);
+    assert.strictEqual(diff.newRoles.length, 0);
+    assert.strictEqual(diff.droppedRoles.length, 0);
+  });
+
+  test('detects new/dropped users', function () {
+    const source = input({ users: [{ name: 'USER_NEW' }] });
+    const target = input({ users: [{ name: 'USER_OLD' }] });
+    const diff = diffProjects(source, target);
+    assert.deepStrictEqual(diff.newUsers.map(u => u.name), ['USER_NEW']);
+    assert.deepStrictEqual(diff.droppedUsers, ['USER_OLD']);
+  });
 });
 
 suite('database-project-publish – buildPublishScript()', function () {
@@ -118,10 +239,14 @@ suite('database-project-publish – buildPublishScript()', function () {
     return {
       newTables: [], droppedTables: [], modifiedTables: [],
       newForeignKeys: [], droppedForeignKeys: [],
+      newDomains: [], changedDomains: [], droppedDomains: [],
       newViews: [], changedViews: [], droppedViews: [],
       newProcedures: [], changedProcedures: [], droppedProcedures: [],
       newTriggers: [], changedTriggers: [], droppedTriggers: [],
       newGenerators: [], droppedGenerators: [],
+      newExceptions: [], changedExceptions: [], droppedExceptions: [],
+      newRoles: [], droppedRoles: [],
+      newUsers: [], droppedUsers: [],
     };
   }
 
@@ -275,5 +400,207 @@ suite('database-project-publish – buildPublishScript()', function () {
     const diff = { ...emptyDiff(), newGenerators: ['GEN_NEW'] };
     const script = buildPublishScript(diff, input());
     assert.ok(script.includes('CREATE SEQUENCE GEN_NEW;'));
+  });
+
+  test('regression: a new generator is scripted before a new trigger/procedure that might GEN_ID() it — confirmed live that Firebird rejects the reverse order', function () {
+    const diff = {
+      ...emptyDiff(),
+      newGenerators: ['GEN_ID_SOURCE'],
+      newProcedures: [{ name: 'P1', source: 'BEGIN\n  X = GEN_ID(GEN_ID_SOURCE, 1);\nEND' }],
+      newTriggers: [{ name: 'TRG1', table: 'T', inactive: false, type: 1, source: 'AS BEGIN NEW.ID = GEN_ID(GEN_ID_SOURCE, 1); END' }],
+      newTables: [table('T', [column()])],
+    };
+    const script = buildPublishScript(diff, input());
+    const genIdx = script.indexOf('CREATE SEQUENCE GEN_ID_SOURCE');
+    assert.ok(genIdx >= 0, 'expected the generator to be scripted at all');
+    assert.ok(genIdx < script.indexOf('CREATE OR ALTER PROCEDURE P1'), script);
+    assert.ok(genIdx < script.indexOf('CREATE OR ALTER TRIGGER TRG1'), script);
+    assert.ok(genIdx < script.indexOf('CREATE TABLE T'), 'generators should be scripted before tables too, since a column DEFAULT can reference one');
+  });
+
+  // ── domains ──────────────────────────────────────────────────────────────
+
+  test('emits CREATE DOMAIN for a new domain', function () {
+    const diff = { ...emptyDiff(), newDomains: [domain({ name: 'D_AGE', type: 'INTEGER' })] };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('CREATE DOMAIN D_AGE AS INTEGER;'));
+  });
+
+  test('a changed domain emits no "CREATE OR ALTER DOMAIN" — that syntax does not exist in Firebird (confirmed live)', function () {
+    const diff = {
+      ...emptyDiff(),
+      // 'INT64' is Firebird's raw internal type name (what getDomainsQuery()/columnTypeToDDL()
+      // actually deal in) — it maps *to* the DDL keyword BIGINT as output, not the other way round.
+      changedDomains: [{ name: 'D1', source: domain({ name: 'D1', type: 'INT64' }), target: domain({ name: 'D1', type: 'INTEGER' }) }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(!script.includes('CREATE OR ALTER DOMAIN'));
+    assert.ok(script.includes('ALTER DOMAIN D1 TYPE BIGINT;'));
+  });
+
+  test('a changed domain emits SET/DROP NOT NULL, matching the column convention', function () {
+    const becomingRequired = {
+      ...emptyDiff(),
+      changedDomains: [{ name: 'D1', source: domain({ name: 'D1', notNull: true }), target: domain({ name: 'D1', notNull: false }) }],
+    };
+    assert.ok(buildPublishScript(becomingRequired, input()).includes('ALTER DOMAIN D1 SET NOT NULL;'));
+
+    const becomingOptional = {
+      ...emptyDiff(),
+      changedDomains: [{ name: 'D1', source: domain({ name: 'D1', notNull: false }), target: domain({ name: 'D1', notNull: true }) }],
+    };
+    assert.ok(buildPublishScript(becomingOptional, input()).includes('ALTER DOMAIN D1 DROP NOT NULL;'));
+  });
+
+  test('a changed domain emits SET/DROP DEFAULT', function () {
+    const addingDefault = {
+      ...emptyDiff(),
+      changedDomains: [{ name: 'D1', source: domain({ name: 'D1', dflt: '0' }), target: domain({ name: 'D1' }) }],
+    };
+    assert.ok(buildPublishScript(addingDefault, input()).includes('ALTER DOMAIN D1 SET DEFAULT 0;'));
+
+    const droppingDefault = {
+      ...emptyDiff(),
+      changedDomains: [{ name: 'D1', source: domain({ name: 'D1' }), target: domain({ name: 'D1', dflt: '0' }) }],
+    };
+    assert.ok(buildPublishScript(droppingDefault, input()).includes('ALTER DOMAIN D1 DROP DEFAULT;'));
+  });
+
+  test('a changed CHECK constraint drops the old one before adding the new one — Firebird allows only one per domain (confirmed live)', function () {
+    const diff = {
+      ...emptyDiff(),
+      changedDomains: [{
+        name: 'D1',
+        source: domain({ name: 'D1', check: 'CHECK (VALUE >= 10)' }),
+        target: domain({ name: 'D1', check: 'CHECK (VALUE >= 0)' }),
+      }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('ALTER DOMAIN D1 DROP CONSTRAINT;'));
+    assert.ok(script.includes('ALTER DOMAIN D1 ADD CONSTRAINT CHECK (VALUE >= 10);'));
+    assert.ok(script.indexOf('DROP CONSTRAINT') < script.indexOf('ADD CONSTRAINT'), 'must drop the old check before adding the new one');
+  });
+
+  test('adding a CHECK constraint where there was none only emits ADD CONSTRAINT, no DROP', function () {
+    const diff = {
+      ...emptyDiff(),
+      changedDomains: [{ name: 'D1', source: domain({ name: 'D1', check: 'CHECK (VALUE >= 0)' }), target: domain({ name: 'D1' }) }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('ALTER DOMAIN D1 ADD CONSTRAINT CHECK (VALUE >= 0);'));
+    assert.ok(!script.includes('DROP CONSTRAINT'));
+  });
+
+  test('removing a CHECK constraint only emits DROP CONSTRAINT, no ADD', function () {
+    const diff = {
+      ...emptyDiff(),
+      changedDomains: [{ name: 'D1', source: domain({ name: 'D1' }), target: domain({ name: 'D1', check: 'CHECK (VALUE >= 0)' }) }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('ALTER DOMAIN D1 DROP CONSTRAINT;'));
+    assert.ok(!script.includes('ADD CONSTRAINT'));
+  });
+
+  test('domains are created before tables', function () {
+    const diff = { ...emptyDiff(), newDomains: [domain({ name: 'D1' })], newTables: [table('T', [column()])] };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.indexOf('CREATE DOMAIN D1') < script.indexOf('CREATE TABLE T'), script);
+  });
+
+  // ── exceptions (and the ordering requirement relative to procedures/triggers) ──────────────
+
+  test('emits CREATE OR ALTER EXCEPTION for a new exception', function () {
+    const diff = { ...emptyDiff(), newExceptions: [{ name: 'EXC_1', message: 'bad thing' }] };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes("CREATE OR ALTER EXCEPTION EXC_1 'bad thing';"));
+  });
+
+  test('emits CREATE OR ALTER EXCEPTION for a changed exception', function () {
+    const diff = { ...emptyDiff(), changedExceptions: [{ name: 'EXC_1', message: 'updated message' }] };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes("CREATE OR ALTER EXCEPTION EXC_1 'updated message';"));
+  });
+
+  test('a new exception is scripted before a new procedure that might reference it (confirmed live that Firebird requires this)', function () {
+    const diff = {
+      ...emptyDiff(),
+      newExceptions: [{ name: 'EXC_1', message: 'x' }],
+      newProcedures: [{ name: 'P1', source: 'BEGIN\n  EXCEPTION EXC_1;\nEND' }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.indexOf('CREATE OR ALTER EXCEPTION EXC_1') < script.indexOf('CREATE OR ALTER PROCEDURE P1'), script);
+  });
+
+  test('a new exception is scripted before a new trigger that might reference it', function () {
+    const diff = {
+      ...emptyDiff(),
+      newExceptions: [{ name: 'EXC_1', message: 'x' }],
+      newTriggers: [{ name: 'TRG1', table: 'T', inactive: false, type: 1, source: 'AS BEGIN EXCEPTION EXC_1; END' }],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.indexOf('CREATE OR ALTER EXCEPTION EXC_1') < script.indexOf('CREATE OR ALTER TRIGGER TRG1'), script);
+  });
+
+  // ── roles/users ──────────────────────────────────────────────────────────
+
+  test('emits CREATE ROLE for a new role', function () {
+    const diff = { ...emptyDiff(), newRoles: [{ name: 'APP_ROLE' }] };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('CREATE ROLE APP_ROLE;'));
+  });
+
+  test('a new user is scripted commented out, never as a live executable statement', function () {
+    const diff = { ...emptyDiff(), newUsers: [{ name: 'JOHN_DOE' }] };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('-- CREATE USER JOHN_DOE PASSWORD'), script);
+    // Assert none of the script's *statement* lines (as opposed to "-- " comment lines) actually
+    // creates the user, matching the same "review before running" convention the rest of
+    // buildPublishScript()'s output already follows.
+    const executableLines = script.split('\n').filter(line => line.trim() && !line.trim().startsWith('--'));
+    assert.ok(!executableLines.some(line => line.includes('CREATE USER')), 'CREATE USER must never appear as a live, uncommented statement');
+  });
+
+  // ── includeDrops ordering for the new object types ──────────────────────
+
+  test('drops a domain only with includeDrops, and after tables (which may still reference it)', function () {
+    const diff = { ...emptyDiff(), droppedDomains: ['D_OLD'], droppedTables: ['T_OLD'] };
+    assert.ok(!buildPublishScript(diff, input()).includes('DROP DOMAIN'));
+
+    const script = buildPublishScript(diff, input(), { includeDrops: true });
+    assert.ok(script.includes('DROP DOMAIN D_OLD;'));
+    assert.ok(script.indexOf('DROP TABLE T_OLD') < script.indexOf('DROP DOMAIN D_OLD'), script);
+  });
+
+  test('drops an exception only with includeDrops, and after procedures/triggers (which may reference it, confirmed live)', function () {
+    const diff = { ...emptyDiff(), droppedExceptions: ['EXC_OLD'], droppedProcedures: ['P_OLD'], droppedTriggers: ['TRG_OLD'] };
+    assert.ok(!buildPublishScript(diff, input()).includes('DROP EXCEPTION'));
+
+    const script = buildPublishScript(diff, input(), { includeDrops: true });
+    assert.ok(script.includes('DROP EXCEPTION EXC_OLD;'));
+    assert.ok(script.indexOf('DROP TRIGGER TRG_OLD') < script.indexOf('DROP EXCEPTION EXC_OLD'), script);
+    assert.ok(script.indexOf('DROP PROCEDURE P_OLD') < script.indexOf('DROP EXCEPTION EXC_OLD'), script);
+  });
+
+  test('drops a role/user only with includeDrops', function () {
+    const diff = { ...emptyDiff(), droppedRoles: ['ROLE_OLD'], droppedUsers: ['USER_OLD'] };
+    const withoutDrops = buildPublishScript(diff, input());
+    assert.ok(!withoutDrops.includes('DROP ROLE'));
+    assert.ok(!withoutDrops.includes('DROP USER'));
+
+    const script = buildPublishScript(diff, input(), { includeDrops: true });
+    assert.ok(script.includes('DROP ROLE ROLE_OLD;'));
+    assert.ok(script.includes('DROP USER USER_OLD;'));
+  });
+
+  test('lists dropped domains/exceptions/roles/users in the "not dropped" note when includeDrops is omitted', function () {
+    const diff = {
+      ...emptyDiff(),
+      droppedDomains: ['D_OLD'], droppedExceptions: ['EXC_OLD'], droppedRoles: ['ROLE_OLD'], droppedUsers: ['USER_OLD'],
+    };
+    const script = buildPublishScript(diff, input());
+    assert.ok(script.includes('domain D_OLD'), script);
+    assert.ok(script.includes('exception EXC_OLD'), script);
+    assert.ok(script.includes('role ROLE_OLD'), script);
+    assert.ok(script.includes('user USER_OLD'), script);
   });
 });

@@ -128,4 +128,123 @@ suite('Database Projects – Publish/migrate (real Firebird integration)', funct
     const finalScript = buildPublishScript(finalDiff, migratedSnapshot);
     assert.ok(finalScript.includes('No changes detected'), finalScript);
   });
+
+  // ── domains/exceptions/roles/users (docs/roadmap/database-projects.md) ────────────────────
+  //
+  // Same "actually execute the generated script, then re-fetch and confirm it really matches"
+  // methodology as the table/procedure/trigger test above — this is what caught three real bugs
+  // during local verification before this suite existed (see the roadmap doc): generators were
+  // emitted after the triggers/procedures/table-column-defaults that could reference them via
+  // GEN_ID(), RDB$FIELD_LENGTH turned out to be a UTF8-charset column's *byte* length rather than
+  // its character length (a real, pre-existing gap well beyond just this phase — every
+  // VARCHAR/CHAR column extracted anywhere in this codebase was affected), and a target whose only
+  // remaining diff was a brand-new user produced a script that was entirely a `-- ` comment (by
+  // design — see buildUserCreateDDL()'s doc comment) which sql-splitter.ts used to still try to
+  // send to the server as if it were real SQL.
+
+  const PUB_USER = 'PUB_TEST_USER_ITEST';
+
+  async function cleanupDomainsEtc() {
+    await Driver.runQuery(`DROP PROCEDURE PUB_PROC2`, conn).catch(() => { /* best-effort cleanup */ });
+    await Driver.runQuery(`DROP EXCEPTION PUB_EXC`, conn).catch(() => { /* best-effort cleanup */ });
+    await Driver.runQuery(`DROP TABLE PUB_ACCOUNT`, conn).catch(() => { /* best-effort cleanup */ });
+    await Driver.runQuery(`DROP DOMAIN PUB_DOMAIN`, conn).catch(() => { /* best-effort cleanup */ });
+    await Driver.runQuery(`DROP ROLE PUB_ROLE`, conn).catch(() => { /* best-effort cleanup */ });
+    await Driver.runQuery(`DROP USER ${PUB_USER}`, conn).catch(() => { /* best-effort cleanup */ });
+  }
+
+  teardown(async function () {
+    await cleanupDomainsEtc();
+  });
+
+  test('a domain (default/not-null/check), an exception a procedure actually raises, a role, and a user round-trip through a real publish and execute', async function () {
+    await cleanupDomainsEtc();
+
+    // ── "target": a domain with no CHECK constraint yet, no exception, no role, no user ──
+    await Driver.runQuery(`CREATE DOMAIN PUB_DOMAIN AS INTEGER DEFAULT 0 NOT NULL`, conn);
+    await Driver.runQuery(`CREATE TABLE PUB_ACCOUNT (ID INTEGER NOT NULL PRIMARY KEY, BALANCE PUB_DOMAIN)`, conn);
+
+    const targetSnapshot = await fetchProjectSnapshot(conn);
+    const targetDomain = targetSnapshot.domains.find(d => d.name === 'PUB_DOMAIN');
+    assert.ok(targetDomain, 'PUB_DOMAIN should exist in the target snapshot');
+    assert.strictEqual(targetDomain!.check, undefined, 'target domain should not have a CHECK constraint yet');
+
+    // ── evolve to "source": add a CHECK constraint to the domain, add an exception, a
+    //    procedure that actually raises it, a role, and a user ──
+    await Driver.runQuery(`ALTER DOMAIN PUB_DOMAIN ADD CONSTRAINT CHECK (VALUE >= 0)`, conn);
+    await Driver.runQuery(`CREATE EXCEPTION PUB_EXC 'Balance cannot go negative'`, conn);
+    await Driver.runQuery(
+      `CREATE PROCEDURE PUB_PROC2 (P_ID INTEGER) AS
+       DECLARE VARIABLE V_BAL INTEGER;
+       BEGIN
+         SELECT BALANCE FROM PUB_ACCOUNT WHERE ID = :P_ID INTO :V_BAL;
+         IF (V_BAL IS NULL) THEN
+           EXCEPTION PUB_EXC;
+       END`,
+      conn
+    );
+    await Driver.runQuery(`CREATE ROLE PUB_ROLE`, conn);
+    await Driver.runQuery(`CREATE USER ${PUB_USER} PASSWORD 'Abc12345!'`, conn);
+
+    const sourceSnapshot = await fetchProjectSnapshot(conn);
+    const sourceDomain = sourceSnapshot.domains.find(d => d.name === 'PUB_DOMAIN');
+    assert.strictEqual(sourceDomain!.check, 'CHECK (VALUE >= 0)');
+
+    // ── revert to the stale "target" domain (drop the CHECK, everything else absent) ──
+    await Driver.runQuery(`ALTER DOMAIN PUB_DOMAIN DROP CONSTRAINT`, conn);
+    await Driver.runQuery(`DROP PROCEDURE PUB_PROC2`, conn);
+    await Driver.runQuery(`DROP EXCEPTION PUB_EXC`, conn);
+    await Driver.runQuery(`DROP ROLE PUB_ROLE`, conn);
+    await Driver.runQuery(`DROP USER ${PUB_USER}`, conn);
+
+    const revertedSnapshot = await fetchProjectSnapshot(conn);
+    const diff = diffProjects(sourceSnapshot, revertedSnapshot);
+    assert.strictEqual(diff.changedDomains.length, 1, 'the CHECK constraint drop should show up as a changed domain');
+    assert.strictEqual(diff.newExceptions.length, 1);
+    assert.strictEqual(diff.newProcedures.length, 1);
+    assert.strictEqual(diff.newRoles.length, 1);
+    assert.strictEqual(diff.newUsers.length, 1);
+
+    const script = buildPublishScript(diff, revertedSnapshot);
+    assert.ok(script.includes('ALTER DOMAIN PUB_DOMAIN ADD CONSTRAINT CHECK (VALUE >= 0);'), script);
+    assert.ok(script.includes("CREATE OR ALTER EXCEPTION PUB_EXC 'Balance cannot go negative';"), script);
+    assert.ok(script.includes(`-- CREATE USER ${PUB_USER} PASSWORD`), 'the new user must be scripted commented out');
+    // The domain fix must be scripted before the procedure that references... well, PUB_PROC2
+    // doesn't reference the domain by name (columnTypeToDDL() flattens it — see project-model.ts),
+    // but the exception genuinely must precede the procedure that raises it.
+    assert.ok(script.indexOf('CREATE OR ALTER EXCEPTION PUB_EXC') < script.indexOf('CREATE OR ALTER PROCEDURE PUB_PROC2'), script);
+
+    const batchResults = await Driver.runBatch(script, conn);
+    const failed = batchResults.filter(r => r.error);
+    assert.deepStrictEqual(failed, [], `every statement in the generated publish script should succeed, but: ${JSON.stringify(failed)}`);
+
+    // The commented-out CREATE USER must not have silently run.
+    const afterPublish = await fetchProjectSnapshot(conn);
+    assert.ok(!afterPublish.users.some(u => u.name === PUB_USER), 'the commented-out CREATE USER must not have actually created the user');
+    assert.strictEqual(afterPublish.domains.find(d => d.name === 'PUB_DOMAIN')?.check, 'CHECK (VALUE >= 0)', 'the domain CHECK constraint must be restored');
+    assert.ok(afterPublish.exceptions.some(e => e.name === 'PUB_EXC' && e.message === 'Balance cannot go negative'));
+    assert.ok(afterPublish.roles.some(r => r.name === 'PUB_ROLE'));
+
+    // Now actually uncomment and run the CREATE USER line (simulating a human reviewer who filled
+    // in a real password), and confirm the procedure genuinely raises PUB_EXC end-to-end.
+    await Driver.runQuery(`CREATE USER ${PUB_USER} PASSWORD 'Abc12345!'`, conn);
+    const afterUserCreate = await fetchProjectSnapshot(conn);
+    assert.ok(afterUserCreate.users.some(u => u.name === PUB_USER));
+
+    let raisedCorrectly = false;
+    try {
+      await Driver.runQuery('EXECUTE PROCEDURE PUB_PROC2(999)', conn);
+    } catch (err: any) {
+      raisedCorrectly = String(err).includes('Balance cannot go negative');
+    }
+    assert.ok(raisedCorrectly, 'PUB_PROC2 should actually raise the restored PUB_EXC message for a missing account');
+
+    // A second diff against the now-fully-migrated state should report no further domain/
+    // exception/role/user changes.
+    const finalDiff = diffProjects(sourceSnapshot, afterUserCreate);
+    assert.strictEqual(finalDiff.changedDomains.length, 0);
+    assert.strictEqual(finalDiff.newExceptions.length, 0);
+    assert.strictEqual(finalDiff.newRoles.length, 0);
+    assert.strictEqual(finalDiff.newUsers.length, 0);
+  });
 });

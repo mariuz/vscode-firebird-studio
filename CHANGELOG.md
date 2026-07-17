@@ -2,6 +2,18 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.69 - 2026-07-17
+
+### Added
+
+- **Database Projects: domains, roles, exceptions, and users.** Extract/Build/Publish now cover these alongside tables/views/procedures/triggers/generators. A changed domain's CHECK constraint round-trips correctly; a new user is scripted commented-out (Firebird can't export a real password) so it's never silently created with a guessable one.
+
+### Fixed
+
+- **Database Projects: generators could be created too late.** A trigger or column default referencing a generator via `GEN_ID()` could fail because the generator was created after it. Generators are now created first.
+- **UTF8 VARCHAR/CHAR lengths were reported 4x too large.** Affected extracted table/domain/procedure-parameter DDL, the tree explorer's field-length display, and Data API Builder's OpenAPI `maxLength` — anywhere a column's declared length was read from the database for a UTF8-charset connection.
+- **A Build/Publish script consisting entirely of a comment could fail to run.** SQL statement splitting now correctly treats a comment-only chunk as nothing to execute, rather than sending it to the server as if it were a statement.
+
 ## 0.1.68 - 2026-07-17
 
 ### Added

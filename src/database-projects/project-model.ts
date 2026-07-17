@@ -5,6 +5,7 @@
  */
 
 import { SchemaGraph, SchemaTable, SchemaColumn, SchemaRelationship } from "../schema-designer/schema-graph";
+import { escapeSqlLiteral } from "../shared/queries";
 
 /**
  * One input or output parameter of a procedure, from getAllProcedureParametersQuery(). Shares
@@ -66,12 +67,53 @@ export interface ViewSource {
   source: string;
 }
 
+/**
+ * From getDomainsQuery(). Shares columnTypeToDDL()'s type/length/subType/precision/scale shape
+ * with SchemaColumn/ProcedureParameter, same reason as those two.
+ */
+export interface DomainSource {
+  name: string;
+  type: string;
+  length: number;
+  subType?: number;
+  precision?: number;
+  scale?: number;
+  notNull: boolean;
+  dflt?: string;
+  /**
+   * Already includes its own "CHECK (...)" wrapper (e.g. "CHECK (VALUE >= 0)") — RDB$VALIDATION_SOURCE
+   * comes back that way already, confirmed directly against a live server; see getDomainsQuery()'s
+   * doc comment. Undefined when the domain has no CHECK constraint.
+   */
+  check?: string;
+}
+
+/** From getRolesQuery(). Firebird roles have no other extractable properties — GRANT/membership migration is out of scope, see docs/roadmap/database-projects.md. */
+export interface RoleSource {
+  name: string;
+}
+
+/** From getExceptionsQuery(). */
+export interface ExceptionSource {
+  name: string;
+  message: string;
+}
+
+/** From getUsersQuery() (SEC$USERS) — name only. Firebird's security database stores password hashes, never a recoverable plaintext value, so a user's password can't be extracted or migrated; see buildUserCreateDDL(). */
+export interface UserSource {
+  name: string;
+}
+
 export interface ProjectInput {
   graph: SchemaGraph;
+  domains: DomainSource[];
   procedures: ProcedureSource[];
   triggers: TriggerSource[];
   views: ViewSource[];
   generators: string[];
+  exceptions: ExceptionSource[];
+  roles: RoleSource[];
+  users: UserSource[];
   /** Table name -> primary key constraint name, from getAllPrimaryKeyConstraintNamesQuery(). Needed by publish-model.ts to DROP CONSTRAINT a changing PK by its real name — Firebird has no "DROP PRIMARY KEY" shorthand (confirmed directly against a live server). */
   pkConstraintNames: Record<string, string>;
 }
@@ -233,6 +275,61 @@ export function buildGeneratorCreateDDL(name: string): string {
   return `CREATE SEQUENCE ${name};`;
 }
 
+/**
+ * Firebird has no "CREATE OR ALTER DOMAIN" (confirmed directly against a live server — only
+ * PROCEDURE/TRIGGER/VIEW/EXCEPTION support that shorthand); a domain that already exists needs
+ * ALTER DOMAIN instead (see buildDomainAlterStatements() in publish-model.ts). This builder is
+ * only for a brand-new domain (Extract/Build, and Publish's "new domain" case).
+ */
+export function buildDomainCreateDDL(domain: DomainSource): string {
+  const parts = [`CREATE DOMAIN ${domain.name} AS ${columnTypeToDDL(domain)}`];
+  if (domain.dflt) {
+    parts.push(`DEFAULT ${domain.dflt}`);
+  }
+  if (domain.notNull) {
+    parts.push("NOT NULL");
+  }
+  if (domain.check) {
+    parts.push(domain.check);
+  }
+  return `${parts.join(" ")};`;
+}
+
+/**
+ * Unlike DOMAIN/ROLE, Firebird does support "CREATE OR ALTER EXCEPTION" (confirmed directly
+ * against a live server), so this one builder covers both a new exception and a changed message —
+ * safe to (re)run against either a fresh database or one that already has it, the same convention
+ * buildProcedureCreateDDL()/buildTriggerCreateDDL()/buildViewCreateDDL() already follow.
+ */
+export function buildExceptionCreateDDL(exception: ExceptionSource): string {
+  return `CREATE OR ALTER EXCEPTION ${exception.name} '${escapeSqlLiteral(exception.message)}';`;
+}
+
+/** No "CREATE OR ALTER ROLE" exists (confirmed live) and a Firebird role has no other extractable properties to alter anyway — this is only ever emitted for a brand-new role. */
+export function buildRoleCreateDDL(role: RoleSource): string {
+  return `CREATE ROLE ${role.name};`;
+}
+
+/** A generic, reasonably strong placeholder — not meant to ever actually run; see buildUserCreateDDL()'s doc comment. */
+const USER_PASSWORD_PLACEHOLDER = "ChangeMe123!";
+
+/**
+ * Commented out by design, not just formatted for readability: Firebird's security database
+ * stores password hashes, never a recoverable plaintext value, so there is no way to actually
+ * extract or preserve a user's real password. Emitting this as a live, executable statement would
+ * mean silently creating a real, log-in-capable account with a publicly-known placeholder
+ * password the instant someone runs the generated script without reading every line first —
+ * exactly the kind of silent, security-relevant side effect this extension's "always show
+ * generated DDL for review before running it" convention exists to prevent elsewhere (see e.g.
+ * the column-type-change gap noted in the design doc). A commented-out line stays inert even if
+ * the rest of a Build/Publish script is run wholesale, while still fully documenting that the
+ * user existed and giving the exact statement (name and all) to uncomment, once a real password
+ * is filled in, to recreate it.
+ */
+export function buildUserCreateDDL(user: UserSource): string {
+  return `-- CREATE USER ${user.name} PASSWORD '${USER_PASSWORD_PLACEHOLDER}'; -- TODO: set a real password, then uncomment to recreate this user (Firebird cannot export the original password)`;
+}
+
 /** Replaces anything not safe in a cross-platform filename with "_" (Firebird identifiers are almost always already filesystem-safe; this guards delimited/quoted exceptions). */
 export function sanitizeFileName(name: string): string {
   return name.replace(/[^A-Za-z0-9_.-]/g, "_");
@@ -240,12 +337,41 @@ export function sanitizeFileName(name: string): string {
 
 /**
  * Builds every project file (including the manifest itself, always first) in a dependency-safe
- * order: tables, then foreign keys (added only once every table exists), then views, procedures,
- * triggers, and generators — the same order the manifest's "files" list records for Build to
- * concatenate later.
+ * order: generators, then domains, then tables, then foreign keys (added only once every table
+ * exists), then exceptions, then views, procedures, and triggers, then roles and users — the same
+ * order the manifest's "files" list records for Build to concatenate later.
+ *
+ * Generators specifically must come first, not last (a real, **pre-existing** ordering bug this
+ * fix corrects — generators were already emitted dead last, after procedures/triggers, before any
+ * of this file's domains/exceptions/roles/users work existed): confirmed directly against a live
+ * server that actually *running* a generated project's script fails with "Generator ... is not
+ * defined" the moment a trigger body calls `GEN_ID(some_generator, 1)` (a common pattern for an
+ * auto-incrementing key, e.g. this exact case) and that generator's own CREATE SEQUENCE hasn't run
+ * yet — a table column DEFAULT or a procedure body can reference a generator the same way. This
+ * was invisible before Publish/migrate (Phase 3) started *executing* generated scripts instead of
+ * only opening them for review, the same way the four bugs documented in
+ * docs/roadmap/database-projects.md's "Four real bugs found and fixed" section were.
+ *
+ * Exceptions specifically must come before procedures/triggers, not just after: confirmed
+ * directly against a live server that CREATE PROCEDURE/TRIGGER fails outright ("exception ... not
+ * defined") if any exception it raises via an `EXCEPTION name;` statement doesn't already exist —
+ * this isn't just a style preference like most of the rest of this ordering. Domains have no such
+ * hard requirement here (getSchemaColumnsQuery()'s columns already resolve to a domain's
+ * *underlying* base type rather than referencing the domain by name, so a generated CREATE TABLE
+ * never actually depends on a domain existing first) but are still placed early as the
+ * conventional "define your types before your tables" order. Roles/users have no dependency on or
+ * from anything else here, so they're placed last as the least schema-central objects.
  */
 export function buildProjectFiles(input: ProjectInput): ProjectFile[] {
   const files: ProjectFile[] = [];
+
+  input.generators.forEach(name => {
+    files.push({ path: `generators/${sanitizeFileName(name)}.sql`, content: buildGeneratorCreateDDL(name) });
+  });
+
+  input.domains.forEach(domain => {
+    files.push({ path: `domains/${sanitizeFileName(domain.name)}.sql`, content: buildDomainCreateDDL(domain) });
+  });
 
   input.graph.tables.forEach(table => {
     files.push({ path: `tables/${sanitizeFileName(table.name)}.sql`, content: buildTableCreateDDL(table) });
@@ -255,6 +381,10 @@ export function buildProjectFiles(input: ProjectInput): ProjectFile[] {
     const fkSql = input.graph.relationships.map(buildForeignKeyDDL).join("\n\n");
     files.push({ path: FOREIGN_KEYS_FILE, content: fkSql });
   }
+
+  input.exceptions.forEach(exception => {
+    files.push({ path: `exceptions/${sanitizeFileName(exception.name)}.sql`, content: buildExceptionCreateDDL(exception) });
+  });
 
   input.views.forEach(view => {
     files.push({ path: `views/${sanitizeFileName(view.name)}.sql`, content: buildViewCreateDDL(view) });
@@ -268,8 +398,12 @@ export function buildProjectFiles(input: ProjectInput): ProjectFile[] {
     files.push({ path: `triggers/${sanitizeFileName(trigger.name)}.sql`, content: buildTriggerCreateDDL(trigger) });
   });
 
-  input.generators.forEach(name => {
-    files.push({ path: `generators/${sanitizeFileName(name)}.sql`, content: buildGeneratorCreateDDL(name) });
+  input.roles.forEach(role => {
+    files.push({ path: `roles/${sanitizeFileName(role.name)}.sql`, content: buildRoleCreateDDL(role) });
+  });
+
+  input.users.forEach(user => {
+    files.push({ path: `users/${sanitizeFileName(user.name)}.sql`, content: buildUserCreateDDL(user) });
   });
 
   const manifest = {

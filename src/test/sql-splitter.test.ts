@@ -96,6 +96,42 @@ suite('SQL Splitter – comments', function () {
     const stmts = splitStatements('SELECT 1; -- BEGIN CASE END example\nSELECT 2;');
     assert.deepStrictEqual(stmts, ['SELECT 1', '-- BEGIN CASE END example\nSELECT 2']);
   });
+
+  // Regression: Database Projects' buildUserCreateDDL() (docs/roadmap/database-projects.md)
+  // emits a CREATE USER commented out entirely (a password can't be extracted/recreated), so a
+  // real Build/Publish script can contain a "statement" that's nothing but -- lines. Sending that
+  // through to Firebird used to fail with "Unexpected end of command" instead of being silently
+  // skipped as the no-op it actually is — confirmed directly against a live server.
+
+  test('filters out a chunk that is entirely a line comment, with no real SQL', function () {
+    const stmts = splitStatements("-- CREATE USER JOHN_DOE PASSWORD 'x'; -- TODO: uncomment");
+    assert.deepStrictEqual(stmts, []);
+  });
+
+  test('filters out multiple comment-only chunks separated by blank lines', function () {
+    const stmts = splitStatements('-- CREATE USER A PASSWORD \'x\';\n\n-- CREATE USER B PASSWORD \'y\';');
+    assert.deepStrictEqual(stmts, []);
+  });
+
+  test('filters out a trailing comment-only chunk after a real statement (the actual Database Projects shape: roles then a commented-out users file last)', function () {
+    const stmts = splitStatements("CREATE ROLE APP_ROLE;\n\n-- CREATE USER JOHN_DOE PASSWORD 'x';");
+    assert.deepStrictEqual(stmts, ['CREATE ROLE APP_ROLE']);
+  });
+
+  test('a comment immediately followed by more real SQL is kept as that statement\'s leading text, not filtered (there is no terminator to separate them on)', function () {
+    const stmts = splitStatements("-- CREATE USER JOHN_DOE PASSWORD 'x';\n\nCREATE SEQUENCE GEN_1;");
+    assert.deepStrictEqual(stmts, ["-- CREATE USER JOHN_DOE PASSWORD 'x';\n\nCREATE SEQUENCE GEN_1"]);
+  });
+
+  test('filters out a chunk that is entirely a block comment', function () {
+    const stmts = splitStatements('/* just a note, nothing to run */');
+    assert.deepStrictEqual(stmts, []);
+  });
+
+  test('does not filter out a real statement that merely starts with a comment', function () {
+    const stmts = splitStatements('-- a real insert\nINSERT INTO T (A) VALUES (1);');
+    assert.deepStrictEqual(stmts, ['-- a real insert\nINSERT INTO T (A) VALUES (1)']);
+  });
 });
 
 suite('SQL Splitter – bare PSQL blocks (no SET TERM)', function () {

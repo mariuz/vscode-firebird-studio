@@ -6,9 +6,9 @@ import { Driver } from "../shared/driver";
 import {
   getSchemaColumnsQuery, getForeignKeysQuery, getAllViewSourcesQuery,
   getAllProcedureSourcesQuery, getAllProcedureParametersQuery, getAllTriggerSourcesQuery, getGeneratorsQuery,
-  getAllPrimaryKeyConstraintNamesQuery,
+  getAllPrimaryKeyConstraintNamesQuery, getDomainsQuery, getRolesQuery, getExceptionsQuery, getUsersQuery,
 } from "../shared/queries";
-import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from "../schema-designer/schema-graph";
+import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow, normalizeDefault } from "../schema-designer/schema-graph";
 import { buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput, ProcedureParameter } from "./project-model";
 import { diffProjects, buildPublishScript } from "./publish-model";
 import { logger } from "../logger/logger";
@@ -19,10 +19,11 @@ import { getConnectionLabel } from "../shared/utils";
 export const SNAPSHOT_FILE_NAME = "firebird.project-snapshot.json";
 
 /**
- * Fetches a live connection's schema (tables/columns/FKs/views/procedures/triggers/generators/PK
- * constraint names) into the same structured ProjectInput shape used to write a project's .sql
- * files — shared by Extract (writes it to disk) and Publish (diffs it against a saved snapshot,
- * with no need for the SchemaDesigner/tree code paths that also read this data).
+ * Fetches a live connection's schema (tables/columns/FKs/domains/views/procedures/triggers/
+ * exceptions/generators/roles/users/PK constraint names) into the same structured ProjectInput
+ * shape used to write a project's .sql files — shared by Extract (writes it to disk) and Publish
+ * (diffs it against a saved snapshot, with no need for the SchemaDesigner/tree code paths that
+ * also read this data).
  */
 export async function fetchProjectSnapshot(connectionOptions: ConnectionOptions): Promise<ProjectInput> {
   const sql = [
@@ -34,11 +35,21 @@ export async function fetchProjectSnapshot(connectionOptions: ConnectionOptions)
     getAllTriggerSourcesQuery(),
     getGeneratorsQuery(),
     getAllPrimaryKeyConstraintNamesQuery(),
+    getDomainsQuery(),
+    getRolesQuery(),
+    getExceptionsQuery(),
+    getUsersQuery(),
   ].join("\n");
 
   const results = await Driver.runBatch(sql, connectionOptions);
-  const [columnsResult, fkResult, viewsResult, proceduresResult, procParamsResult, triggersResult, generatorsResult, pkNamesResult] = results;
-  for (const r of [columnsResult, fkResult, viewsResult, proceduresResult, procParamsResult, triggersResult, generatorsResult, pkNamesResult]) {
+  const [
+    columnsResult, fkResult, viewsResult, proceduresResult, procParamsResult, triggersResult, generatorsResult, pkNamesResult,
+    domainsResult, rolesResult, exceptionsResult, usersResult,
+  ] = results;
+  for (const r of [
+    columnsResult, fkResult, viewsResult, proceduresResult, procParamsResult, triggersResult, generatorsResult, pkNamesResult,
+    domainsResult, rolesResult, exceptionsResult, usersResult,
+  ]) {
     if (r?.error) {
       throw new Error(r.error);
     }
@@ -72,6 +83,17 @@ export async function fetchProjectSnapshot(connectionOptions: ConnectionOptions)
 
   return {
     graph,
+    domains: ((domainsResult?.rows ?? []) as any[]).map(r => ({
+      name: r.DOMAIN_NAME.trim(),
+      type: r.DOMAIN_TYPE.trim(),
+      length: r.FIELD_LENGTH ?? 0,
+      subType: r.FIELD_SUB_TYPE ?? undefined,
+      precision: r.FIELD_PRECISION ?? undefined,
+      scale: r.FIELD_SCALE ?? undefined,
+      notNull: !!r.NOT_NULL,
+      dflt: normalizeDefault(r.DEFAULT_SOURCE),
+      check: (r.CHECK_SOURCE ?? "").trim() || undefined,
+    })),
     views: ((viewsResult?.rows ?? []) as any[]).map(r => ({ name: r.VIEW_NAME.trim(), source: r.VIEW_SOURCE ?? "" })),
     procedures: ((proceduresResult?.rows ?? []) as any[]).map(r => {
       const name = r.PROCEDURE_NAME.trim();
@@ -85,6 +107,9 @@ export async function fetchProjectSnapshot(connectionOptions: ConnectionOptions)
       source: r.TRIGGER_SOURCE ?? "",
     })),
     generators: ((generatorsResult?.rows ?? []) as any[]).map(r => r.GENERATOR_NAME.trim()),
+    exceptions: ((exceptionsResult?.rows ?? []) as any[]).map(r => ({ name: r.EXCEPTION_NAME.trim(), message: r.MESSAGE ?? "" })),
+    roles: ((rolesResult?.rows ?? []) as any[]).map(r => ({ name: r.ROLE_NAME.trim() })),
+    users: ((usersResult?.rows ?? []) as any[]).map(r => ({ name: r.USER_NAME.trim() })),
     pkConstraintNames,
   };
 }
@@ -120,7 +145,8 @@ export async function runExtractProject(connectionOptions: ConnectionOptions): P
   }
 
   if (input.graph.tables.length === 0 && input.views.length === 0 && input.procedures.length === 0
-    && input.triggers.length === 0 && input.generators.length === 0) {
+    && input.triggers.length === 0 && input.generators.length === 0 && input.domains.length === 0
+    && input.exceptions.length === 0 && input.roles.length === 0 && input.users.length === 0) {
     logger.showError("No objects found in this database — nothing to extract.");
     return;
   }

@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import {
   columnTypeToDDL, buildTableCreateDDL, buildForeignKeyDDL, buildProcedureCreateDDL,
   buildProcedureParameterHeader, buildTriggerCreateDDL, buildViewCreateDDL, buildGeneratorCreateDDL,
-  sanitizeFileName, buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput, ProcedureParameter,
+  buildDomainCreateDDL, buildExceptionCreateDDL, buildRoleCreateDDL, buildUserCreateDDL,
+  sanitizeFileName, buildProjectFiles, MANIFEST_FILE_NAME, ProjectInput, ProcedureParameter, DomainSource,
 } from '../database-projects/project-model';
 import { SchemaColumn, SchemaTable, SchemaGraph, SchemaRelationship } from '../schema-designer/schema-graph';
 
@@ -157,6 +158,96 @@ suite('database-project-model – object DDL builders (CREATE OR ALTER)', functi
   });
 });
 
+// ── domains/exceptions/roles/users (docs/roadmap/database-projects.md, extending Extract/Build/
+// Publish beyond tables/views/procedures/triggers/generators) ─────────────────────────────────
+
+function domain(overrides: Partial<DomainSource> & { name: string } = { name: 'D_TEST' }): DomainSource {
+  return { type: 'INTEGER', length: 4, notNull: false, ...overrides };
+}
+
+suite('database-project-model – buildDomainCreateDDL()', function () {
+  test('a bare domain (no default/not null/check) is just CREATE DOMAIN name AS type', function () {
+    assert.strictEqual(buildDomainCreateDDL(domain({ name: 'D_AGE', type: 'INTEGER' })), 'CREATE DOMAIN D_AGE AS INTEGER;');
+  });
+
+  test('includes DEFAULT when set', function () {
+    assert.strictEqual(buildDomainCreateDDL(domain({ name: 'D_AGE', dflt: '0' })), 'CREATE DOMAIN D_AGE AS INTEGER DEFAULT 0;');
+  });
+
+  test('includes NOT NULL when set', function () {
+    assert.strictEqual(buildDomainCreateDDL(domain({ name: 'D_AGE', notNull: true })), 'CREATE DOMAIN D_AGE AS INTEGER NOT NULL;');
+  });
+
+  test('includes the CHECK clause verbatim (it already carries its own "CHECK (...)" wrapper)', function () {
+    assert.strictEqual(
+      buildDomainCreateDDL(domain({ name: 'D_AGE', check: 'CHECK (VALUE >= 0)' })),
+      'CREATE DOMAIN D_AGE AS INTEGER CHECK (VALUE >= 0);'
+    );
+  });
+
+  test('combines default, not null, and check in that order, matching CREATE DOMAIN grammar', function () {
+    const ddl = buildDomainCreateDDL(domain({ name: 'D_AGE', dflt: '0', notNull: true, check: 'CHECK (VALUE >= 0)' }));
+    assert.strictEqual(ddl, 'CREATE DOMAIN D_AGE AS INTEGER DEFAULT 0 NOT NULL CHECK (VALUE >= 0);');
+  });
+
+  test('uses columnTypeToDDL()\'s NUMERIC/DECIMAL reconstruction for a fixed-point domain', function () {
+    const ddl = buildDomainCreateDDL(domain({ name: 'D_MONEY', type: 'INTEGER', subType: 1, precision: 9, scale: -2 }));
+    assert.strictEqual(ddl, 'CREATE DOMAIN D_MONEY AS NUMERIC(9,2);');
+  });
+
+  test('VARCHAR domain gets a length', function () {
+    assert.strictEqual(buildDomainCreateDDL(domain({ name: 'D_EMAIL', type: 'VARCHAR', length: 150 })), 'CREATE DOMAIN D_EMAIL AS VARCHAR(150);');
+  });
+});
+
+suite('database-project-model – buildExceptionCreateDDL()', function () {
+  test('wraps the message with CREATE OR ALTER EXCEPTION <name> \'<message>\'', function () {
+    assert.strictEqual(
+      buildExceptionCreateDDL({ name: 'EXC_NOT_FOUND', message: 'Record not found' }),
+      "CREATE OR ALTER EXCEPTION EXC_NOT_FOUND 'Record not found';"
+    );
+  });
+
+  test('escapes an embedded single quote in the message', function () {
+    assert.strictEqual(
+      buildExceptionCreateDDL({ name: 'EXC_1', message: "it wasn't supposed to happen" }),
+      "CREATE OR ALTER EXCEPTION EXC_1 'it wasn''t supposed to happen';"
+    );
+  });
+
+  test('handles an empty message', function () {
+    assert.strictEqual(buildExceptionCreateDDL({ name: 'EXC_EMPTY', message: '' }), "CREATE OR ALTER EXCEPTION EXC_EMPTY '';");
+  });
+
+  test('uses CREATE OR ALTER (not plain CREATE) — confirmed live that Firebird supports this for EXCEPTION, unlike DOMAIN/ROLE', function () {
+    const ddl = buildExceptionCreateDDL({ name: 'EXC_1', message: 'x' });
+    assert.ok(ddl.startsWith('CREATE OR ALTER EXCEPTION'), ddl);
+  });
+});
+
+suite('database-project-model – buildRoleCreateDDL()', function () {
+  test('builds a plain CREATE ROLE statement — no CREATE OR ALTER exists for ROLE, confirmed live', function () {
+    assert.strictEqual(buildRoleCreateDDL({ name: 'APP_ROLE' }), 'CREATE ROLE APP_ROLE;');
+  });
+});
+
+suite('database-project-model – buildUserCreateDDL()', function () {
+  test('is commented out — Firebird cannot export a real password, so this must never be silently executable', function () {
+    const ddl = buildUserCreateDDL({ name: 'JOHN_DOE' });
+    assert.ok(ddl.startsWith('-- '), `expected the statement to be commented out, got: ${ddl}`);
+  });
+
+  test('still names the exact user and a real CREATE USER statement, for the reviewer to uncomment', function () {
+    const ddl = buildUserCreateDDL({ name: 'JOHN_DOE' });
+    assert.ok(ddl.includes('CREATE USER JOHN_DOE PASSWORD'), ddl);
+  });
+
+  test('flags that the password is a placeholder needing manual attention', function () {
+    const ddl = buildUserCreateDDL({ name: 'JOHN_DOE' });
+    assert.ok(/TODO/i.test(ddl), ddl);
+  });
+});
+
 suite('database-project-model – parameterized procedures', function () {
   function param(overrides: Partial<ProcedureParameter> = {}): ProcedureParameter {
     return { name: 'X', direction: 'in', type: 'INTEGER', length: 4, ...overrides };
@@ -225,7 +316,10 @@ suite('database-project-model – sanitizeFileName()', function () {
 suite('database-project-model – buildProjectFiles()', function () {
   function baseInput(overrides: Partial<ProjectInput> = {}): ProjectInput {
     const graph: SchemaGraph = { tables: [], relationships: [] };
-    return { graph, procedures: [], triggers: [], views: [], generators: [], pkConstraintNames: {}, ...overrides };
+    return {
+      graph, domains: [], procedures: [], triggers: [], views: [], generators: [],
+      exceptions: [], roles: [], users: [], pkConstraintNames: {}, ...overrides,
+    };
   }
 
   test('always emits the manifest file first', function () {
@@ -242,7 +336,7 @@ suite('database-project-model – buildProjectFiles()', function () {
     const files = buildProjectFiles(input);
     const manifest = JSON.parse(files[0].content);
     assert.deepStrictEqual(manifest.files, files.slice(1).map(f => f.path));
-    assert.deepStrictEqual(manifest.files, ['tables/A.sql', 'views/V.sql', 'generators/GEN_A.sql']);
+    assert.deepStrictEqual(manifest.files, ['generators/GEN_A.sql', 'tables/A.sql', 'views/V.sql']);
   });
 
   test('writes one file per table under tables/', function () {
@@ -274,17 +368,35 @@ suite('database-project-model – buildProjectFiles()', function () {
     assert.ok(files.some(f => f.path === 'generators/G1.sql'));
   });
 
-  test('orders files as tables, foreign keys, views, procedures, triggers, generators', function () {
+  test('orders files as generators, domains, tables, foreign keys, exceptions, views, procedures, triggers, roles, users', function () {
     const files = buildProjectFiles(baseInput({
+      domains: [{ name: 'D1', type: 'INTEGER', length: 4, notNull: false }],
       graph: { tables: [{ name: 'A', columns: [column()] }], relationships: [{ constraintName: 'FK1', table: 'A', column: 'B_ID', refTable: 'B', refColumn: 'ID' }] },
+      exceptions: [{ name: 'E1', message: 'oops' }],
       views: [{ name: 'V1', source: 'SELECT 1 FROM RDB$DATABASE' }],
       procedures: [{ name: 'P1', source: 'AS\nBEGIN\nEND' }],
       triggers: [{ name: 'T1', table: 'A', inactive: false, type: 1, source: 'AS\nBEGIN\nEND' }],
       generators: ['G1'],
+      roles: [{ name: 'R1' }],
+      users: [{ name: 'U1' }],
     }));
     const order = files.map(f => f.path);
     assert.deepStrictEqual(order, [
-      MANIFEST_FILE_NAME, 'tables/A.sql', 'foreign-keys.sql', 'views/V1.sql', 'procedures/P1.sql', 'triggers/T1.sql', 'generators/G1.sql',
+      MANIFEST_FILE_NAME, 'generators/G1.sql', 'domains/D1.sql', 'tables/A.sql', 'foreign-keys.sql', 'exceptions/E1.sql',
+      'views/V1.sql', 'procedures/P1.sql', 'triggers/T1.sql', 'roles/R1.sql', 'users/U1.sql',
     ]);
+  });
+
+  test('writes one file per domain/exception/role/user under their own folder', function () {
+    const files = buildProjectFiles(baseInput({
+      domains: [{ name: 'D_AGE', type: 'INTEGER', length: 4, notNull: false }],
+      exceptions: [{ name: 'EXC_1', message: 'bad thing' }],
+      roles: [{ name: 'APP_ROLE' }],
+      users: [{ name: 'JOHN_DOE' }],
+    }));
+    assert.ok(files.some(f => f.path === 'domains/D_AGE.sql'));
+    assert.ok(files.some(f => f.path === 'exceptions/EXC_1.sql'));
+    assert.ok(files.some(f => f.path === 'roles/APP_ROLE.sql'));
+    assert.ok(files.some(f => f.path === 'users/JOHN_DOE.sql'));
   });
 });

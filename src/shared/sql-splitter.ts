@@ -21,7 +21,11 @@
  *    off (this only matters for the no-SET-TERM fallback; SET TERM already
  *    protects the whole statement regardless of what's in it).
  *
- * Empty / whitespace-only statements are filtered out.
+ * Empty / whitespace-only *and* comment-only statements are filtered out — a chunk that's nothing
+ * but `-- ...` text (e.g. Database Projects' buildUserCreateDDL() emits a CREATE USER commented
+ * out entirely, since a password can't be extracted/recreated) has no actual SQL for the server to
+ * run; confirmed directly against a live server that sending one through anyway fails with
+ * "Dynamic SQL Error ... Unexpected end of command" rather than silently succeeding as a no-op.
  */
 const PSQL_HEADER = /^(CREATE\s+(OR\s+ALTER\s+)?|ALTER\s+|RECREATE\s+)(PROCEDURE|TRIGGER|FUNCTION|PACKAGE\s+BODY)\b|^EXECUTE\s+BLOCK\b/i;
 
@@ -60,7 +64,7 @@ export function splitStatements(sql: string): string[] {
 
   const flush = () => {
     const trimmed = current.trim();
-    if (trimmed) {
+    if (trimmed && !isBlankOrCommentsOnly(trimmed)) {
       statements.push(trimmed);
     }
     current = "";

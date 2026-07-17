@@ -103,7 +103,7 @@ suite('sql-analysis – validateReadOnlyStatement()', function () {
     assert.ok(validateReadOnlyStatement('')?.includes('No SQL statement found'));
   });
 
-  test('rejects a comment-only input (no actual statement, nothing left after stripping the comment)', function () {
-    assert.ok(validateReadOnlyStatement('-- just a comment, nothing else')?.includes('Only SELECT'));
+  test('rejects a comment-only input the same way as an empty string (no actual statement, nothing left after stripping the comment) — splitStatements() filters comment-only chunks entirely, so this is now indistinguishable from truly empty input, which is a more accurate message than the old "Only SELECT..." wording', function () {
+    assert.ok(validateReadOnlyStatement('-- just a comment, nothing else')?.includes('No SQL statement found'));
   });
 });
