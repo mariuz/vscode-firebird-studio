@@ -3,7 +3,18 @@ import {
   detectFormat, detectDelimiter, parseDelimited, parseCsv, parseJsonRows, parseFlatFile,
   inferColumnType, sanitizeIdentifier, inferSchema, buildCreateTableDDL,
   cellToSqlLiteral, buildInsertStatement,
+  mapFirebirdFieldToSqlType, autoMapColumns, buildInsertStatementForMapping, FirebirdColumnMeta,
 } from '../shared/flat-file-parser';
+
+// tableInfoQuery()'s CASE has string-literal branches of different lengths, which Firebird types
+// as one fixed-width CHAR sized to the longest branch ('TIMESTAMP', 9 chars) -- every shorter
+// result comes back blank-padded to 9 chars over the wire, confirmed against a real server. Pad
+// FIELD_TYPE here so these tests exercise what mapFirebirdFieldToSqlType() actually receives,
+// not an idealized already-trimmed string -- that's exactly the gap that let this ship untrimmed
+// the first time (every test here passed against clean strings; only a live server caught it).
+function field(overrides: Partial<FirebirdColumnMeta> & { FIELD_NAME: string; FIELD_TYPE: string }): FirebirdColumnMeta {
+  return { FIELD_SUB_TYPE: null, FIELD_PRECISION: null, FIELD_SCALE: null, ...overrides, FIELD_TYPE: overrides.FIELD_TYPE.padEnd(9) };
+}
 
 suite('flat-file-parser – detectFormat()', function () {
   test('detects .json', function () {
@@ -296,5 +307,122 @@ suite('flat-file-parser – buildInsertStatement()', function () {
     ];
     const sql = buildInsertStatement('T', columns, ['1']);
     assert.strictEqual(sql, 'INSERT INTO T (ID, NOTES) VALUES (1, NULL);');
+  });
+});
+
+// ── "Map onto an existing table" mode (phase 3) ──────────────────────────────
+
+suite('flat-file-parser – mapFirebirdFieldToSqlType()', function () {
+  test('maps SMALLINT/INTEGER/INT64 to INTEGER/BIGINT', function () {
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'SMALLINT' })), 'INTEGER');
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'INTEGER' })), 'INTEGER');
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'INT64' })), 'BIGINT');
+  });
+
+  test('maps a NUMERIC/DECIMAL-backed INTEGER/INT64 (subtype 1/2, negative scale) to NUMERIC(p,s)', function () {
+    assert.strictEqual(
+      mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'PRICE', FIELD_TYPE: 'INTEGER', FIELD_SUB_TYPE: 1, FIELD_PRECISION: 9, FIELD_SCALE: -2 })),
+      'NUMERIC(9,2)'
+    );
+    assert.strictEqual(
+      mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'TOTAL', FIELD_TYPE: 'INT64', FIELD_SUB_TYPE: 2, FIELD_PRECISION: 18, FIELD_SCALE: -4 })),
+      'NUMERIC(18,4)'
+    );
+  });
+
+  test('does not treat a plain (subtype 0) INTEGER/INT64 as NUMERIC even with a stray scale', function () {
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'INTEGER', FIELD_SUB_TYPE: 0, FIELD_SCALE: -2 })), 'INTEGER');
+  });
+
+  test('maps DOUBLE/FLOAT/D_FLOAT to DOUBLE PRECISION', function () {
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'DOUBLE' })), 'DOUBLE PRECISION');
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'FLOAT' })), 'DOUBLE PRECISION');
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'D_FLOAT' })), 'DOUBLE PRECISION');
+  });
+
+  test('maps BOOLEAN/DATE/TIMESTAMP straight through', function () {
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'BOOLEAN' })), 'BOOLEAN');
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'DATE' })), 'DATE');
+    assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: 'TIMESTAMP' })), 'TIMESTAMP');
+  });
+
+  test('falls back to VARCHAR for TIME/CHAR/VARCHAR/CSTRING/BLOB/UNKNOWN', function () {
+    for (const t of ['TIME', 'CHAR', 'VARCHAR', 'CSTRING', 'BLOB', 'QUAD', 'UNKNOWN']) {
+      assert.strictEqual(mapFirebirdFieldToSqlType(field({ FIELD_NAME: 'A', FIELD_TYPE: t })), 'VARCHAR');
+    }
+  });
+
+  test('trims a space-padded FIELD_TYPE (regression: Firebird pads every CASE branch shorter than the longest, "TIMESTAMP", to 9 chars) — verified against a real server', function () {
+    assert.strictEqual(mapFirebirdFieldToSqlType({ FIELD_NAME: 'A', FIELD_TYPE: 'INTEGER  ', FIELD_SUB_TYPE: null, FIELD_PRECISION: null, FIELD_SCALE: null }), 'INTEGER');
+    assert.strictEqual(mapFirebirdFieldToSqlType({ FIELD_NAME: 'A', FIELD_TYPE: 'BOOLEAN  ', FIELD_SUB_TYPE: null, FIELD_PRECISION: null, FIELD_SCALE: null }), 'BOOLEAN');
+    assert.strictEqual(mapFirebirdFieldToSqlType({ FIELD_NAME: 'A', FIELD_TYPE: 'DATE     ', FIELD_SUB_TYPE: null, FIELD_PRECISION: null, FIELD_SCALE: null }), 'DATE');
+  });
+});
+
+suite('flat-file-parser – cellToSqlLiteral() for DOUBLE PRECISION', function () {
+  test('emits an unquoted numeric literal', function () {
+    assert.strictEqual(cellToSqlLiteral('3.14', 'DOUBLE PRECISION'), '3.14');
+  });
+});
+
+suite('flat-file-parser – autoMapColumns()', function () {
+  test('matches a target column to a same-named header (case-insensitive)', function () {
+    const targets = [field({ FIELD_NAME: 'ID', FIELD_TYPE: 'INTEGER' }), field({ FIELD_NAME: 'NAME', FIELD_TYPE: 'VARCHAR' })];
+    const mapping = autoMapColumns(['id', 'Name'], targets);
+    assert.deepStrictEqual(mapping, [
+      { targetColumn: 'ID', sqlType: 'INTEGER', sourceIndex: 0 },
+      { targetColumn: 'NAME', sqlType: 'VARCHAR', sourceIndex: 1 },
+    ]);
+  });
+
+  test('leaves a target column unmapped (sourceIndex: null) when no header matches', function () {
+    const targets = [field({ FIELD_NAME: 'CREATED_AT', FIELD_TYPE: 'TIMESTAMP' })];
+    const mapping = autoMapColumns(['id', 'name'], targets);
+    assert.strictEqual(mapping[0].sourceIndex, null);
+  });
+
+  test('each header is used for at most one target column', function () {
+    // Two target columns that both sanitize to "ID" -- only the first should claim the header.
+    const targets = [field({ FIELD_NAME: 'ID', FIELD_TYPE: 'INTEGER' }), field({ FIELD_NAME: 'id', FIELD_TYPE: 'INTEGER' })];
+    const mapping = autoMapColumns(['id'], targets);
+    assert.strictEqual(mapping[0].sourceIndex, 0);
+    assert.strictEqual(mapping[1].sourceIndex, null);
+  });
+
+  test('matches a header that needs sanitizing (spaces/punctuation) against a plain column name', function () {
+    const targets = [field({ FIELD_NAME: 'EMAIL_ADDRESS', FIELD_TYPE: 'VARCHAR' })];
+    const mapping = autoMapColumns(['Email Address'], targets);
+    assert.strictEqual(mapping[0].sourceIndex, 0);
+  });
+});
+
+suite('flat-file-parser – buildInsertStatementForMapping()', function () {
+  test('builds an INSERT using only mapped columns, in mapping order', function () {
+    const mapping = [
+      { targetColumn: 'ID', sqlType: 'INTEGER', sourceIndex: 0 },
+      { targetColumn: 'NAME', sqlType: 'VARCHAR', sourceIndex: 1 },
+    ];
+    const sql = buildInsertStatementForMapping('CUSTOMERS', mapping, ['1', "O'Brien"]);
+    assert.strictEqual(sql, "INSERT INTO CUSTOMERS (ID, NAME) VALUES (1, 'O''Brien');");
+  });
+
+  test('omits an unmapped target column entirely rather than forcing NULL', function () {
+    const mapping = [
+      { targetColumn: 'ID', sqlType: 'INTEGER', sourceIndex: 0 },
+      { targetColumn: 'CREATED_AT', sqlType: 'TIMESTAMP', sourceIndex: null },
+    ];
+    const sql = buildInsertStatementForMapping('T', mapping, ['1']);
+    assert.strictEqual(sql, 'INSERT INTO T (ID) VALUES (1);');
+  });
+
+  test('pulls values from the mapped source index, not positionally', function () {
+    // Mapping order is ID, NAME but ID's source is row[1] and NAME's source is row[0] -- makes
+    // sure buildInsertStatementForMapping() really uses sourceIndex, not array position.
+    const mapping = [
+      { targetColumn: 'ID', sqlType: 'INTEGER', sourceIndex: 1 },
+      { targetColumn: 'NAME', sqlType: 'VARCHAR', sourceIndex: 0 },
+    ];
+    const sql = buildInsertStatementForMapping('T', mapping, ['Alice', '7']);
+    assert.strictEqual(sql, "INSERT INTO T (ID, NAME) VALUES (7, 'Alice');");
   });
 });

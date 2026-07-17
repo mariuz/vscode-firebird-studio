@@ -258,7 +258,7 @@ export function cellToSqlLiteral(rawValue: string, sqlType: string): string {
   if (rawValue === "") {
     return "NULL";
   }
-  if (sqlType === "INTEGER" || sqlType === "BIGINT" || sqlType.startsWith("NUMERIC")) {
+  if (sqlType === "INTEGER" || sqlType === "BIGINT" || sqlType === "DOUBLE PRECISION" || sqlType.startsWith("NUMERIC")) {
     const n = Number(rawValue);
     if (Number.isFinite(n)) {
       return Firebird.escape(n);
@@ -274,5 +274,104 @@ export function cellToSqlLiteral(rawValue: string, sqlType: string): string {
 export function buildInsertStatement(tableName: string, columns: ColumnInference[], row: string[]): string {
   const columnNames = columns.map(c => c.name).join(", ");
   const values = columns.map((c, i) => cellToSqlLiteral(row[i] ?? "", c.sqlType)).join(", ");
+  return `INSERT INTO ${tableName} (${columnNames}) VALUES (${values});`;
+}
+
+// ── "Map onto an existing table" mode (phase 3) ──────────────────────────────
+//
+// Reuses cellToSqlLiteral() above unchanged — the only difference from "create a new table" mode
+// is where the sqlType per column comes from: an existing table's actual RDB$FIELD_TYPE (via
+// mapFirebirdFieldToSqlType(), fed by tableInfoQuery()'s row shape) instead of inferColumnType()'s
+// sniff of the file's own sample values.
+
+/** The subset of tableInfoQuery()'s (src/shared/queries.ts) row shape mapFirebirdFieldToSqlType() needs. */
+export interface FirebirdColumnMeta {
+  FIELD_NAME: string;
+  FIELD_TYPE: string;
+  FIELD_SUB_TYPE: number | null;
+  FIELD_PRECISION: number | null;
+  FIELD_SCALE: number | null;
+}
+
+/**
+ * Converts one existing table column's metadata (as tableInfoQuery() returns it) into the same
+ * sqlType vocabulary inferColumnType()/cellToSqlLiteral() already use, so buildInsertStatementForMapping()
+ * below can reuse cellToSqlLiteral() verbatim. Firebird stores NUMERIC/DECIMAL as an INTEGER/INT64/
+ * SMALLINT column with FIELD_SUB_TYPE 1 or 2 and a negative FIELD_SCALE (e.g. -2 for 2 decimal
+ * places) rather than as its own distinct storage type, so that combination is checked first.
+ *
+ * FIELD_TYPE arrives space-padded: tableInfoQuery()'s CASE has string-literal branches of
+ * different lengths ('BLOB' vs 'TIMESTAMP', etc.), which Firebird types as a single fixed-width
+ * CHAR sized to the longest branch, blank-padding every shorter result to match — confirmed
+ * against a real server (every branch but the single longest one came back padded, so only that
+ * one branch matched an un-trimmed switch/case here). node-field.ts's tree display already trims
+ * this same column for the same reason; do the same before switching on it.
+ */
+export function mapFirebirdFieldToSqlType(field: FirebirdColumnMeta): string {
+  const isExactNumeric = (field.FIELD_SUB_TYPE === 1 || field.FIELD_SUB_TYPE === 2) && (field.FIELD_SCALE ?? 0) < 0;
+
+  switch (field.FIELD_TYPE.trim()) {
+    case "SMALLINT":
+    case "INTEGER":
+      return isExactNumeric ? `NUMERIC(${field.FIELD_PRECISION ?? 9},${-(field.FIELD_SCALE ?? 0)})` : "INTEGER";
+    case "INT64":
+      return isExactNumeric ? `NUMERIC(${field.FIELD_PRECISION ?? 18},${-(field.FIELD_SCALE ?? 0)})` : "BIGINT";
+    case "DOUBLE":
+    case "FLOAT":
+    case "D_FLOAT":
+      return "DOUBLE PRECISION";
+    case "BOOLEAN":
+      return "BOOLEAN";
+    case "DATE":
+      return "DATE";
+    case "TIMESTAMP":
+      return "TIMESTAMP";
+    default:
+      // TIME, CHAR, VARCHAR, CSTRING, BLOB, QUAD, UNKNOWN — all safe as a quoted string literal for
+      // Firebird to implicitly CAST/accept, or to surface a clear per-row conversion error.
+      return "VARCHAR";
+  }
+}
+
+export interface ColumnMapping {
+  /** The existing table's column name, exactly as tableInfoQuery() returned it. */
+  targetColumn: string;
+  /** This target column's actual type, from mapFirebirdFieldToSqlType() — not the file's inferred type. */
+  sqlType: string;
+  /** Index into a parsed row's cells, or null when this target column isn't mapped to any file column (left out of the generated INSERT, so the table's own default/nullability rules apply). */
+  sourceIndex: number | null;
+}
+
+/**
+ * Proposes a mapping by matching each existing column's name against the file's headers
+ * (case-insensitive, after the same sanitizeIdentifier() normalization column names already go
+ * through) — the common case where a CSV's headers already match the target table's column names.
+ * Each header can satisfy at most one target column. Callers (the wizard) show this as an editable
+ * default rather than applying it silently, since a name collision after sanitization (e.g. two
+ * headers that both become "ID") could still match the wrong one.
+ */
+export function autoMapColumns(headers: string[], targetColumns: FirebirdColumnMeta[]): ColumnMapping[] {
+  const sanitizedHeaders = headers.map(h => sanitizeIdentifier(h));
+  const usedHeaderIndexes = new Set<number>();
+
+  return targetColumns.map(col => {
+    const targetName = col.FIELD_NAME.trim().toUpperCase();
+    const matchIndex = sanitizedHeaders.findIndex((h, i) => h === targetName && !usedHeaderIndexes.has(i));
+    if (matchIndex !== -1) {
+      usedHeaderIndexes.add(matchIndex);
+    }
+    return {
+      targetColumn: col.FIELD_NAME.trim(),
+      sqlType: mapFirebirdFieldToSqlType(col),
+      sourceIndex: matchIndex === -1 ? null : matchIndex,
+    };
+  });
+}
+
+/** Builds one INSERT statement for a single row from an explicit column mapping — unlike buildInsertStatement(), an unmapped target column (sourceIndex: null) is left out of the statement entirely rather than forced to NULL, so the table's own default/nullability rules apply. */
+export function buildInsertStatementForMapping(tableName: string, mapping: ColumnMapping[], row: string[]): string {
+  const mapped = mapping.filter((m): m is ColumnMapping & { sourceIndex: number } => m.sourceIndex !== null);
+  const columnNames = mapped.map(m => m.targetColumn).join(", ");
+  const values = mapped.map(m => cellToSqlLiteral(row[m.sourceIndex] ?? "", m.sqlType)).join(", ");
   return `INSERT INTO ${tableName} (${columnNames}) VALUES (${values});`;
 }

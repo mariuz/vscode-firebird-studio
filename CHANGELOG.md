@@ -2,6 +2,16 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.67 - 2026-07-17
+
+### Added
+
+- **Flat File Import Wizard: map onto an existing table.** Import Flat File now offers a second target mode alongside "create a new table" — pick an existing table and the wizard proposes a column mapping by matching file headers to column names, shown as an editable preview before running, with per-column override via a quick pick when the automatic match needs correcting.
+
+### Fixed
+
+- **Boolean columns showed as "UNKNOWN" type.** The tree's field-type query never recognized Firebird's BOOLEAN column type; it now does.
+
 ## 0.1.66 - 2026-07-17
 
 ### Added

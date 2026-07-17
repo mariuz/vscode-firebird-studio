@@ -23,6 +23,8 @@ import {
   getObjectPrivilegesQuery,
   killAttachmentQuery,
   rollbackTransactionQuery,
+  tableInfoQuery,
+  getTablesQuery,
 } from '../shared/queries';
 
 // ── Source-fetching queries (procedure/trigger/view "edit source") ────────────
@@ -437,5 +439,58 @@ suite('killAttachmentQuery / rollbackTransactionQuery', function () {
     assert.throws(() => rollbackTransactionQuery(1.5));
     assert.throws(() => rollbackTransactionQuery(NaN));
     assert.throws(() => rollbackTransactionQuery('7; DROP TABLE X' as any));
+  });
+});
+
+// ── tableInfoQuery ────────────────────────────────────────────────────────────
+//
+// Flat File Import Wizard "map onto an existing table" mode (docs/roadmap/flat-file-import-wizard.md
+// phase 3) reads a target table's columns through this query — mapFirebirdFieldToSqlType()
+// (src/shared/flat-file-parser.ts) needs its FIELD_TYPE mapping to actually recognize every type
+// it might see, including RDB$FIELD_TYPE 23 (BOOLEAN), which this query didn't map at all before
+// (fell through to 'UNKNOWN') — also used by the tree's own field listing, so this was a real gap
+// beyond just the import wizard.
+
+suite('tableInfoQuery', function () {
+  const sql = tableInfoQuery('CUSTOMERS');
+
+  test('filters to the given table name', function () {
+    assert.ok(sql.includes("r.RDB$RELATION_NAME ='CUSTOMERS'"), sql);
+  });
+
+  test('maps RDB$FIELD_TYPE 23 to BOOLEAN', function () {
+    assert.ok(sql.includes("WHEN 23  THEN 'BOOLEAN'"), sql);
+  });
+
+  test('still maps every previously-supported type (unaffected by the BOOLEAN addition)', function () {
+    for (const mapping of [
+      "WHEN 261 THEN 'BLOB'", "WHEN 14  THEN 'CHAR'", "WHEN 40  THEN 'CSTRING'",
+      "WHEN 11  THEN 'D_FLOAT'", "WHEN 27  THEN 'DOUBLE'", "WHEN 10  THEN 'FLOAT'",
+      "WHEN 16  THEN 'INT64'", "WHEN 8   THEN 'INTEGER'", "WHEN 9   THEN 'QUAD'",
+      "WHEN 7   THEN 'SMALLINT'", "WHEN 12  THEN 'DATE'", "WHEN 13  THEN 'TIME'",
+      "WHEN 35  THEN 'TIMESTAMP'", "WHEN 37  THEN 'VARCHAR'",
+    ]) {
+      assert.ok(sql.includes(mapping), `missing ${mapping}`);
+    }
+  });
+});
+
+// ── getTablesQuery ────────────────────────────────────────────────────────────
+
+suite('getTablesQuery', function () {
+  test('excludes views (RDB$VIEW_BLR IS NULL) and system tables', function () {
+    const sql = getTablesQuery(0);
+    assert.ok(sql.includes('RDB$VIEW_BLR IS NULL'), sql);
+    assert.ok(sql.includes('RDB$SYSTEM_FLAG IS NULL OR RDB$SYSTEM_FLAG = 0'), sql);
+  });
+
+  test('caps the result with FIRST <n> when a nonzero max is given', function () {
+    const sql = getTablesQuery(50);
+    assert.ok(sql.includes('SELECT FIRST 50'), sql);
+  });
+
+  test('omits FIRST entirely when max is 0 (no cap)', function () {
+    const sql = getTablesQuery(0);
+    assert.ok(!sql.includes('FIRST'), sql);
   });
 });

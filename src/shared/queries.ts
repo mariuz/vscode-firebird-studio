@@ -33,6 +33,7 @@ export function tableInfoQuery(tableName: string): string {
            WHEN 13  THEN 'TIME'
            WHEN 35  THEN 'TIMESTAMP'
            WHEN 37  THEN 'VARCHAR'
+           WHEN 23  THEN 'BOOLEAN'
            ELSE 'UNKNOWN'
          END AS FIELD_TYPE,
             f.RDB$FIELD_LENGTH AS FIELD_LENGTH,
