@@ -1,13 +1,16 @@
-import { window, ProgressLocation, QuickPickItem } from "vscode";
+import {
+  window, ProgressLocation, QuickPickItem, lm, LanguageModelChatMessage, CancellationTokenSource, CancellationError,
+} from "vscode";
 import { readFile } from "fs/promises";
 import { basename, extname } from "path";
 import { ConnectionOptions } from "../interfaces";
 import { Driver } from "../shared/driver";
 import { logger } from "../logger/logger";
 import { getTablesQuery, tableInfoQuery } from "../shared/queries";
+import { extractJson } from "../copilot/json-extraction";
 import {
   parseFlatFile, inferSchema, buildCreateTableDDL, buildInsertStatement, sanitizeIdentifier,
-  autoMapColumns, buildInsertStatementForMapping, ColumnMapping, FirebirdColumnMeta,
+  autoMapColumns, buildInsertStatementForMapping, ColumnMapping, FirebirdColumnMeta, ColumnInference,
 } from "../shared/flat-file-parser";
 
 /** Rows per Driver.runBatch() call — keeps any one batch's SQL text and transaction count bounded for large files. */
@@ -77,8 +80,25 @@ export async function runFlatFileImportWizard(connectionOptions: ConnectionOptio
 async function importIntoNewTable(
   fileName: string, headers: string[], rows: string[][], connectionOptions: ConnectionOptions
 ): Promise<void> {
-  const schema = inferSchema(headers, rows);
+  let schema = inferSchema(headers, rows);
   const defaultTableName = sanitizeIdentifier(basename(fileName, extname(fileName)));
+
+  // Phase 4 (docs/roadmap/flat-file-import-wizard.md): the type sniffer above is fully local/
+  // deterministic by design — this step is optional, and skipping it (the default-first option)
+  // costs nothing and needs no Copilot at all.
+  const typeSourcePick = await window.showQuickPick(
+    [
+      { label: "Use inferred types", detail: "Fast, fully local — no Copilot needed.", useCopilot: false },
+      { label: "Suggest types with Copilot", detail: "Sends column names, inferred types, and a few sample rows to Copilot for review.", useCopilot: true },
+    ],
+    { title: `Flat File Import — ${fileName}`, placeHolder: "How should column names/types be decided?" }
+  );
+  if (!typeSourcePick) {
+    return;
+  }
+  if (typeSourcePick.useCopilot) {
+    schema = await suggestTypesWithCopilot(fileName, schema, rows);
+  }
 
   const tableNameInput = await window.showInputBox({
     title: "Flat File Import — Table Name",
@@ -120,6 +140,109 @@ async function importIntoNewTable(
     chunk.map(row => buildInsertStatement(tableName, schema, row)).join("\n")
   );
   reportImportResult(tableName, rows.length, succeeded, errors);
+}
+
+// ── Copilot-assisted type/naming suggestions (phase 4) ───────────────────────
+//
+// Same "small structured JSON decision, deterministic code applies it" split already used by the
+// Schema Designer's "Ask Copilot" panel and the Data API Builder's Copilot-assisted scoping — the
+// model is asked for one name/sqlType/nullable triple per column index, never a raw CREATE TABLE
+// statement, and buildCreateTableDDL() (already proven by the plain path above) turns the result
+// into DDL. Only ever changes the "create new table" path — an existing table's real column types
+// (phase 3) aren't something this wizard can change anyway, so there's nothing for Copilot to
+// suggest there.
+
+/** Sends the current inference + a handful of sample rows to Copilot and applies its suggestions, or falls back to the unchanged local inference if Copilot is unavailable, cancelled, or errors — this must never be a hard requirement for the wizard to work, per the design doc. */
+async function suggestTypesWithCopilot(fileName: string, schema: ColumnInference[], rows: string[][]): Promise<ColumnInference[]> {
+  const models = await lm.selectChatModels({ vendor: "copilot" });
+  const model = models[0];
+  if (!model) {
+    logger.showError("No Copilot language model is available. Make sure GitHub Copilot Chat is installed and signed in. Using the locally-inferred types instead.");
+    return schema;
+  }
+
+  const cts = new CancellationTokenSource();
+  try {
+    return await window.withProgress(
+      { location: ProgressLocation.Notification, title: "Asking Copilot to suggest column names/types…", cancellable: true },
+      async (_progress, token) => {
+        token.onCancellationRequested(() => cts.cancel());
+        const messages = [LanguageModelChatMessage.User(buildTypeSuggestionPrompt(fileName, schema, rows))];
+        const response = await model.sendRequest(messages, {}, cts.token);
+        let text = "";
+        for await (const fragment of response.text) {
+          text += fragment;
+        }
+        return parseSuggestedSchema(text, schema);
+      }
+    );
+  } catch (err: any) {
+    if (err instanceof CancellationError) {
+      return schema;
+    }
+    const message = err?.message ?? String(err);
+    logger.error(`Flat file import Copilot type suggestion failed: ${message}`);
+    logger.showError(`Copilot could not suggest types: ${message}. Using the locally-inferred types instead.`);
+    return schema;
+  }
+}
+
+/** Exported for testing. */
+export function buildTypeSuggestionPrompt(fileName: string, schema: ColumnInference[], rows: string[][]): string {
+  const columnsDescription = schema
+    .map((c, i) => `  ${i}: header "${c.name}" -> inferred ${c.sqlType}${c.nullable ? " NULL" : " NOT NULL"}`)
+    .join("\n");
+  const sample = rows.slice(0, 5).map(r => r.join(", ")).join("\n");
+
+  return [
+    `You are helping refine a Firebird table schema mechanically inferred from a flat file ("${fileName}").`,
+    "The inference already fits every sampled value, but it can't apply naming conventions or domain judgment the way a human would — e.g. a numeric-looking ZIP code or phone number should usually stay VARCHAR to preserve leading zeros/formatting, and a cryptic header could get a clearer name once you see the sample values.",
+    "",
+    `Columns (index: header -> current inference):\n${columnsDescription}`,
+    "",
+    `Sample rows (comma-separated, same column order as above):\n${sample}`,
+    "",
+    "For each column index, decide a possibly-improved column name and Firebird SQL type (e.g. VARCHAR(50), INTEGER, BIGINT, NUMERIC(10,2), DATE, TIMESTAMP, BOOLEAN) and whether it should allow NULL.",
+    "You must return exactly one entry per column index above, in the same order — never add, remove, or reorder columns.",
+    "If the current inference already looks right for a column, just repeat it back unchanged.",
+    "Respond with ONLY a JSON object of this exact shape, no other text, no markdown fence:",
+    '{"columns":[{"name":"CUSTOMER_ID","sqlType":"INTEGER","nullable":false}]}',
+  ].join("\n");
+}
+
+/**
+ * Exported for testing. Validates the model's response against the schema it was actually asked
+ * about — a wrong column count is rejected outright (this wizard has no way to reconcile a
+ * mismatched column count against the file's rows), and each entry falls back field-by-field to
+ * the original inference for anything missing/malformed, rather than trusting the model's shape
+ * blindly — the same "don't take a structured Copilot edit's own claims at face value" rule
+ * applyCopilotEdit() (Schema Designer) and parseTableAccessResponse() (Data API Builder) both
+ * already follow. A suggested name is still run through sanitizeIdentifier() — Copilot might
+ * suggest something DDL-safe already, but this guarantees it regardless.
+ */
+export function parseSuggestedSchema(rawText: string, currentSchema: ColumnInference[]): ColumnInference[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJson(rawText));
+  } catch {
+    throw new Error(`Copilot didn't return valid JSON. Raw response:\n${rawText.slice(0, 500)}`);
+  }
+
+  const columns = (parsed as { columns?: unknown })?.columns;
+  if (!Array.isArray(columns) || columns.length !== currentSchema.length) {
+    throw new Error(
+      `Copilot's response didn't have exactly ${currentSchema.length} column(s) in the expected {"columns": [...]} shape. Raw response:\n${rawText.slice(0, 500)}`
+    );
+  }
+
+  return columns.map((entry, i) => {
+    const fallback = currentSchema[i];
+    const candidate = entry as { name?: unknown; sqlType?: unknown; nullable?: unknown };
+    const name = typeof candidate.name === "string" && candidate.name.trim() ? sanitizeIdentifier(candidate.name, fallback.name) : fallback.name;
+    const sqlType = typeof candidate.sqlType === "string" && candidate.sqlType.trim() ? candidate.sqlType.trim() : fallback.sqlType;
+    const nullable = typeof candidate.nullable === "boolean" ? candidate.nullable : fallback.nullable;
+    return { name, sqlType, nullable };
+  });
 }
 
 // ── Map onto an existing table (phase 3) ─────────────────────────────────────

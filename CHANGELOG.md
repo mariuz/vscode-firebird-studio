@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.70 - 2026-07-17
+
+### Added
+
+- **Flat File Import Wizard: Copilot-assisted type/naming suggestions.** When creating a new table, an optional "Suggest types with Copilot" step reviews the locally-inferred schema against sample rows — useful for cases a mechanical sniffer can't judge, like a numeric-looking ZIP code that should stay `VARCHAR` to keep its leading zero, or giving a cryptic header a clearer name. Purely optional: the wizard works exactly as before if skipped or if Copilot isn't installed.
+
 ## 0.1.69 - 2026-07-17
 
 ### Added
