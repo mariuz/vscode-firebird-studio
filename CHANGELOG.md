@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.72 - 2026-07-18
+
+### Added
+
+- **SSH Tunneling: workspace connections.** A `.vscode/firebird.json` connection can now declare an `sshTunnel` (host/port/user/authMethod/privateKeyPath) the same way the Add Connection wizard already does. The actual SSH password/passphrase still can't be committed — set or rotate it from the tree's new **Set SSH Tunnel Password** command, which also works for any existing connection (previously the only way to change one was deleting and re-adding the whole connection).
+
 ## 0.1.71 - 2026-07-18
 
 ### Added

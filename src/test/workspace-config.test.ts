@@ -98,6 +98,106 @@ suite('parseWorkspaceConfig()', function () {
   });
 });
 
+// ── parseWorkspaceConfig() — "sshTunnel" field (docs/roadmap/ssh-tunneling.md) ─
+
+suite('parseWorkspaceConfig() – sshTunnel', function () {
+
+  test('is undefined when the entry has no "sshTunnel" field at all', function () {
+    const json = JSON.stringify({ connections: [{ host: 'localhost', database: 'test.fdb' }] });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.strictEqual(conn.sshTunnel, undefined);
+  });
+
+  test('parses a full "password"-auth sshTunnel', function () {
+    const json = JSON.stringify({
+      connections: [{
+        host: 'db-internal', database: 'test.fdb',
+        sshTunnel: { host: 'bastion.example.com', port: 22, user: 'deploy', authMethod: 'password' },
+      }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.deepStrictEqual(conn.sshTunnel, { host: 'bastion.example.com', port: 22, user: 'deploy', authMethod: 'password' });
+  });
+
+  test('parses a "privateKey"-auth sshTunnel, carrying privateKeyPath through', function () {
+    const json = JSON.stringify({
+      connections: [{
+        host: 'db-internal', database: 'test.fdb',
+        sshTunnel: { host: 'bastion.example.com', port: 22, user: 'deploy', authMethod: 'privateKey', privateKeyPath: '/home/me/.ssh/id_ed25519' },
+      }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.deepStrictEqual(conn.sshTunnel, {
+      host: 'bastion.example.com', port: 22, user: 'deploy', authMethod: 'privateKey', privateKeyPath: '/home/me/.ssh/id_ed25519',
+    });
+  });
+
+  test('parses an "agent"-auth sshTunnel with no privateKeyPath needed', function () {
+    const json = JSON.stringify({
+      connections: [{
+        host: 'db-internal', database: 'test.fdb',
+        sshTunnel: { host: 'bastion.example.com', port: 22, user: 'deploy', authMethod: 'agent' },
+      }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.deepStrictEqual(conn.sshTunnel, { host: 'bastion.example.com', port: 22, user: 'deploy', authMethod: 'agent' });
+  });
+
+  test('ignores a "password" field nested inside sshTunnel — never accept a committed SSH secret', function () {
+    const json = JSON.stringify({
+      connections: [{
+        host: 'db-internal', database: 'test.fdb',
+        sshTunnel: { host: 'bastion.example.com', port: 22, user: 'deploy', authMethod: 'password', password: 'hunter2' },
+      }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.strictEqual((conn.sshTunnel as any).password, undefined);
+  });
+
+  test('the connection itself still loads when sshTunnel is missing "host" — only the tunnel is dropped', function () {
+    const json = JSON.stringify({
+      connections: [{ host: 'db-internal', database: 'test.fdb', sshTunnel: { port: 22, user: 'deploy', authMethod: 'password' } }],
+    });
+    const results = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].sshTunnel, undefined);
+    assert.strictEqual(results[0].host, 'db-internal');
+  });
+
+  test('drops the tunnel when "authMethod" is invalid', function () {
+    const json = JSON.stringify({
+      connections: [{ host: 'db-internal', database: 'test.fdb', sshTunnel: { host: 'bastion', port: 22, user: 'deploy', authMethod: 'kerberos' } }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.strictEqual(conn.sshTunnel, undefined);
+  });
+
+  test('drops the tunnel when authMethod is "privateKey" but privateKeyPath is missing', function () {
+    const json = JSON.stringify({
+      connections: [{ host: 'db-internal', database: 'test.fdb', sshTunnel: { host: 'bastion', port: 22, user: 'deploy', authMethod: 'privateKey' } }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.strictEqual(conn.sshTunnel, undefined);
+  });
+
+  test('drops the tunnel when "port" is not a number', function () {
+    const json = JSON.stringify({
+      connections: [{ host: 'db-internal', database: 'test.fdb', sshTunnel: { host: 'bastion', port: '22', user: 'deploy', authMethod: 'password' } }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.strictEqual(conn.sshTunnel, undefined);
+  });
+
+  test('drops an sshTunnel declared on an "embedded" entry — no network host to tunnel to', function () {
+    const json = JSON.stringify({
+      connections: [{ embedded: true, database: 'local.fdb', sshTunnel: { host: 'bastion', port: 22, user: 'deploy', authMethod: 'password' } }],
+    });
+    const [conn] = parseWorkspaceConfig(json, '/proj', 'proj');
+    assert.strictEqual(conn.embedded, true);
+    assert.strictEqual(conn.sshTunnel, undefined);
+  });
+});
+
 // ── workspaceConnectionId() ────────────────────────────────────────────────────
 
 suite('workspaceConnectionId()', function () {

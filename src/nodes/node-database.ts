@@ -410,6 +410,31 @@ export class NodeDatabase implements FirebirdTree {
     logger.showInfo("Password updated.");
   }
 
+  /**
+   * Stores/updates this connection's SSH tunnel password (authMethod "password") or private-key
+   * passphrase (authMethod "privateKey") in SecretStorage — mirrors setPassword() above exactly,
+   * including being the only way to set one for a workspace-declared connection, since
+   * .vscode/firebird.json's own "sshTunnel" field can only carry non-secret config
+   * (docs/roadmap/ssh-tunneling.md, src/shared/workspace-config.ts#parseWorkspaceSshTunnel()).
+   * Also the only way to *change* an SSH tunnel password for any connection post-creation — the
+   * connection wizard only ever collects one at creation time.
+   */
+  public async setSshTunnelPassword(): Promise<void> {
+    if (!this.dbDetails.sshTunnel) {
+      logger.showError("This connection has no SSH tunnel configured — add one from the Add/Edit Connection wizard (or this workspace's .vscode/firebird.json) first.");
+      return;
+    }
+    const passwordLabel = this.dbDetails.sshTunnel.authMethod === "privateKey" ? "passphrase" : "password";
+    const password = await window.showInputBox({
+      prompt: `New SSH ${passwordLabel} for ${getDatabaseFileName(this.dbDetails.database)}`,
+      ignoreFocusOut: true,
+      password: true,
+    });
+    if (password === undefined) { return; }
+    await CredentialStore.storeSshPassword(this.dbDetails.id, password);
+    logger.showInfo("SSH tunnel password updated.");
+  }
+
   // open the Live Profiler (polling connection/query activity) for this database
   public async monitorDatabase(profilerView: ProfilerView): Promise<void> {
     logger.info("Monitor Database: open Live Profiler");

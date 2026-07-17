@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.71",
+  "version": "0.1.72",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -386,6 +386,11 @@
       {
         "command": "firebird.database.setPassword",
         "title": "Set Connection Password",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.database.setSshTunnelPassword",
+        "title": "Set SSH Tunnel Password",
         "category": "Firebird"
       },
       {
@@ -1068,19 +1073,24 @@
           "group": "manage@2"
         },
         {
-          "command": "firebird.database.setConnectionColor",
+          "command": "firebird.database.setSshTunnelPassword",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "manage@3"
         },
         {
-          "command": "firebird.database.setConnectionGroup",
+          "command": "firebird.database.setConnectionColor",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "manage@4"
         },
         {
-          "command": "firebird.database.toggleMcpExposure",
+          "command": "firebird.database.setConnectionGroup",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "manage@5"
+        },
+        {
+          "command": "firebird.database.toggleMcpExposure",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "manage@6"
         },
         {
           "command": "firebird.table.createTable",

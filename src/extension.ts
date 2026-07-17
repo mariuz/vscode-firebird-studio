@@ -303,6 +303,13 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB ITEM: set/update the stored SSH tunnel password/passphrase for this connection */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.setSshTunnelPassword", (databaseNode: NodeDatabase) => {
+      databaseNode.setSshTunnelPassword().catch(err => logger.error(err));
+    })
+  );
+
   /* DB ITEM: choose active database */
   context.subscriptions.push(
     commands.registerCommand("firebird.chooseActive", () => {
