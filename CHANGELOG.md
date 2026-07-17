@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.71 - 2026-07-18
+
+### Added
+
+- **SQL Notebooks: rich results renderer.** A `.fbnb` cell's query results now render in a sortable/filterable/paginated grid (with Copy as CSV/Copy as JSON) instead of a plain markdown table, via a new custom notebook output renderer. A markdown fallback is still included in case the renderer can't load.
+
 ## 0.1.70 - 2026-07-17
 
 ### Added

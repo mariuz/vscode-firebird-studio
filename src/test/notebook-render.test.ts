@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { renderRowsAsMarkdown, renderTableAsMarkdown } from '../shared/notebook-render';
+import { renderRowsAsMarkdown, renderTableAsMarkdown, rowsToResultTable, NOTEBOOK_RESULT_ROW_CAP } from '../shared/notebook-render';
 
 suite('notebook-render – renderRowsAsMarkdown()', function () {
   test('returns a placeholder for an empty result set', function () {
@@ -79,5 +79,60 @@ suite('notebook-render – renderTableAsMarkdown()', function () {
   test('does not append a truncation note when under the limit', function () {
     const md = renderTableAsMarkdown(['N'], [['1']], 500);
     assert.ok(!md.includes('more row(s) not shown'));
+  });
+});
+
+suite('notebook-render – rowsToResultTable()', function () {
+  test('returns an empty, untruncated table for no rows', function () {
+    assert.deepStrictEqual(rowsToResultTable([]), { headers: [], rows: [], truncated: false, totalRowCount: 0 });
+  });
+
+  test('derives headers from the first row and stringifies every cell', function () {
+    const table = rowsToResultTable([{ ID: 1, NAME: 'Alice' }, { ID: 2, NAME: 'Bob' }]);
+    assert.deepStrictEqual(table.headers, ['ID', 'NAME']);
+    assert.deepStrictEqual(table.rows, [['1', 'Alice'], ['2', 'Bob']]);
+    assert.strictEqual(table.truncated, false);
+    assert.strictEqual(table.totalRowCount, 2);
+  });
+
+  test('keeps a genuine SQL NULL as null, distinct from an empty string', function () {
+    const table = rowsToResultTable([{ A: null, B: '', C: undefined }]);
+    assert.deepStrictEqual(table.rows, [[null, '', null]]);
+  });
+
+  test('decodes a Buffer cell to its string contents', function () {
+    const table = rowsToResultTable([{ BLOB: Buffer.from('hello') }]);
+    assert.strictEqual(table.rows[0][0], 'hello');
+  });
+
+  test('renders a Date cell as an ISO string', function () {
+    const table = rowsToResultTable([{ D: new Date('2026-07-16T12:00:00.000Z') }]);
+    assert.strictEqual(table.rows[0][0], '2026-07-16T12:00:00.000Z');
+  });
+
+  test('JSON-stringifies a plain-object cell', function () {
+    const table = rowsToResultTable([{ META: { a: 1 } }]);
+    assert.strictEqual(table.rows[0][0], '{"a":1}');
+  });
+
+  test('truncates beyond maxRows and reports the untruncated total', function () {
+    const rows = Array.from({ length: 5 }, (_, i) => ({ N: i }));
+    const table = rowsToResultTable(rows, 2);
+    assert.deepStrictEqual(table.rows, [['0'], ['1']]);
+    assert.strictEqual(table.truncated, true);
+    assert.strictEqual(table.totalRowCount, 5);
+  });
+
+  test('does not report truncated when exactly at the cap', function () {
+    const rows = Array.from({ length: 2 }, (_, i) => ({ N: i }));
+    const table = rowsToResultTable(rows, 2);
+    assert.strictEqual(table.truncated, false);
+  });
+
+  test('defaults maxRows to NOTEBOOK_RESULT_ROW_CAP', function () {
+    const rows = Array.from({ length: NOTEBOOK_RESULT_ROW_CAP + 1 }, (_, i) => ({ N: i }));
+    const table = rowsToResultTable(rows);
+    assert.strictEqual(table.rows.length, NOTEBOOK_RESULT_ROW_CAP);
+    assert.strictEqual(table.truncated, true);
   });
 });

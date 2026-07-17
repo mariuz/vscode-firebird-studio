@@ -17,7 +17,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { FirebirdNotebookSerializer } from '../../sql-notebook/serializer';
-import { FIREBIRD_NOTEBOOK_TYPE, resolveNotebookConnection } from '../../sql-notebook/controller';
+import { FIREBIRD_NOTEBOOK_TYPE, resolveNotebookConnection, resultToOutputItems, RESULT_TABLE_MIME } from '../../sql-notebook/controller';
 import { Constants } from '../../config';
 import { getTestConnectionOptions } from './firebird-test-env';
 
@@ -113,6 +113,54 @@ suite('SQL Notebooks – connection-binding persistence (extension host)', funct
 
       const resolved = await resolveNotebookConnection(notebook, fakeContext);
       assert.strictEqual(resolved, undefined, 'a stale id with zero saved connections should resolve to undefined, not throw or hang');
+    });
+  });
+
+  suite('resultToOutputItems() (phase 2 — custom rich-results renderer)', function () {
+    async function itemText(item: vscode.NotebookCellOutputItem): Promise<string> {
+      return Buffer.from(item.data).toString('utf8');
+    }
+
+    test('a row-bearing result gets the rich JSON mime first, then a markdown fallback', async function () {
+      const items = resultToOutputItems({
+        sql: 'select * from x', durationMs: 1,
+        rows: [{ ID: 1, NAME: 'Alice' }, { ID: 2, NAME: null }],
+      });
+      assert.strictEqual(items.length, 2);
+      assert.strictEqual(items[0].mime, RESULT_TABLE_MIME);
+      assert.strictEqual(items[1].mime, 'text/markdown');
+
+      const table = JSON.parse(await itemText(items[0]));
+      assert.deepStrictEqual(table.headers, ['ID', 'NAME']);
+      assert.deepStrictEqual(table.rows, [['1', 'Alice'], ['2', null]]);
+      assert.strictEqual(table.truncated, false);
+      assert.strictEqual(table.totalRowCount, 2);
+
+      const markdown = await itemText(items[1]);
+      assert.ok(markdown.includes('| ID | NAME |'), markdown);
+      assert.ok(markdown.includes('| 1 | Alice |'), markdown);
+    });
+
+    test('an empty (0-row) SELECT still produces both output items, not the plain-message branch', async function () {
+      const items = resultToOutputItems({ sql: 'select * from x where 1=0', durationMs: 1, rows: [] });
+      assert.strictEqual(items.length, 2);
+      const table = JSON.parse(await itemText(items[0]));
+      assert.deepStrictEqual(table, { headers: [], rows: [], truncated: false, totalRowCount: 0 });
+    });
+
+    test('an error result produces a single error output item, no rich/markdown items', async function () {
+      const items = resultToOutputItems({ sql: 'bad sql', durationMs: 1, error: 'table not found' });
+      assert.strictEqual(items.length, 1);
+      assert.strictEqual(items[0].mime, 'application/vnd.code.notebook.error');
+      const parsed = JSON.parse(await itemText(items[0]));
+      assert.strictEqual(parsed.message, 'table not found');
+    });
+
+    test('a DDL/DML result with no rows produces a single plain-text message item, no rich/markdown items', async function () {
+      const items = resultToOutputItems({ sql: 'create table t (id int)', durationMs: 1, message: 'Statement executed successfully.' });
+      assert.strictEqual(items.length, 1);
+      assert.strictEqual(items[0].mime, 'text/plain');
+      assert.strictEqual(await itemText(items[0]), 'Statement executed successfully.');
     });
   });
 });

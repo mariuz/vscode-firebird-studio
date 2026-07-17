@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.70",
+  "version": "0.1.71",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -37,7 +37,8 @@
     "vscode:prepublish": "npm run compile",
     "esbuild-base": "rimraf out && rimraf node_modules/node-firebird-native-api/build/Release && esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:node-firebird-native-api --external:*.node --format=cjs --platform=node",
     "esbuild-mcp-server": "esbuild ./src/mcp-server/server.ts --bundle --outfile=out/mcp-server/server.js --format=cjs --platform=node",
-    "esbuild-build": "npm run -S esbuild-base -- --sourcemap && npm run -S esbuild-mcp-server -- --sourcemap",
+    "esbuild-notebook-renderer": "esbuild ./src/sql-notebook/renderer/resultRenderer.js --bundle --outfile=out/sql-notebook/renderer.js --format=esm --platform=browser",
+    "esbuild-build": "npm run -S esbuild-base -- --sourcemap && npm run -S esbuild-mcp-server -- --sourcemap && npm run -S esbuild-notebook-renderer -- --sourcemap",
     "install-native": "npm run --prefix node_modules/node-firebird-native-api/ gyp:configure && npm run --prefix node_modules/node-firebird-native-api/ gyp:build",
     "compile": "npm run -S esbuild-build",
     "watch": "npm run -S esbuild-base -- --sourcemap --watch",
@@ -55,6 +56,16 @@
           {
             "filenamePattern": "*.fbnb"
           }
+        ]
+      }
+    ],
+    "notebookRenderer": [
+      {
+        "id": "firebird-result-renderer",
+        "displayName": "Firebird Query Result",
+        "entrypoint": "./out/sql-notebook/renderer.js",
+        "mimeTypes": [
+          "application/x-firebird-notebook-result+json"
         ]
       }
     ],

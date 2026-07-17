@@ -6,10 +6,13 @@ import { BatchResult, Driver } from "../shared/driver";
 import { ConnectionOptions } from "../interfaces";
 import { Constants } from "../config";
 import { logger } from "../logger/logger";
-import { renderRowsAsMarkdown } from "../shared/notebook-render";
+import { renderRowsAsMarkdown, rowsToResultTable } from "../shared/notebook-render";
 
 export const FIREBIRD_NOTEBOOK_TYPE = "firebird-notebook";
 const CONTROLLER_ID = "firebird-sql-notebook-controller";
+
+/** Custom mime type the notebook renderer (src/sql-notebook/renderer/, docs/roadmap/sql-notebooks.md phase 2) is registered for in package.json's contributes.notebookRenderer. */
+export const RESULT_TABLE_MIME = "application/x-firebird-notebook-result+json";
 
 /**
  * notebook.uri -> the connection its cells run against, resolved (password included) for the
@@ -61,7 +64,7 @@ async function executeCell(
     }
 
     const results = await Driver.runBatch(cell.document.getText(), connectionOptions);
-    await execution.replaceOutput(results.map(r => new NotebookCellOutput([resultToOutputItem(r)])));
+    await execution.replaceOutput(results.map(r => new NotebookCellOutput(resultToOutputItems(r))));
     execution.end(!results.some(r => r.error), Date.now());
   } catch (err: any) {
     logger.error(`Notebook cell execution failed: ${err?.message ?? err}`);
@@ -72,14 +75,27 @@ async function executeCell(
   }
 }
 
-function resultToOutputItem(result: BatchResult): NotebookCellOutputItem {
+/**
+ * A row-bearing result gets two output items, richest-first: the custom grid renderer
+ * (sort/filter/paginate/copy — see src/sql-notebook/renderer/) as the primary mime, and the
+ * plain markdown table VS Code already renders natively as a fallback for the (unlikely, since
+ * this extension ships the renderer itself) case the custom renderer fails to load. Error/message
+ * outputs are unchanged from phase 1 — there's no "richer" way to show those.
+ *
+ * Exported for testing (src/test/suite/) — needs the real NotebookCellOutputItem class, so it's
+ * only meaningfully testable at the vscode-host tier, same as resolveNotebookConnection() below.
+ */
+export function resultToOutputItems(result: BatchResult): NotebookCellOutputItem[] {
   if (result.error) {
-    return NotebookCellOutputItem.error(new Error(result.error));
+    return [NotebookCellOutputItem.error(new Error(result.error))];
   }
   if (result.rows) {
-    return NotebookCellOutputItem.text(renderRowsAsMarkdown(result.rows), "text/markdown");
+    return [
+      NotebookCellOutputItem.json(rowsToResultTable(result.rows), RESULT_TABLE_MIME),
+      NotebookCellOutputItem.text(renderRowsAsMarkdown(result.rows), "text/markdown"),
+    ];
   }
-  return NotebookCellOutputItem.text(result.message ?? "Statement executed successfully.", "text/plain");
+  return [NotebookCellOutputItem.text(result.message ?? "Statement executed successfully.", "text/plain")];
 }
 
 /** Exported for testing (src/test/suite/) — not called from outside this module otherwise. */

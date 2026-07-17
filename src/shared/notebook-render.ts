@@ -50,3 +50,50 @@ export function renderTableAsMarkdown(headers: string[], rows: string[][], maxRo
 
   return [headerLine, separatorLine, ...bodyLines].join("\n") + truncationNote;
 }
+
+// ── Rich JSON shaping for the custom notebook renderer (Phase 2) ───────────────
+//
+// renderRowsAsMarkdown() above stays as-is for the plain-text fallback mime; this is the shape
+// fed to the custom "application/x-firebird-notebook-result+json" renderer instead, which sorts/
+// filters/paginates client-side rather than rendering one flat scroll — so it can afford a
+// higher row cap than the markdown path's.
+
+/** Higher than renderRowsAsMarkdown()'s default cap since the rich renderer paginates/filters client-side rather than rendering one flat scroll. Cell outputs aren't persisted to the .fbnb file (see serializer.ts), so this only bounds in-memory/webview cost for one session, not on-disk size. */
+export const NOTEBOOK_RESULT_ROW_CAP = 1000;
+
+export interface NotebookResultTable {
+  headers: string[];
+  /** Each cell is a display string, or `null` for a genuine SQL NULL — kept distinct from an empty string so the renderer can style/export them differently. */
+  rows: (string | null)[][];
+  /** True when `rows` was truncated to maxRows; the renderer surfaces this rather than silently dropping rows. */
+  truncated: boolean;
+  /** The untruncated row count, for the "showing X of Y" message. */
+  totalRowCount: number;
+}
+
+/** Converts query result rows (array of field->value objects, as returned by node-firebird) into the shape the custom notebook renderer consumes. */
+export function rowsToResultTable(rows: any[], maxRows = NOTEBOOK_RESULT_ROW_CAP): NotebookResultTable {
+  if (!rows || rows.length === 0) {
+    return { headers: [], rows: [], truncated: false, totalRowCount: 0 };
+  }
+
+  const headers = Object.keys(rows[0]);
+  const body = rows.slice(0, maxRows).map(row => headers.map(h => cellToDisplayValue(row[h])));
+  return { headers, rows: body, truncated: rows.length > maxRows, totalRowCount: rows.length };
+}
+
+function cellToDisplayValue(v: any): string | null {
+  if (v === null || v === undefined) {
+    return null;
+  }
+  if (v instanceof Buffer) {
+    return v.toString();
+  }
+  if (Object.prototype.toString.call(v) === "[object Date]") {
+    return new Date(v).toISOString();
+  }
+  if (typeof v === "object") {
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
