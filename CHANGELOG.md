@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.65 - 2026-07-17
+
+### Fixed
+
+- **MCP server: live refresh on Toggle MCP Server Exposure.** Toggling a connection's MCP exposure from the tree now updates an already-running MCP client session immediately — previously it required restarting the client to pick up a newly-exposed (or newly-hidden) connection.
+
 ## 0.1.64 - 2026-07-17
 
 ### Added

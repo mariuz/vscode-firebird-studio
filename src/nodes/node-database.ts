@@ -18,6 +18,7 @@ import {runDataApiSpecGenerator} from "../data-api-builder";
 import {runExtractProject} from "../database-projects";
 import {runObjectSearch} from "../object-search";
 import QueryResultsView from "../result-view";
+import {notifyMcpExposureChanged} from "../mcp-server";
 import {themeColorIdFor, CONNECTION_COLORS, ConnectionColor} from "../shared/connection-color";
 import * as cp from 'node:child_process';
 
@@ -248,6 +249,7 @@ export class NodeDatabase implements FirebirdTree {
     const nowExposed = !this.dbDetails.mcpExposed;
     await this.updateSavedConnectionField(context, "mcpExposed", nowExposed);
     firebirdTreeDataProvider.refresh();
+    notifyMcpExposureChanged();
     logger.showInfo(nowExposed
       ? `${getDatabaseFileName(this.dbDetails.database)} is now exposed to the Firebird MCP server (if firebird.mcp.enabled is on).`
       : `${getDatabaseFileName(this.dbDetails.database)} is no longer exposed to the Firebird MCP server.`);
