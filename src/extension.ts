@@ -906,6 +906,18 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB: same, scoped by a Copilot-interpreted plain-English description of what to expose */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.generateDataApiSpecWithCopilot", (databaseNode: NodeDatabase) => {
+      databaseNode.generateDataApiSpecWithCopilot().catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Data API spec generation failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
   /* DB: fuzzy-search every object by name, then jump to its most useful action */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.searchObjects", (databaseNode: NodeDatabase) => {

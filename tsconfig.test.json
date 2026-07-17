@@ -40,6 +40,7 @@
     "src/bookmarks/bookmark-provider.ts",
     "src/query-history/query-history-provider.ts",
     "src/copilot/schema-context.ts",
+    "src/copilot/json-extraction.ts",
     "src/language-server/completionProvider.ts",
     "src/language-server/firebird-reserved.ts",
     "src/interfaces/**/*.ts",

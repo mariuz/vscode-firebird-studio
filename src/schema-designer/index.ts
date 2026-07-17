@@ -5,6 +5,7 @@ import { ConnectionOptions } from "../interfaces";
 import { Driver, BatchResult } from "../shared/driver";
 import { getSchemaColumnsQuery, getForeignKeysQuery, getAllPrimaryKeyConstraintNamesQuery } from "../shared/queries";
 import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from "./schema-graph";
+import { extractJson } from "../copilot/json-extraction";
 import { logger } from "../logger/logger";
 
 /**
@@ -211,16 +212,6 @@ function summarizeBatchResults(results: BatchResult[]): string {
     lines.push(`  ERROR (${snippet}): ${r.error}`);
   });
   return lines.join("\n");
-}
-
-/**
- * Strips a ```json ... ``` (or bare ```) fence from a model response, if present — models
- * asked for "JSON only" still sometimes wrap it in a markdown code fence anyway.
- */
-function extractJson(text: string): string {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced ? fenced[1].trim() : trimmed;
 }
 
 /** The JSON edit schema the model is asked to return — see handleAskCopilot()'s doc comment. */

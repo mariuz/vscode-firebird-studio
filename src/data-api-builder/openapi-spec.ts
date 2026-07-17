@@ -14,9 +14,21 @@
 
 import { SchemaGraph, SchemaTable, SchemaColumn } from "../schema-designer/schema-graph";
 
+export type TableAccess = "full" | "read-only";
+
 export interface OpenApiSpecOptions {
   title?: string;
   version?: string;
+  /**
+   * Per-table access override, keyed by table name (docs/roadmap/data-api-builder.md phase 3 —
+   * Copilot-assisted scoping, e.g. "expose customers and orders as read-only"). When set, a table
+   * *not* present here is excluded from the generated spec entirely — this is both the inclusion
+   * list and the access level in one map, so there's no separate "which tables" option to keep in
+   * sync with it. Leaving this option unset (the default, used by the plain "generate for the
+   * whole schema" command) includes every table with full CRUD access, exactly as before this
+   * option existed.
+   */
+  tableAccess?: Record<string, TableAccess>;
 }
 
 interface JsonSchemaType {
@@ -80,31 +92,33 @@ function itemPathSuffix(table: SchemaTable): string {
   return primaryKeyColumns(table).map(c => `{${c.name}}`).join("/");
 }
 
-function buildTablePaths(table: SchemaTable): Record<string, any> {
+/** access "read-only" omits POST/PUT/DELETE — only the GET (list, and get-by-PK if there is one) operations are generated. */
+function buildTablePaths(table: SchemaTable, access: TableAccess = "full"): Record<string, any> {
   const schemaRef = { $ref: `#/components/schemas/${table.name}` };
   const listPath = `/${table.name.toLowerCase()}`;
-  const paths: Record<string, any> = {
-    [listPath]: {
-      get: {
-        summary: `List ${table.name}`,
-        responses: {
-          "200": { description: "OK", content: { "application/json": { schema: { type: "array", items: schemaRef } } } },
-        },
-      },
-      post: {
-        summary: `Create a ${table.name} row`,
-        requestBody: { required: true, content: { "application/json": { schema: schemaRef } } },
-        responses: {
-          "201": { description: "Created", content: { "application/json": { schema: schemaRef } } },
-        },
+  const listOperations: Record<string, any> = {
+    get: {
+      summary: `List ${table.name}`,
+      responses: {
+        "200": { description: "OK", content: { "application/json": { schema: { type: "array", items: schemaRef } } } },
       },
     },
   };
+  if (access === "full") {
+    listOperations.post = {
+      summary: `Create a ${table.name} row`,
+      requestBody: { required: true, content: { "application/json": { schema: schemaRef } } },
+      responses: {
+        "201": { description: "Created", content: { "application/json": { schema: schemaRef } } },
+      },
+    };
+  }
+  const paths: Record<string, any> = { [listPath]: listOperations };
 
   const pkColumns = primaryKeyColumns(table);
   if (pkColumns.length > 0) {
     const itemPath = `${listPath}/${itemPathSuffix(table)}`;
-    paths[itemPath] = {
+    const itemOperations: Record<string, any> = {
       parameters: pkColumns.map(col => ({ name: col.name, in: "path", required: true, schema: jsonSchemaForColumn(col) })),
       get: {
         summary: `Get one ${table.name} row by primary key`,
@@ -113,29 +127,40 @@ function buildTablePaths(table: SchemaTable): Record<string, any> {
           "404": { description: "Not found" },
         },
       },
-      put: {
+    };
+    if (access === "full") {
+      itemOperations.put = {
         summary: `Update a ${table.name} row`,
         requestBody: { required: true, content: { "application/json": { schema: schemaRef } } },
         responses: { "200": { description: "OK", content: { "application/json": { schema: schemaRef } } }, "404": { description: "Not found" } },
-      },
-      delete: {
+      };
+      itemOperations.delete = {
         summary: `Delete a ${table.name} row`,
         responses: { "204": { description: "Deleted" }, "404": { description: "Not found" } },
-      },
-    };
+      };
+    }
+    paths[itemPath] = itemOperations;
   }
 
   return paths;
 }
 
-/** Builds a full OpenAPI 3.0 document with one CRUD route set (list/create, get/update/delete by PK) per table. */
+/**
+ * Builds a full OpenAPI 3.0 document — a CRUD route set per table, or a scoped-down subset per
+ * options.tableAccess (which tables to include, and whether each gets full CRUD or GET-only).
+ */
 export function buildOpenApiSpec(graph: SchemaGraph, options: OpenApiSpecOptions = {}): Record<string, any> {
   const paths: Record<string, any> = {};
   const schemas: Record<string, any> = {};
 
-  graph.tables.forEach(table => {
+  const tables = options.tableAccess
+    ? graph.tables.filter(t => options.tableAccess![t.name] !== undefined)
+    : graph.tables;
+
+  tables.forEach(table => {
+    const access = options.tableAccess?.[table.name] ?? "full";
     schemas[table.name] = buildTableSchema(table);
-    Object.assign(paths, buildTablePaths(table));
+    Object.assign(paths, buildTablePaths(table, access));
   });
 
   return {

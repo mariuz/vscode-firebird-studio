@@ -137,3 +137,50 @@ suite('openapi-spec – buildOpenApiSpec()', function () {
     });
   });
 });
+
+// ── tableAccess option (phase 3: Copilot-assisted scoping) ──────────────────
+
+suite('openapi-spec – buildOpenApiSpec() with tableAccess', function () {
+  const graph: SchemaGraph = {
+    tables: [
+      table('CUSTOMERS', [column({ name: 'ID', isPrimaryKey: true })]),
+      table('ORDERS', [column({ name: 'ID', isPrimaryKey: true })]),
+      table('LOG', [column({ name: 'ID', isPrimaryKey: true })]),
+    ],
+    relationships: [],
+  };
+
+  test('includes every table with full CRUD when tableAccess is not set (unchanged default behavior)', function () {
+    const spec = buildOpenApiSpec(graph);
+    assert.deepStrictEqual(Object.keys(spec.components.schemas).sort(), ['CUSTOMERS', 'LOG', 'ORDERS']);
+  });
+
+  test('includes only the tables named in tableAccess', function () {
+    const spec = buildOpenApiSpec(graph, { tableAccess: { CUSTOMERS: 'full' } });
+    assert.deepStrictEqual(Object.keys(spec.components.schemas), ['CUSTOMERS']);
+    assert.strictEqual(spec.paths['/orders'], undefined);
+    assert.strictEqual(spec.paths['/log'], undefined);
+  });
+
+  test('a "full" table gets POST on the list path and PUT/DELETE on the item path', function () {
+    const spec = buildOpenApiSpec(graph, { tableAccess: { CUSTOMERS: 'full' } });
+    assert.ok(spec.paths['/customers'].post, 'expected POST on the list path');
+    assert.ok(spec.paths['/customers/{ID}'].put, 'expected PUT on the item path');
+    assert.ok(spec.paths['/customers/{ID}'].delete, 'expected DELETE on the item path');
+  });
+
+  test('a "read-only" table has no POST/PUT/DELETE, only GET', function () {
+    const spec = buildOpenApiSpec(graph, { tableAccess: { CUSTOMERS: 'read-only' } });
+    assert.ok(spec.paths['/customers'].get, 'expected GET on the list path');
+    assert.strictEqual(spec.paths['/customers'].post, undefined);
+    assert.ok(spec.paths['/customers/{ID}'].get, 'expected GET on the item path');
+    assert.strictEqual(spec.paths['/customers/{ID}'].put, undefined);
+    assert.strictEqual(spec.paths['/customers/{ID}'].delete, undefined);
+  });
+
+  test('an empty tableAccess object excludes every table', function () {
+    const spec = buildOpenApiSpec(graph, { tableAccess: {} });
+    assert.deepStrictEqual(spec.paths, {});
+    assert.deepStrictEqual(spec.components.schemas, {});
+  });
+});

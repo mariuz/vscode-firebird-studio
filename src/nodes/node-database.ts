@@ -14,7 +14,7 @@ import {getObjectFilter, matchesObjectFilter} from "../shared/object-explorer-fi
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
-import {runDataApiSpecGenerator} from "../data-api-builder";
+import {runDataApiSpecGenerator, runDataApiSpecGeneratorWithCopilot} from "../data-api-builder";
 import {runExtractProject} from "../database-projects";
 import {runObjectSearch} from "../object-search";
 import QueryResultsView from "../result-view";
@@ -184,6 +184,11 @@ export class NodeDatabase implements FirebirdTree {
   // generate an OpenAPI REST spec (one CRUD route set per table) from the connected schema
   public async generateDataApiSpec(): Promise<void> {
     return runDataApiSpecGenerator(this.dbDetails);
+  }
+
+  // same, but scoped by a Copilot-interpreted plain-English description ("expose X and Y as read-only")
+  public async generateDataApiSpecWithCopilot(): Promise<void> {
+    return runDataApiSpecGeneratorWithCopilot(this.dbDetails);
   }
 
   // extract the connected schema into a folder of versioned .sql files (Database Projects)

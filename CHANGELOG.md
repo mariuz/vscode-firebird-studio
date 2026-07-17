@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.68 - 2026-07-17
+
+### Added
+
+- **Data API Builder: Copilot-assisted scoping.** A new **Generate Data API Spec with Copilot...** command takes a plain-English description (e.g. "expose customers and orders as read-only") and generates a scoped-down OpenAPI spec — only the tables you described, with read-only tables losing their POST/PUT/DELETE routes.
+
 ## 0.1.67 - 2026-07-17
 
 ### Added
