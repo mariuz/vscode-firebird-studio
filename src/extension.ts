@@ -31,6 +31,7 @@ import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant
 import {registerAiQueryActions, runAnalyzeResultsAction, runAnalyzePlanAction} from "./copilot/ai-query-actions";
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
 import {resolveGbakExecutable} from "./shared/gbak-options";
+import {attemptConnection} from "./shared/connection-wizard";
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
@@ -422,6 +423,30 @@ export function activate(context: ExtensionContext) {
             }
           });
         });
+    })
+  );
+
+  /**
+   * Connection Lost Indicator (docs/roadmap/connection-lost-indicator.md), phase 2 -- one-click
+   * reconnect for the currently active connection, wired up as the status bar item's own command
+   * while it's showing its "connection lost" warning state (see Global.updateStatusBarItems()).
+   * Reuses attemptConnection() (a real connect-then-detach, no throw) -- the same probe already
+   * used by the connection wizard's own "Test Connection" step.
+   */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.reconnectActive", async () => {
+      if (!Global.activeConnection) {
+        logger.showError("No active database to reconnect to.");
+        return;
+      }
+      const resolved = await Driver.resolvePassword(Global.activeConnection);
+      const error = await attemptConnection(resolved);
+      Global.reportConnectionOutcome(resolved.id, error ? new Error(error) : undefined);
+      if (error) {
+        logger.showError(`Reconnect failed: ${error}`);
+      } else {
+        logger.showInfo("Reconnected.");
+      }
     })
   );
 

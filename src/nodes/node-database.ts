@@ -15,6 +15,7 @@ import {buildConnectionString} from "../shared/connection-string";
 import {connectionWizard} from "../shared/connection-wizard";
 import {TaskTracker} from "../task-panel/task-tracker";
 import {buildBackupFlags, BackupFlagChoices} from "../shared/gbak-options";
+import {isConnectionUnreachable} from "../shared/connection-health";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
@@ -41,17 +42,25 @@ export class NodeDatabase implements FirebirdTree {
   // list databases grouped by host names
   public getTreeItem(context: ExtensionContext): TreeItem {
     const colorId = themeColorIdFor(this.dbDetails.color);
+    // Connection Lost Indicator (docs/roadmap/connection-lost-indicator.md), phase 3 -- a warning
+    // badge for a database node that most recently failed to expand due to a connection error,
+    // cleared the moment a subsequent expand succeeds (see NodeCategoryFolder.getChildren()).
+    const unreachable = isConnectionUnreachable(this.dbDetails.id);
     return {
       label: getDatabaseFileName(this.dbDetails.database),
+      description: unreachable ? "⚠ connection lost" : undefined,
       collapsibleState: TreeItemCollapsibleState.Collapsed,
       contextValue: "database",
-      tooltip: this.dbDetails.workspace
+      tooltip: (this.dbDetails.workspace
         ? `[DATABASE] ${this.dbDetails.database}\nFrom this workspace's .vscode/firebird.json`
-        : `[DATABASE] ${this.dbDetails.database}`,
+        : `[DATABASE] ${this.dbDetails.database}`
+      ) + (unreachable ? "\nConnection lost — expand again to retry." : ""),
       // A color tag (set via "Set Connection Color...") swaps the usual custom SVG icon for a
       // themed codicon, since TreeItem iconPath can't tint an arbitrary SVG file — untagged
-      // connections keep the existing icon unchanged.
-      iconPath: colorId
+      // connections keep the existing icon unchanged. An unreachable connection overrides both.
+      iconPath: unreachable
+        ? new ThemeIcon("debug-disconnect", new ThemeColor("errorForeground"))
+        : colorId
         ? new ThemeIcon("database", new ThemeColor(colorId))
         : {
             dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "db-dark.svg")),

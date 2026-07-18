@@ -312,10 +312,17 @@ export class Driver {
     logger.info("Executing Firebird query...");
 
     const start = Date.now();
-    const connection = await this.client.createConnection(connectionOptions);
+    let connection;
+    try {
+      connection = await this.client.createConnection(connectionOptions);
+    } catch (err: any) {
+      Global.reportConnectionOutcome(connectionOptions.id, err);
+      throw err;
+    }
     const txOptions = buildTransactionOptions(getOptions());
     try {
       const result = await this.client.queryPromise(connection, sql, params, txOptions);
+      Global.reportConnectionOutcome(connectionOptions.id, undefined);
       const durationMs = Date.now() - start;
 
       if (result !== undefined) {
@@ -343,6 +350,7 @@ export class Driver {
         return ([{message: `${ddl} command executed successfully!`}]);
       }
     } catch (err: any) {
+      Global.reportConnectionOutcome(connectionOptions.id, err);
       this.logHistory(sql, connectionOptions, Date.now() - start, undefined, err?.message ?? String(err));
       throw err;
     } finally {
@@ -399,7 +407,13 @@ export class Driver {
 
     logger.info(`Batch: executing ${statements.length} statement(s)...`);
 
-    const connection = await this.client.createConnection(resolved.connectionOptions);
+    let connection;
+    try {
+      connection = await this.client.createConnection(resolved.connectionOptions);
+    } catch (err: any) {
+      Global.reportConnectionOutcome(resolved.connectionOptions.id, err);
+      throw err;
+    }
     const txOptions = buildTransactionOptions(getOptions());
     const results: BatchResult[] = [];
 
@@ -408,6 +422,7 @@ export class Driver {
         const start = Date.now();
         try {
           const rows = await this.client.queryPromise(connection, stmt, undefined, txOptions);
+          Global.reportConnectionOutcome(resolved.connectionOptions.id, undefined);
           const durationMs = Date.now() - start;
 
           if (rows !== undefined) {
@@ -434,6 +449,7 @@ export class Driver {
             this.logHistory(stmt, resolved.connectionOptions, durationMs);
           }
         } catch (err: any) {
+          Global.reportConnectionOutcome(resolved.connectionOptions.id, err);
           const durationMs = Date.now() - start;
           results.push({ sql: stmt, error: err?.message ?? String(err), durationMs });
           logger.error(`Batch statement failed: ${err?.message ?? err}`);

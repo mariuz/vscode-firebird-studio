@@ -4,6 +4,7 @@ import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
 import {getObjectFilter, setObjectFilter, clearObjectFilter} from "../shared/object-explorer-filter";
+import {Global} from "../shared/global";
 
 export class NodeCategoryFolder implements FirebirdTree {
   constructor(
@@ -49,9 +50,15 @@ export class NodeCategoryFolder implements FirebirdTree {
 
   public async getChildren(): Promise<FirebirdTree[]> {
     try {
-      return await this.childFactory(this.dbDetails);
+      const children = await this.childFactory(this.dbDetails);
+      // Connection Lost Indicator (docs/roadmap/connection-lost-indicator.md), phase 3 -- a
+      // successful expand clears this database's tree-node badge (and the status bar, if it's
+      // also the active connection) if a previous expand had marked it unreachable.
+      Global.reportConnectionOutcome(this.dbDetails.id, undefined);
+      return children;
     } catch (err) {
       logger.error(err);
+      Global.reportConnectionOutcome(this.dbDetails.id, err);
       return [new NodeInfo(String(err))];
     }
   }

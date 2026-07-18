@@ -1,10 +1,11 @@
-import { StatusBarItem, StatusBarAlignment, ThemeColor, window, ExtensionContext } from "vscode";
+import { StatusBarItem, StatusBarAlignment, ThemeColor, window, commands, ExtensionContext } from "vscode";
 import { ConnectionOptions } from "../interfaces";
 import { Constants } from "../config/constants";
 import { CredentialStore } from "./credential-store";
 import { logger } from "../logger/logger";
 import { getDatabaseFileName } from "./utils";
 import { themeColorIdFor } from "./connection-color";
+import { isConnectionLostError, isConnectionUnreachable, markConnectionUnreachable, markConnectionReachable } from "./connection-health";
 
 export class Global {
   private static _activeConnection: ConnectionOptions;
@@ -66,10 +67,44 @@ export class Global {
       this.firebirdStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Left);
       this.firebirdStatusBarItem.show();
     }
+    if (isConnectionUnreachable(activeConnection.id)) {
+      const dbName = getDatabaseFileName(activeConnection.database);
+      this.firebirdStatusBarItem.text = `$(debug-disconnect) FIREBIRD: ${dbName} (connection lost)`;
+      this.firebirdStatusBarItem.tooltip = `Firebird: Lost connection to ${dbName}. Click to reconnect.`;
+      this.firebirdStatusBarItem.color = new ThemeColor("statusBarItem.warningForeground");
+      this.firebirdStatusBarItem.backgroundColor = new ThemeColor("statusBarItem.warningBackground");
+      this.firebirdStatusBarItem.command = "firebird.reconnectActive";
+      return;
+    }
     this.firebirdStatusBarItem.text = this.getStatusBarItemText(activeConnection);
     this.firebirdStatusBarItem.tooltip = this.getStatusBarTooltipText(activeConnection);
     const colorId = themeColorIdFor(activeConnection.color);
     this.firebirdStatusBarItem.color = colorId ? new ThemeColor(colorId) : undefined;
+    this.firebirdStatusBarItem.backgroundColor = undefined;
+    this.firebirdStatusBarItem.command = "firebird.chooseActive";
+  }
+
+  /**
+   * Single entry point for both the SQL-execution path (Driver.runQuery()/runBatch()) and the
+   * tree-expansion path (NodeCategoryFolder.getChildren()) to report a query outcome for a given
+   * connection id — updates the shared unreachable registry (connection-health.ts) and, only when
+   * that actually changes something, refreshes the status bar (if it's the active connection) and
+   * the tree (so a NodeDatabase badge picks up the new state). A `err` that doesn't look like a
+   * dropped connection (e.g. an ordinary SQL syntax error) is a no-op either way — see
+   * isConnectionLostError()'s own doc comment for why message-shape, not just presence of an
+   * error, is what matters here.
+   */
+  public static reportConnectionOutcome(connectionId: string | undefined, err: unknown): void {
+    if (!connectionId) { return; }
+    const changed = err
+      ? (isConnectionLostError(err) && markConnectionUnreachable(connectionId))
+      : markConnectionReachable(connectionId);
+    if (!changed) { return; }
+
+    if (this._activeConnection?.id === connectionId) {
+      this.updateStatusBarItems(this._activeConnection);
+    }
+    commands.executeCommand("firebird.explorer.refresh");
   }
 
   private static getStatusBarItemText(activeConnection: ConnectionOptions): string {

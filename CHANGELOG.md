@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.89 - 2026-07-18
+
+### Added
+
+- **Connection Lost Indicator.** A dropped active connection (server restart, network blip) is now surfaced immediately instead of only showing up as a raw error the next time you happen to run a query: the status bar item switches to a warning state ("⚠ connection lost") with a one-click "Reconnect" action, and a database's tree node gets a matching badge the next time it fails to expand — cleared automatically the moment a query or expand against that connection succeeds again. Detected by recognizing the shape of a real connection failure (socket reset/refused/timed out, Firebird's own "unable to complete network request") rather than adding a new polling cycle. Implements `docs/roadmap/connection-lost-indicator.md`.
+
 ## 0.1.88 - 2026-07-18
 
 ### Added
