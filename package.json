@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.78",
+  "version": "0.1.79",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -642,6 +642,16 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Registers the **Firebird MCP Server**, exposing whichever connections have `firebird.database.toggleMcpExposure` turned on as read-only schema-inspection tools (`list_connections`, `get_schema`) to any MCP-compatible AI client. No connection is exposed by default even when this is on — each one needs its own explicit opt-in from its right-click menu. Requires a VS Code build with MCP server registration support; has no effect on older versions."
+        },
+        "firebird.resultsFontSize": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Font size (in px) for the **Query Results** grid, mirroring vscode-mssql's `mssql.resultsFontSize`. `0` uses the webview's own default size."
+        },
+        "firebird.resultsFontFamily": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Font family for the **Query Results** grid, mirroring vscode-mssql's `mssql.resultsFontFamily`. Empty uses the webview's own default font."
         },
         "firebird.shortcuts": {
           "type": "object",

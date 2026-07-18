@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.79 - 2026-07-18
+
+### Added
+
+- **Query results: configurable grid font.** New `firebird.resultsFontSize`/`firebird.resultsFontFamily` settings (mirroring vscode-mssql's `mssql.resultsFontSize`/`mssql.resultsFontFamily`) customize the font used by the Query Results grid. Also documented that column show/hide was already available via the grid's existing "Columns" toolbar button. Third and fourth of five phases in `docs/roadmap/query-results-enhancements.md`.
+
 ## 0.1.78 - 2026-07-18
 
 ### Added

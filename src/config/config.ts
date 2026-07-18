@@ -26,7 +26,9 @@ export function getOptions() {
     transactionLockTimeoutSec: _transactionLockTimeoutSec(),
     transactionReadOnly: _transactionReadOnly(),
     transactionWaitMode: _transactionWaitMode(),
-    mcpEnabled: _mcpEnabled()
+    mcpEnabled: _mcpEnabled(),
+    resultsFontSize: _resultsFontSize(),
+    resultsFontFamily: _resultsFontFamily()
   } as Options;
 }
 
@@ -247,6 +249,22 @@ function _mcpEnabled(): boolean {
     return def;
   }
   return conf;
+}
+
+function _resultsFontSize(): number {
+  const conf: any = getConfig().get("resultsFontSize");
+  const def: number = properties["firebird.resultsFontSize"]["default"];
+
+  if (typeof conf !== "number" || conf < 0) {
+    logger.error("Invalid value detected in Results Font Size settings. Fallback to default value.");
+    return def;
+  }
+  return conf;
+}
+
+function _resultsFontFamily(): string {
+  const conf: any = getConfig().get("resultsFontFamily");
+  return typeof conf === "string" ? conf : "";
 }
 
 function _recordsPerPage(): string {

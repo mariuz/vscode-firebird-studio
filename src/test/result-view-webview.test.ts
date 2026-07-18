@@ -292,4 +292,25 @@ suite('result-view app.js – pure helpers (via __test__ hook)', function () {
       assert.strictEqual(hooks.formatSelectionStats({ count: 0, numericCount: 0 }), '');
     });
   });
+
+  suite('resultsFontProperties() — grid font customization (docs/roadmap/query-results-enhancements.md, phase 4)', function () {
+    test('both settings unset (0 / "") produces no properties at all', function () {
+      assert.deepStrictEqual(hooks.resultsFontProperties(0, ''), {});
+    });
+
+    test('a font size alone sets only the size custom property, as a px value', function () {
+      assert.deepStrictEqual(hooks.resultsFontProperties(16, ''), { '--fb-results-font-size': '16px' });
+    });
+
+    test('a font family alone sets only the family custom property, unchanged', function () {
+      assert.deepStrictEqual(hooks.resultsFontProperties(0, 'Consolas, monospace'), { '--fb-results-font-family': 'Consolas, monospace' });
+    });
+
+    test('both set together produces both properties', function () {
+      assert.deepStrictEqual(
+        hooks.resultsFontProperties(14, 'Fira Code'),
+        { '--fb-results-font-size': '14px', '--fb-results-font-family': 'Fira Code' }
+      );
+    });
+  });
 });

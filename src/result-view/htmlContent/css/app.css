@@ -3,6 +3,14 @@ div.container {
   margin-bottom: 1rem;
 }
 
+/* ── Grid font customization (firebird.resultsFontSize/resultsFontFamily) ───────────────────
+   The two custom properties are set on the document root by applyResultsFont() in app.js; the
+   var(...) fallback here is what renders when both settings are left at their "unset" default. */
+table.dataTable {
+  font-size: var(--fb-results-font-size, 12px);
+  font-family: var(--fb-results-font-family, inherit);
+}
+
 div.img-wrapper {
   position: fixed;
   bottom: 2%;

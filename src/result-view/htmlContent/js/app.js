@@ -35,6 +35,18 @@ $(() => {
   let activeTableId = null;
   const tableActions = {}; // tableId -> { toggleEdit, addRow, apply, freeze, copyInsert, copyIn }
 
+  // ── Grid font customization (firebird.resultsFontSize/resultsFontFamily, mirroring
+  // vscode-mssql's mssql.resultsFontSize/resultsFontFamily) ──────────────────────────────
+  // Applied as CSS custom properties on the document root rather than inline per-table styles,
+  // so every batch panel (each its own <table>, rebuilt per query run) picks it up automatically
+  // via app.css's `var(--fb-results-font-size, ...)` fallback -- no re-application needed when a
+  // new table is built.
+
+  function applyResultsFont(fontSize, fontFamily) {
+    const props = resultsFontProperties(fontSize, fontFamily);
+    Object.keys(props).forEach(key => document.documentElement.style.setProperty(key, props[key]));
+  }
+
   $(document).on("keydown", event => {
     if (!activeTableId || !tableActions[activeTableId]) { return; }
     const actions = tableActions[activeTableId];
@@ -60,6 +72,7 @@ $(() => {
 
     if (msg.command === "batchData") {
       shortcuts = msg.data.shortcuts || {};
+      applyResultsFont(msg.data.resultsFontSize, msg.data.resultsFontFamily);
       activeTableId = null;
       renderBatch(msg.data.results, msg.data.recordsPerPage);
       $("body").addClass("loaded");
@@ -69,6 +82,7 @@ $(() => {
     if (msg.command === "message") {
       const data = msg.data;
       shortcuts = data.shortcuts || {};
+      applyResultsFont(data.resultsFontSize, data.resultsFontFamily);
       activeTableId = null;
       if (data.tableBody && data.tableBody.length) {
         $("#zero-results").hide();
@@ -725,6 +739,17 @@ $(() => {
     return [headerLine, sepLine, ...dataLines].join("\n");
   }
 
+  // ── Grid font customization (pure: CSS custom properties from settings values) ─────────────
+
+  /** Returns CSS custom properties to set — {} when both settings are unset (0 / ""), meaning
+   *  "use the webview's own default," matching app.css's own var(...) fallback values. */
+  function resultsFontProperties(fontSize, fontFamily) {
+    const props = {};
+    if (fontSize) { props["--fb-results-font-size"] = `${fontSize}px`; }
+    if (fontFamily) { props["--fb-results-font-family"] = fontFamily; }
+    return props;
+  }
+
   // ── Selection aggregations (status-bar readout for a cell-range selection) ─
   // Aggregates over whatever numeric-looking cells are actually in the selection, not requiring
   // an entire column to be numeric first (unlike detectNumericColumns(), which decides whether a
@@ -969,6 +994,7 @@ $(() => {
       detectNumericColumns, buildBarChartSvg, buildLineChartSvg, buildPieChartSvg, buildScatterChartSvg,
       buildTextView,
       computeSelectionStats, formatSelectionStats,
+      resultsFontProperties,
     };
   }
 });

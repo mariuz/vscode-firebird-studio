@@ -97,16 +97,16 @@ export default class ResultView extends QueryResultsView implements Disposable {
 
   handleMessage(message: Message): void {
     if (message.command === "getData") {
-      const shortcuts = getOptions().shortcuts;
+      const { shortcuts, resultsFontSize, resultsFontFamily } = getOptions();
       if (this.batchResults) {
         this.send({
           command: "batchData",
-          data: { results: this.batchResults, recordsPerPage: this.recordsPerPage, shortcuts },
+          data: { results: this.batchResults, recordsPerPage: this.recordsPerPage, shortcuts, resultsFontSize, resultsFontFamily },
         });
       } else {
         const data = this.resultSet
-          ? { ...this.getPreparedResults(), editableTable: this.resultTableName, shortcuts }
-          : { tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage, shortcuts };
+          ? { ...this.getPreparedResults(), editableTable: this.resultTableName, shortcuts, resultsFontSize, resultsFontFamily }
+          : { tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage, shortcuts, resultsFontSize, resultsFontFamily };
         this.send({ command: "message", data });
       }
       return;

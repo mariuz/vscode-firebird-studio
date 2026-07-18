@@ -35,4 +35,8 @@ export interface Options {
   transactionWaitMode: '' | 'WAIT' | 'NO_WAIT';
   /** Registers the firebird-mcp MCP server, exposing whichever connections have opted in (ConnectionOptions.mcpExposed) as read-only schema-inspection tools to MCP clients. Off by default. */
   mcpEnabled: boolean;
+  /** Query results grid font size in px. `0` means "use the webview's own default". */
+  resultsFontSize: number;
+  /** Query results grid font family (CSS font-family value). `''` means "use the webview's own default". */
+  resultsFontFamily: string;
 }
