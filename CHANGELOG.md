@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.78 - 2026-07-18
+
+### Added
+
+- **Query results: selection aggregations.** Selecting a range of cells in the results grid now shows a live `Count` / `Sum` / `Avg` / `Min` / `Max` readout next to the grid toolbar, computed over whatever cells in the selection actually parse as numbers — no need for the whole selected column to be numeric first. Second of five phases in `docs/roadmap/query-results-enhancements.md`.
+
 ## 0.1.77 - 2026-07-18
 
 ### Added

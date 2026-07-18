@@ -231,4 +231,65 @@ suite('result-view app.js – pure helpers (via __test__ hook)', function () {
       assert.strictEqual(text.split('\n')[2], '42');
     });
   });
+
+  suite('computeSelectionStats() / formatSelectionStats() — selection aggregations (docs/roadmap/query-results-enhancements.md, phase 2)', function () {
+    test('an all-numeric selection reports count, sum, avg, min, and max', function () {
+      const stats = hooks.computeSelectionStats([['1', '2'], ['3', '4']]);
+      assert.strictEqual(stats.count, 4);
+      assert.strictEqual(stats.numericCount, 4);
+      assert.strictEqual(stats.sum, 10);
+      assert.strictEqual(stats.avg, 2.5);
+      assert.strictEqual(stats.min, 1);
+      assert.strictEqual(stats.max, 4);
+    });
+
+    test('a mixed numeric/text selection aggregates only over the numeric cells, but counts every cell', function () {
+      const stats = hooks.computeSelectionStats([['1', 'Ada'], ['3', 'Bob']]);
+      assert.strictEqual(stats.count, 4);
+      assert.strictEqual(stats.numericCount, 2);
+      assert.strictEqual(stats.sum, 4);
+      assert.strictEqual(stats.min, 1);
+      assert.strictEqual(stats.max, 3);
+    });
+
+    test('an all-text selection has a count but no numeric aggregates', function () {
+      const stats = hooks.computeSelectionStats([['Ada', 'Bob']]);
+      assert.strictEqual(stats.count, 2);
+      assert.strictEqual(stats.numericCount, 0);
+      assert.strictEqual(stats.sum, undefined);
+    });
+
+    test('an empty selection reports a zero count', function () {
+      const stats = hooks.computeSelectionStats([]);
+      assert.strictEqual(stats.count, 0);
+      assert.strictEqual(stats.numericCount, 0);
+    });
+
+    test('negative numbers and decimals are parsed correctly', function () {
+      const stats = hooks.computeSelectionStats([['-5', '2.5']]);
+      assert.strictEqual(stats.sum, -2.5);
+      assert.strictEqual(stats.min, -5);
+      assert.strictEqual(stats.max, 2.5);
+    });
+
+    test('a whitespace-padded numeric cell (as copied from a DataTables <td>) still counts as numeric', function () {
+      const stats = hooks.computeSelectionStats([[' 7 ']]);
+      assert.strictEqual(stats.numericCount, 1);
+      assert.strictEqual(stats.sum, 7);
+    });
+
+    test('formatSelectionStats() renders count-only for a non-numeric selection', function () {
+      assert.strictEqual(hooks.formatSelectionStats({ count: 2, numericCount: 0 }), 'Count: 2');
+    });
+
+    test('formatSelectionStats() renders the full aggregate line, rounded to 2 decimals', function () {
+      const text = hooks.formatSelectionStats({ count: 3, numericCount: 3, sum: 10, avg: 3.33333, min: 1, max: 6 });
+      assert.strictEqual(text, 'Count: 3  Sum: 10  Avg: 3.33  Min: 1  Max: 6');
+    });
+
+    test('formatSelectionStats() returns an empty string for no selection at all', function () {
+      assert.strictEqual(hooks.formatSelectionStats(null), '');
+      assert.strictEqual(hooks.formatSelectionStats({ count: 0, numericCount: 0 }), '');
+    });
+  });
 });

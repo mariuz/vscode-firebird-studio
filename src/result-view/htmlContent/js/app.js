@@ -177,8 +177,9 @@ $(() => {
     const $copyInClause  = $("<button>").addClass("btn-grid-action btn-copy-in").text("Copy as IN (...)");
     const $chartToggle  = $("<button>").addClass("btn-grid-action btn-chart-toggle").text("📊 Chart");
     const $textViewToggle = $("<button>").addClass("btn-grid-action btn-text-view-toggle").text("📄 Text View");
+    const $selectionStats = $("<span>").addClass("selection-stats");
     const $status       = $("<span>").addClass("edit-status");
-    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle, $textViewToggle);
+    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle, $textViewToggle, $selectionStats);
 
     // "🤖 Analyze" and "🧭 Query Plan" only make sense when we actually know the SQL that produced
     // this result set (the single/legacy display() path — predefined actions like Show Table Info
@@ -316,6 +317,7 @@ $(() => {
       $(`#${tableId} td.fb-selected`).removeClass("fb-selected");
       selAnchor = null;
       selEnd = null;
+      $selectionStats.text("");
     }
 
     function highlightSelection() {
@@ -332,6 +334,11 @@ $(() => {
           if (c >= range.colStart && c <= range.colEnd) { $(this).addClass("fb-selected"); }
         });
       });
+      // Selection aggregations (docs/roadmap/query-results-enhancements.md, phase 2): recomputed
+      // here rather than at each caller, since every selection change funnels through this
+      // function already.
+      const sel = getSelectedGrid();
+      $selectionStats.text(sel ? formatSelectionStats(computeSelectionStats(sel.rows)) : "");
     }
 
     function getSelectedGrid() {
@@ -718,6 +725,49 @@ $(() => {
     return [headerLine, sepLine, ...dataLines].join("\n");
   }
 
+  // ── Selection aggregations (status-bar readout for a cell-range selection) ─
+  // Aggregates over whatever numeric-looking cells are actually in the selection, not requiring
+  // an entire column to be numeric first (unlike detectNumericColumns(), which decides whether a
+  // whole column is chart-worthy) — closer to how a spreadsheet's own selection status bar
+  // behaves, and more useful for a selection spanning several columns of mixed types.
+
+  /** Returns { count, numericCount, sum, avg, min, max } — the last four only set when numericCount > 0. */
+  function computeSelectionStats(rows) {
+    const numericRe = /^-?\d+(\.\d+)?$/;
+    let count = 0;
+    const numericValues = [];
+    rows.forEach(row => row.forEach(cell => {
+      count++;
+      const trimmed = String(cell).trim();
+      if (numericRe.test(trimmed)) { numericValues.push(Number(trimmed)); }
+    }));
+    const stats = { count, numericCount: numericValues.length };
+    if (numericValues.length > 0) {
+      stats.sum = numericValues.reduce((a, b) => a + b, 0);
+      stats.avg = stats.sum / numericValues.length;
+      stats.min = Math.min(...numericValues);
+      stats.max = Math.max(...numericValues);
+    }
+    return stats;
+  }
+
+  /** Rounds to at most 2 decimal places, without padding a whole number with trailing zeros. */
+  function formatSelectionNumber(n) {
+    return String(Math.round(n * 100) / 100);
+  }
+
+  function formatSelectionStats(stats) {
+    if (!stats || stats.count === 0) { return ""; }
+    let text = `Count: ${stats.count}`;
+    if (stats.numericCount > 0) {
+      text += `  Sum: ${formatSelectionNumber(stats.sum)}` +
+        `  Avg: ${formatSelectionNumber(stats.avg)}` +
+        `  Min: ${formatSelectionNumber(stats.min)}` +
+        `  Max: ${formatSelectionNumber(stats.max)}`;
+    }
+    return text;
+  }
+
   /** Normalizes an (anchor, end) pair of {row,col} points into an inclusive rectangle. */
   function selectionRange(anchor, end) {
     return {
@@ -918,6 +968,7 @@ $(() => {
       parseShortcut, matchesShortcut,
       detectNumericColumns, buildBarChartSvg, buildLineChartSvg, buildPieChartSvg, buildScatterChartSvg,
       buildTextView,
+      computeSelectionStats, formatSelectionStats,
     };
   }
 });

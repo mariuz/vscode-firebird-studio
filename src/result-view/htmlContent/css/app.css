@@ -133,6 +133,11 @@ div.img-wrapper img {
   font-size: 11px;
   color: var(--vscode-descriptionForeground, #999);
 }
+.selection-stats {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+  margin-left: 8px;
+}
 
 /* ── Editable grid cells and row states ──────────────────────────────────── */
 td.fb-editable {
