@@ -1,10 +1,25 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { Readable } from 'stream';
 import {
   detectFormat, detectDelimiter, parseDelimited, parseCsv, parseJsonRows, parseFlatFile,
   inferColumnType, sanitizeIdentifier, inferSchema, buildCreateTableDDL,
   cellToSqlLiteral, buildInsertStatement,
   mapFirebirdFieldToSqlType, autoMapColumns, buildInsertStatementForMapping, FirebirdColumnMeta,
+  streamDelimitedRows, detectDelimiterFromFile, readDelimitedPreview, streamDataRows,
 } from '../shared/flat-file-parser';
+
+/** Simulates a chunked fs.createReadStream() by feeding streamDelimitedRows() one array element per underlying chunk. */
+async function streamChunks(chunks: string[], delimiter = ','): Promise<string[][]> {
+  const stream = Readable.from(chunks);
+  const rows: string[][] = [];
+  for await (const row of streamDelimitedRows(stream, delimiter)) {
+    rows.push(row);
+  }
+  return rows;
+}
 
 // tableInfoQuery()'s CASE has string-literal branches of different lengths, which Firebird types
 // as one fixed-width CHAR sized to the longest branch ('TIMESTAMP', 9 chars) -- every shorter
@@ -90,6 +105,86 @@ suite('flat-file-parser – parseDelimited()', function () {
   test('strips a leading UTF-8 BOM', function () {
     const rows = parseDelimited('﻿a,b\n1,2', ',');
     assert.deepStrictEqual(rows[0], ['a', 'b']);
+  });
+});
+
+// ── streamDelimitedRows() — the chunked/large-file counterpart to parseDelimited() ────────────
+// (docs/roadmap/flat-file-import-wizard.md's "Large-file streaming" item). Each test feeds the
+// input pre-split into separate chunks at the exact byte offset that's hardest for a resumable
+// parser to get right — mid-field, mid-quote, mid-CRLF, mid-doubled-quote — the cases a single
+// whole-string parse (parseDelimited()) can never actually exercise.
+
+suite('flat-file-parser – streamDelimitedRows()', function () {
+  test('a row split across two chunks, right in the middle of a field', async function () {
+    const rows = await streamChunks(['a,b\n1,Al', 'ice\n2,Bob']);
+    assert.deepStrictEqual(rows, [['a', 'b'], ['1', 'Alice'], ['2', 'Bob']]);
+  });
+
+  test('every chunk boundary lands on a different single character (worst case)', async function () {
+    const text = 'id,name\n1,Alice\n2,"Smith, Bob"\n3,Carol\n';
+    const rows = await streamChunks(text.split(''));
+    assert.deepStrictEqual(rows, [['id', 'name'], ['1', 'Alice'], ['2', 'Smith, Bob'], ['3', 'Carol']]);
+  });
+
+  test('a quoted field spanning multiple chunks, including an embedded delimiter and newline', async function () {
+    const rows = await streamChunks(['a,b\n1,"line1\nhas, a comma', ' and continues"\n2,x']);
+    assert.deepStrictEqual(rows, [['a', 'b'], ['1', 'line1\nhas, a comma and continues'], ['2', 'x']]);
+  });
+
+  test('a doubled-quote escape split exactly at the chunk boundary', async function () {
+    // Field content is `She said "hi"` -- as CSV-escaped text that's `"She said ""hi"""`.
+    // Split so chunk 1 ends right after the FIRST quote of the `""` pair before "hi".
+    const rows = await streamChunks(['a\n"She said "', '"hi"""']);
+    assert.deepStrictEqual(rows, [['a'], ['She said "hi"']]);
+  });
+
+  test("a chunk boundary right after a field's real closing quote (not a doubled escape)", async function () {
+    const rows = await streamChunks(['a,b\n"Smith"', ',John\n2,x']);
+    assert.deepStrictEqual(rows, [['a', 'b'], ['Smith', 'John'], ['2', 'x']]);
+  });
+
+  test('a file ending exactly on a quoted field\'s closing quote, with no trailing content', async function () {
+    const rows = await streamChunks(['a\n"abc']);
+    assert.deepStrictEqual(rows, [['a'], ['abc']]);
+    const rowsSplit = await streamChunks(['a\n"ab', 'c"']);
+    assert.deepStrictEqual(rowsSplit, [['a'], ['abc']]);
+  });
+
+  test('a \\r\\n line ending split exactly between the \\r and the \\n', async function () {
+    const rows = await streamChunks(['a,b\r', '\n1,2']);
+    assert.deepStrictEqual(rows, [['a', 'b'], ['1', '2']]);
+  });
+
+  test('a bare trailing \\r at a chunk boundary NOT followed by \\n is still just one line ending', async function () {
+    const rows = await streamChunks(['a,b\r', 'c,d']);
+    assert.deepStrictEqual(rows, [['a', 'b'], ['c', 'd']]);
+  });
+
+  test('the header row is the first yielded row', async function () {
+    const rows = await streamChunks(['id,name\n1,Alice']);
+    assert.deepStrictEqual(rows[0], ['id', 'name']);
+  });
+
+  test('skips a genuinely blank trailing line rather than yielding a spurious all-empty row', async function () {
+    const rows = await streamChunks(['a,b\n1,2\n\n']);
+    assert.deepStrictEqual(rows, [['a', 'b'], ['1', '2']]);
+  });
+
+  test('strips a leading UTF-8 BOM exactly once, even when the BOM and first char land in the same chunk', async function () {
+    const rows = await streamChunks(['﻿a,b\n1,2']);
+    assert.deepStrictEqual(rows[0], ['a', 'b']);
+  });
+
+  test('a tab delimiter works the same as parseDelimited()', async function () {
+    const rows = await streamChunks(['a\tb\n1\t2'], '\t');
+    assert.deepStrictEqual(rows, [['a', 'b'], ['1', '2']]);
+  });
+
+  test('produces the exact same result as parseDelimited() for the same input, whole or chunked', async function () {
+    const text = 'id,name,note\n1,Alice,"hi, there"\n2,Bob,"multi\nline"\n3,Carol,plain\n';
+    const whole = parseDelimited(text, ',');
+    const chunked = await streamChunks([text.slice(0, 10), text.slice(10, 25), text.slice(25)]);
+    assert.deepStrictEqual(chunked, whole);
   });
 });
 
@@ -424,5 +519,104 @@ suite('flat-file-parser – buildInsertStatementForMapping()', function () {
     ];
     const sql = buildInsertStatementForMapping('T', mapping, ['Alice', '7']);
     assert.strictEqual(sql, "INSERT INTO T (ID, NAME) VALUES (7, 'Alice');");
+  });
+});
+
+// ── File-reading helpers (large-file streaming path) — real temp files on disk ─────────────────
+// (docs/roadmap/flat-file-import-wizard.md's "Large-file streaming" item), same real-file-on-disk
+// testing convention src/test/workspace-config.test.ts's loadWorkspaceConnections() suite uses.
+
+suite('flat-file-parser – detectDelimiterFromFile()', function () {
+  let tmpDir: string;
+
+  setup(function () { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flat-file-parser-test-')); });
+  teardown(function () { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  test('sniffs the delimiter from a real file\'s first line without reading the rest', function () {
+    const filePath = path.join(tmpDir, 'data.csv');
+    fs.writeFileSync(filePath, 'a;b;c\n1;2;3\n');
+    return detectDelimiterFromFile(filePath).then(delimiter => assert.strictEqual(delimiter, ';'));
+  });
+
+  test('defaults to comma for a file with no delimiter on its first line', function () {
+    const filePath = path.join(tmpDir, 'data.csv');
+    fs.writeFileSync(filePath, 'onlyoneword\n1\n');
+    return detectDelimiterFromFile(filePath).then(delimiter => assert.strictEqual(delimiter, ','));
+  });
+});
+
+suite('flat-file-parser – readDelimitedPreview()', function () {
+  let tmpDir: string;
+
+  setup(function () { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flat-file-parser-test-')); });
+  teardown(function () { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  test('truncated is false when the file has fewer rows than the cap — the preview already has everything', async function () {
+    const filePath = path.join(tmpDir, 'small.csv');
+    fs.writeFileSync(filePath, 'id,name\n1,Alice\n2,Bob\n');
+    const { headers, rows, truncated } = await readDelimitedPreview(filePath, ',', 200);
+    assert.deepStrictEqual(headers, ['id', 'name']);
+    assert.deepStrictEqual(rows, [['1', 'Alice'], ['2', 'Bob']]);
+    assert.strictEqual(truncated, false);
+  });
+
+  test('truncated is true and stops reading once the cap is hit, on a file with more rows than the cap', async function () {
+    const lines = ['id,name', ...Array.from({ length: 10 }, (_, i) => `${i},name${i}`)];
+    const filePath = path.join(tmpDir, 'big.csv');
+    fs.writeFileSync(filePath, lines.join('\n') + '\n');
+    const { rows, truncated } = await readDelimitedPreview(filePath, ',', 5);
+    assert.strictEqual(rows.length, 5);
+    assert.deepStrictEqual(rows.map(r => r[0]), ['0', '1', '2', '3', '4']);
+    assert.strictEqual(truncated, true);
+  });
+
+  test('truncated is false when the file has exactly the cap\'s worth of rows', async function () {
+    const lines = ['id', '1', '2', '3'];
+    const filePath = path.join(tmpDir, 'exact.csv');
+    fs.writeFileSync(filePath, lines.join('\n') + '\n');
+    const { rows, truncated } = await readDelimitedPreview(filePath, ',', 3);
+    assert.strictEqual(rows.length, 3);
+    assert.strictEqual(truncated, false);
+  });
+});
+
+suite('flat-file-parser – streamDataRows()', function () {
+  let tmpDir: string;
+
+  setup(function () { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flat-file-parser-test-')); });
+  teardown(function () { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  test('skips the header row and yields every real data row from a real file on disk', async function () {
+    const filePath = path.join(tmpDir, 'data.csv');
+    fs.writeFileSync(filePath, 'id,name\n1,Alice\n2,Bob\n3,Carol\n');
+    const rows: string[][] = [];
+    for await (const row of streamDataRows(filePath, ',')) { rows.push(row); }
+    assert.deepStrictEqual(rows, [['1', 'Alice'], ['2', 'Bob'], ['3', 'Carol']]);
+  });
+
+  test('walks a real file with more rows than any preview cap, in order, none lost or duplicated', async function () {
+    const rowCount = 3000; // comfortably beyond PREVIEW_ROW_CAP (200) and past a real fs stream's default chunk size
+    const lines = ['id,note', ...Array.from({ length: rowCount }, (_, i) => `${i},row number ${i}`)];
+    const filePath = path.join(tmpDir, 'large.csv');
+    fs.writeFileSync(filePath, lines.join('\n') + '\n');
+
+    const ids: number[] = [];
+    for await (const row of streamDataRows(filePath, ',')) { ids.push(Number(row[0])); }
+    assert.strictEqual(ids.length, rowCount);
+    assert.deepStrictEqual(ids, Array.from({ length: rowCount }, (_, i) => i));
+  });
+
+  test('correctly parses a quoted field with an embedded newline/delimiter in a real streamed file large enough to span multiple internal read chunks', async function () {
+    const padding = Array.from({ length: 2000 }, (_, i) => `${i},plain value ${i}`).join('\n');
+    const quotedRow = `9999,"a value, with a comma\nand a newline too"`;
+    const filePath = path.join(tmpDir, 'quoted.csv');
+    fs.writeFileSync(filePath, `id,note\n${padding}\n${quotedRow}\n10000,after\n`);
+
+    const rows: string[][] = [];
+    for await (const row of streamDataRows(filePath, ',')) { rows.push(row); }
+    const quoted = rows.find(r => r[0] === '9999');
+    assert.ok(quoted, 'the quoted row was found among the streamed results');
+    assert.strictEqual(quoted![1], 'a value, with a comma\nand a newline too');
+    assert.strictEqual(rows[rows.length - 1][0], '10000', 'the row after the quoted one still parsed correctly');
   });
 });

@@ -9,20 +9,60 @@ import { logger } from "../logger/logger";
 import { getTablesQuery, tableInfoQuery } from "../shared/queries";
 import { extractJson } from "../copilot/json-extraction";
 import {
-  parseFlatFile, inferSchema, buildCreateTableDDL, buildInsertStatement, sanitizeIdentifier,
+  detectFormat, detectDelimiterFromFile, parseJsonRows, readDelimitedPreview, streamDataRows,
+  inferSchema, buildCreateTableDDL, buildInsertStatement, sanitizeIdentifier,
   autoMapColumns, buildInsertStatementForMapping, ColumnMapping, FirebirdColumnMeta, ColumnInference,
 } from "../shared/flat-file-parser";
 
 /** Rows per Driver.runBatch() call — keeps any one batch's SQL text and transaction count bounded for large files. */
 const INSERT_CHUNK_SIZE = 200;
 
+/**
+ * Matches inferSchema()'s own default sample size — there's no value in a preview reading further
+ * than what schema inference/the mapping preview actually look at. A CSV/TSV file with more data
+ * rows than this switches the actual import (not the preview) to the streaming path below, rather
+ * than ever holding the whole file's rows array in memory (docs/roadmap/flat-file-import-wizard.md's
+ * "Large-file streaming" item) — JSON isn't covered by this pass (see runFlatFileImportWizard()'s
+ * doc comment for why), so a huge JSON file still reads entirely into memory as before.
+ */
+const PREVIEW_ROW_CAP = 200;
+
 const SKIP_COLUMN = "— Skip this column —";
+
+/**
+ * Where the wizard reads a file's *complete* row set from at import time — the bounded preview
+ * sample above is never enough on its own once a file has more rows than PREVIEW_ROW_CAP.
+ * "array" is the whole-file-already-in-memory case (JSON always; CSV/TSV when the file turned out
+ * small enough that the preview read already reached end-of-file); "stream" re-opens the file from
+ * disk and walks it row-by-row without ever materializing the full array.
+ */
+type ImportSource =
+  | { kind: "array"; rows: string[][] }
+  | { kind: "stream"; filePath: string; delimiter: string };
+
+function knownRowCount(source: ImportSource): number | undefined {
+  return source.kind === "array" ? source.rows.length : undefined;
+}
+
+function rowCountPhrase(count: number | undefined): string {
+  return count !== undefined ? `${count} row(s)` : "the file's rows";
+}
 
 /**
  * Guided "import a CSV/TSV/JSON file into a Firebird table" wizard (QuickPick/InputBox steps, per
  * the design doc — no webview needed for this phase). Forks after parsing into two target modes:
  * create a brand-new table (phase 2) or map columns onto an already-existing table (phase 3) —
  * see docs/roadmap/flat-file-import-wizard.md.
+ *
+ * CSV/TSV files are only ever read as a bounded preview sample here — the actual complete row set
+ * (for the "create table" DDL's INSERTs, or the "map onto existing table" INSERTs) is read via a
+ * fresh streaming pass at import time (see ImportSource), so this wizard never holds a large CSV/
+ * TSV file's full contents in memory at once. JSON isn't covered by this pass: a JSON array of
+ * objects doesn't line up with a byte-chunk boundary the way delimited text does (a `"`, `{`, or
+ * `}` can appear anywhere), so a *correct* streaming JSON parser is a meaningfully bigger, riskier
+ * lift than delimited-text streaming turned out to be — deliberately out of scope here, and still
+ * disclosed as a remaining gap in docs/roadmap/flat-file-import-wizard.md. A huge JSON file still
+ * reads entirely into memory, exactly as it always has.
  */
 export async function runFlatFileImportWizard(connectionOptions: ConnectionOptions): Promise<void> {
   const openUris = await window.showOpenDialog({
@@ -35,24 +75,49 @@ export async function runFlatFileImportWizard(connectionOptions: ConnectionOptio
   }
   const filePath = openUris[0].fsPath;
   const fileName = basename(filePath);
-
-  let text: string;
-  try {
-    text = await readFile(filePath, "utf8");
-  } catch (err: any) {
-    logger.showError(`Could not read ${fileName}: ${err?.message ?? err}`);
-    return;
-  }
+  const format = detectFormat(fileName);
 
   let headers: string[];
-  let rows: string[][];
-  try {
-    ({ headers, rows } = parseFlatFile(fileName, text));
-  } catch (err: any) {
-    logger.showError(`Could not parse ${fileName}: ${err?.message ?? err}`);
-    return;
+  let previewRows: string[][];
+  let source: ImportSource;
+
+  if (format === "json") {
+    let text: string;
+    try {
+      text = await readFile(filePath, "utf8");
+    } catch (err: any) {
+      logger.showError(`Could not read ${fileName}: ${err?.message ?? err}`);
+      return;
+    }
+    let rows: string[][];
+    try {
+      ({ headers, rows } = parseJsonRows(text));
+    } catch (err: any) {
+      logger.showError(`Could not parse ${fileName}: ${err?.message ?? err}`);
+      return;
+    }
+    previewRows = rows;
+    source = { kind: "array", rows };
+  } else {
+    const delimiter = format === "tsv" ? "\t" : await detectDelimiterFromFile(filePath);
+    let preview: { headers: string[]; rows: string[][]; truncated: boolean };
+    try {
+      preview = await readDelimitedPreview(filePath, delimiter, PREVIEW_ROW_CAP);
+    } catch (err: any) {
+      logger.showError(`Could not read ${fileName}: ${err?.message ?? err}`);
+      return;
+    }
+    headers = preview.headers;
+    previewRows = preview.rows;
+    // The preview read already reached end-of-file for a small/typical file (fewer than
+    // PREVIEW_ROW_CAP data rows) — reuse that already-in-memory sample instead of re-opening and
+    // re-streaming the file a second time for no benefit.
+    source = preview.truncated
+      ? { kind: "stream", filePath, delimiter }
+      : { kind: "array", rows: preview.rows };
   }
-  if (headers.length === 0 || rows.length === 0) {
+
+  if (headers.length === 0 || previewRows.length === 0) {
     logger.showError(`${fileName} has no data to import.`);
     return;
   }
@@ -69,19 +134,20 @@ export async function runFlatFileImportWizard(connectionOptions: ConnectionOptio
   }
 
   if (target.target === "new") {
-    await importIntoNewTable(fileName, headers, rows, connectionOptions);
+    await importIntoNewTable(fileName, headers, previewRows, source, connectionOptions);
   } else {
-    await importIntoExistingTable(fileName, headers, rows, connectionOptions);
+    await importIntoExistingTable(fileName, headers, source, connectionOptions);
   }
 }
 
 // ── Create a new table (phase 2) ─────────────────────────────────────────────
 
 async function importIntoNewTable(
-  fileName: string, headers: string[], rows: string[][], connectionOptions: ConnectionOptions
+  fileName: string, headers: string[], previewRows: string[][], source: ImportSource, connectionOptions: ConnectionOptions
 ): Promise<void> {
-  let schema = inferSchema(headers, rows);
+  let schema = inferSchema(headers, previewRows);
   const defaultTableName = sanitizeIdentifier(basename(fileName, extname(fileName)));
+  const rowCount = knownRowCount(source);
 
   // Phase 4 (docs/roadmap/flat-file-import-wizard.md): the type sniffer above is fully local/
   // deterministic by design — this step is optional, and skipping it (the default-first option)
@@ -97,12 +163,12 @@ async function importIntoNewTable(
     return;
   }
   if (typeSourcePick.useCopilot) {
-    schema = await suggestTypesWithCopilot(fileName, schema, rows);
+    schema = await suggestTypesWithCopilot(fileName, schema, previewRows);
   }
 
   const tableNameInput = await window.showInputBox({
     title: "Flat File Import — Table Name",
-    prompt: `Create a new table for the ${rows.length} row(s) parsed from ${fileName}`,
+    prompt: `Create a new table for ${rowCountPhrase(rowCount)} parsed from ${fileName}`,
     value: defaultTableName,
     validateInput: value => (value && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(value.trim())) ? undefined : "Enter a valid table name",
   });
@@ -118,7 +184,7 @@ async function importIntoNewTable(
   await Driver.createSQLTextDocument(ddl);
 
   const confirm = await window.showWarningMessage(
-    `Create table ${tableName} and import ${rows.length} row(s) from ${fileName}?`,
+    `Create table ${tableName} and import ${rowCountPhrase(rowCount)} from ${fileName}?`,
     { modal: true },
     "Import"
   );
@@ -136,10 +202,10 @@ async function importIntoNewTable(
     return;
   }
 
-  const { succeeded, errors } = await runChunkedInsert(tableName, rows, connectionOptions, chunk =>
+  const { succeeded, errors } = await runChunkedInsert(tableName, source, connectionOptions, chunk =>
     chunk.map(row => buildInsertStatement(tableName, schema, row)).join("\n")
   );
-  reportImportResult(tableName, rows.length, succeeded, errors);
+  reportImportResult(tableName, succeeded, errors);
 }
 
 // ── Copilot-assisted type/naming suggestions (phase 4) ───────────────────────
@@ -248,7 +314,7 @@ export function parseSuggestedSchema(rawText: string, currentSchema: ColumnInfer
 // ── Map onto an existing table (phase 3) ─────────────────────────────────────
 
 async function importIntoExistingTable(
-  fileName: string, headers: string[], rows: string[][], connectionOptions: ConnectionOptions
+  fileName: string, headers: string[], source: ImportSource, connectionOptions: ConnectionOptions
 ): Promise<void> {
   let tableRows: { TABLE_NAME: string }[];
   try {
@@ -317,7 +383,7 @@ async function importIntoExistingTable(
   }
 
   const confirm = await window.showWarningMessage(
-    `Import ${rows.length} row(s) from ${fileName} into ${tableName}?`,
+    `Import ${rowCountPhrase(knownRowCount(source))} from ${fileName} into ${tableName}?`,
     { modal: true },
     "Import"
   );
@@ -325,10 +391,10 @@ async function importIntoExistingTable(
     return;
   }
 
-  const { succeeded, errors } = await runChunkedInsert(tableName, rows, connectionOptions, chunk =>
+  const { succeeded, errors } = await runChunkedInsert(tableName, source, connectionOptions, chunk =>
     chunk.map(row => buildInsertStatementForMapping(tableName, mapping, row)).join("\n")
   );
-  reportImportResult(tableName, rows.length, succeeded, errors);
+  reportImportResult(tableName, succeeded, errors);
 }
 
 /** Walks every target column, letting the user pick which file header (if any) feeds it — starting from the auto-matched mapping so the common case is mostly just confirming. Returns undefined if the user cancels (Escape) at any step. */
@@ -362,30 +428,61 @@ async function customizeMapping(headers: string[], mapping: ColumnMapping[]): Pr
 
 // ── Shared: chunked insert + result reporting ────────────────────────────────
 
+/**
+ * Runs buildSql over every data row from `source` in INSERT_CHUNK_SIZE-row batches via
+ * Driver.runBatch(), same as before this phase — the only thing that changed is where the rows
+ * come from: an already-in-memory array (unchanged behavior, exact "X / Y row(s)" percentage
+ * progress) or a streamed async iterable for a large CSV/TSV file, buffered one chunk at a time
+ * and discarded immediately after each batch runs, so the full row set is never held in memory at
+ * once. The streamed case can't show a percentage (the total isn't known until the stream ends),
+ * so progress falls back to a running count instead.
+ */
 async function runChunkedInsert(
-  tableName: string, rows: string[][], connectionOptions: ConnectionOptions, buildSql: (chunk: string[][]) => string
+  tableName: string, source: ImportSource, connectionOptions: ConnectionOptions, buildSql: (chunk: string[][]) => string
 ): Promise<{ succeeded: number; errors: string[] }> {
   let succeeded = 0;
   const errors: string[] = [];
+  let rowIndex = 0;
+  const total = knownRowCount(source);
+
+  const runChunk = async (chunk: string[][], progress: { report(v: { message?: string; increment?: number }): void }) => {
+    const sql = buildSql(chunk);
+    const results = await Driver.runBatch(sql, connectionOptions);
+    results.forEach(r => {
+      rowIndex++;
+      if (r.error) {
+        errors.push(`Row ${rowIndex}: ${r.error}`);
+      } else {
+        succeeded++;
+      }
+    });
+    if (total !== undefined) {
+      progress.report({ message: `${Math.min(rowIndex, total)} / ${total} row(s)`, increment: (chunk.length / total) * 100 });
+    } else {
+      progress.report({ message: `${rowIndex} row(s) imported so far…` });
+    }
+  };
 
   await window.withProgress(
     { location: ProgressLocation.Notification, title: `Importing into ${tableName}…`, cancellable: false },
     async progress => {
-      for (let i = 0; i < rows.length; i += INSERT_CHUNK_SIZE) {
-        const chunk = rows.slice(i, i + INSERT_CHUNK_SIZE);
-        const sql = buildSql(chunk);
-        const results = await Driver.runBatch(sql, connectionOptions);
-        results.forEach((r, idx) => {
-          if (r.error) {
-            errors.push(`Row ${i + idx + 1}: ${r.error}`);
-          } else {
-            succeeded++;
-          }
-        });
-        progress.report({
-          message: `${Math.min(i + INSERT_CHUNK_SIZE, rows.length)} / ${rows.length} row(s)`,
-          increment: (chunk.length / rows.length) * 100,
-        });
+      if (source.kind === "array") {
+        for (let i = 0; i < source.rows.length; i += INSERT_CHUNK_SIZE) {
+          await runChunk(source.rows.slice(i, i + INSERT_CHUNK_SIZE), progress);
+        }
+        return;
+      }
+
+      let buffer: string[][] = [];
+      for await (const row of streamDataRows(source.filePath, source.delimiter)) {
+        buffer.push(row);
+        if (buffer.length >= INSERT_CHUNK_SIZE) {
+          await runChunk(buffer, progress);
+          buffer = [];
+        }
+      }
+      if (buffer.length > 0) {
+        await runChunk(buffer, progress);
       }
     }
   );
@@ -393,11 +490,12 @@ async function runChunkedInsert(
   return { succeeded, errors };
 }
 
-function reportImportResult(tableName: string, total: number, succeeded: number, errors: string[]): void {
+function reportImportResult(tableName: string, succeeded: number, errors: string[]): void {
   if (errors.length === 0) {
     logger.showInfo(`Imported ${succeeded} row(s) into ${tableName}.`);
     return;
   }
+  const total = succeeded + errors.length;
   logger.error(`Flat file import errors:\n${errors.join("\n")}`);
   logger.showError(
     `Imported ${succeeded} of ${total} row(s) into ${tableName} — ${errors.length} row(s) failed. Check logs for details.`,

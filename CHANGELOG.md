@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.74 - 2026-07-18
+
+### Added
+
+- **Flat File Import Wizard: large-file streaming for CSV/TSV.** A large CSV/TSV file is no longer read entirely into memory — the wizard now infers the schema from a bounded preview sample and streams the actual import row-by-row, buffering only one insert batch (200 rows) at a time. Small/typical files behave exactly as before. JSON files still read entirely into memory (a disclosed, deliberate scope cut — see the roadmap doc).
+
 ## 0.1.73 - 2026-07-18
 
 ### Added
