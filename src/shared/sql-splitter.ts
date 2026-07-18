@@ -43,9 +43,28 @@ function isBlankOrCommentsOnly(text: string): boolean {
   return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--[^\n]*/g, "").trim() === "";
 }
 
-export function splitStatements(sql: string): string[] {
-  const statements: string[] = [];
+/** One statement's trimmed text plus its `[start, end)` offset range in the original source (see splitStatementsWithOffsets()). */
+export interface SqlStatementRange {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Same boundary-detection logic as splitStatements() (string literals, comments, SET TERM, PSQL
+ * BEGIN/END/CASE nesting — see that function's own doc comment), but additionally returns each
+ * statement's `[start, end)` offset range in the original source, trimmed the same way its text
+ * is: `sql.slice(start, end) === text`. Used by "Run Statement Under Cursor" (docs/roadmap/
+ * run-statement-under-cursor.md) to find which statement a cursor offset falls inside; a cursor
+ * sitting in pure inter-statement whitespace falls outside every returned range on purpose (a
+ * leading comment immediately before a statement is still part of that statement's range, exactly
+ * as splitStatements() already includes it in the statement's text) — the caller falls back to its
+ * own existing whole-document/selection behavior in that case rather than this function guessing.
+ */
+export function splitStatementsWithOffsets(sql: string): SqlStatementRange[] {
+  const statements: SqlStatementRange[] = [];
   let current = "";
+  let stmtStart = 0;
   let terminator = ";";
   let blockDepth = 0;
   let awaitingFirstBegin = false;
@@ -62,10 +81,12 @@ export function splitStatements(sql: string): string[] {
     return !isWordChar(sql[pos - 1]) && !isWordChar(sql[pos + word.length]);
   };
 
-  const flush = () => {
+  const flush = (rawEnd: number) => {
+    const leadingWs = current.length - current.trimStart().length;
+    const trailingWs = current.length - current.trimEnd().length;
     const trimmed = current.trim();
     if (trimmed && !isBlankOrCommentsOnly(trimmed)) {
-      statements.push(trimmed);
+      statements.push({ text: trimmed, start: stmtStart + leadingWs, end: rawEnd - trailingWs });
     }
     current = "";
     awaitingFirstBegin = false;
@@ -126,6 +147,7 @@ export function splitStatements(sql: string): string[] {
           terminator = newTerminator;
           i = afterDirective + terminator.length;
           current = ""; // SET TERM is an isql directive, not a statement to execute
+          stmtStart = i;
           continue;
         }
       }
@@ -166,8 +188,9 @@ export function splitStatements(sql: string): string[] {
     // Statement terminator (only ends a statement outside any BEGIN/CASE
     // block, and not while still waiting for a PSQL header's first BEGIN)
     if (blockDepth === 0 && !awaitingFirstBegin && sql.slice(i, i + terminator.length) === terminator) {
-      flush();
+      flush(i);
       i += terminator.length;
+      stmtStart = i;
       continue;
     }
 
@@ -175,7 +198,11 @@ export function splitStatements(sql: string): string[] {
     i++;
   }
 
-  flush();
+  flush(i);
 
   return statements;
+}
+
+export function splitStatements(sql: string): string[] {
+  return splitStatementsWithOffsets(sql).map(statement => statement.text);
 }

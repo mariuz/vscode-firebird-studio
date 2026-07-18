@@ -22,6 +22,7 @@ import * as path from 'node:path';
 import {extractChangelogEntry, summarizeChangelogEntry} from "./shared/changelog-notice";
 import {extractNamedParameters, rewriteNamedParametersToPositional, coerceParamValue, ParamType} from "./shared/parameterized-query";
 import {formatSQL} from "./shared/sql-formatter";
+import {splitStatementsWithOffsets} from "./shared/sql-splitter";
 import {SqlLinter} from "./shared/sql-linter";
 import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
 import {fetchSchemaSnapshot, diffSchemas, renderDiffReport} from "./schema-diff/schema-diff";
@@ -579,6 +580,52 @@ export function activate(context: ExtensionContext) {
                   logger.showOutput();
                 }
               });
+          }
+        });
+    })
+  );
+
+  /**
+   * "Run Statement Under Cursor" (docs/roadmap/run-statement-under-cursor.md) -- runs just the one
+   * statement the cursor happens to be positioned inside, out of a multi-statement document,
+   * without requiring a selection. Only attempts the cursor lookup when there's no selection (an
+   * actual highlighted selection is left to Driver.runQuery()'s own existing selection-aware
+   * default, unchanged); a cursor sitting in pure inter-statement whitespace also falls back to
+   * that same default (whole document) rather than erroring, per the roadmap doc's own phase 1.
+   */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.runCurrentStatement", () => {
+      const editor = window.activeTextEditor;
+      if (!editor || editor.document.languageId !== "sql") {
+        logger.showError("Open a .sql file and place your cursor in a query first.");
+        return;
+      }
+
+      let sql: string | undefined;
+      if (editor.selection.isEmpty) {
+        const offset = editor.document.offsetAt(editor.selection.active);
+        const statement = splitStatementsWithOffsets(editor.document.getText())
+          .find(range => offset >= range.start && offset <= range.end);
+        sql = statement?.text;
+      }
+
+      Driver.runQuery(sql)
+        .then(result => {
+          firebirdQueryResults.display(result, config.recordsPerPage);
+        })
+        .catch((err: any) => {
+          logger.error(err?.message ?? err);
+          if (err?.notify) {
+            logger.showError(err.message, err.options || []).then(selected => {
+              if (selected === "New SQL Document") {
+                commands.executeCommand("firebird.explorer.newSqlDocument");
+              }
+              if (selected === "Set Active Database") {
+                commands.executeCommand("firebird.chooseActive");
+              }
+            });
+          } else {
+            logger.showError(`Query failed: ${err?.message ?? err}`);
           }
         });
     })

@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { splitStatements } from '../shared/sql-splitter';
+import { splitStatements, splitStatementsWithOffsets } from '../shared/sql-splitter';
 
 suite('SQL Splitter – basic statement splitting', function () {
 
@@ -460,5 +460,92 @@ suite('SQL Splitter – mixed real-world documents', function () {
     assert.ok(stmts[1].startsWith('CREATE PROCEDURE REBUILD_LOG'));
     assert.strictEqual(stmts[2], 'SELECT * FROM REBUILD_LOG');
     assert.strictEqual(stmts[3], 'SELECT COUNT(*) FROM LOG');
+  });
+});
+
+suite('splitStatementsWithOffsets() (docs/roadmap/run-statement-under-cursor.md, phase 1)', function () {
+
+  test('returns empty array for empty/whitespace-only/lone-semicolon input, same as splitStatements()', function () {
+    assert.deepStrictEqual(splitStatementsWithOffsets(''), []);
+    assert.deepStrictEqual(splitStatementsWithOffsets('   \n\t  '), []);
+    assert.deepStrictEqual(splitStatementsWithOffsets(';'), []);
+  });
+
+  test('every range\'s sql.slice(start, end) exactly equals its own trimmed text', function () {
+    const sql = '  SELECT 1 FROM RDB$DATABASE  ;\n\n  SELECT 2 FROM RDB$DATABASE  ;';
+    const ranges = splitStatementsWithOffsets(sql);
+    assert.strictEqual(ranges.length, 2);
+    for (const r of ranges) {
+      assert.strictEqual(sql.slice(r.start, r.end), r.text);
+    }
+  });
+
+  test('a single statement with no trailing semicolon has start 0 and end at the trimmed text length', function () {
+    const sql = 'SELECT 1 FROM RDB$DATABASE';
+    const [range] = splitStatementsWithOffsets(sql);
+    assert.deepStrictEqual(range, { text: sql, start: 0, end: sql.length });
+  });
+
+  test('leading/trailing whitespace around a statement is excluded from its range', function () {
+    const sql = '   SELECT 1   ;';
+    const [range] = splitStatementsWithOffsets(sql);
+    assert.strictEqual(range.text, 'SELECT 1');
+    assert.strictEqual(sql.slice(range.start, range.end), 'SELECT 1');
+  });
+
+  test('a cursor offset in the pure-whitespace gap between two statements falls inside neither range', function () {
+    const sql = 'SELECT 1;   SELECT 2;';
+    const ranges = splitStatementsWithOffsets(sql);
+    const gapOffset = sql.indexOf('   ') + 1; // inside the whitespace run between the two statements
+    const hit = ranges.find(r => gapOffset >= r.start && gapOffset <= r.end);
+    assert.strictEqual(hit, undefined, JSON.stringify(ranges));
+  });
+
+  test('a cursor offset inside the second statement of a multi-statement document resolves to it, not the first', function () {
+    const sql = 'SELECT 1 FROM RDB$DATABASE; SELECT 2 FROM RDB$DATABASE;';
+    const ranges = splitStatementsWithOffsets(sql);
+    const offsetInSecond = sql.indexOf('SELECT 2') + 3;
+    const hit = ranges.find(r => offsetInSecond >= r.start && offsetInSecond <= r.end);
+    assert.strictEqual(hit?.text, 'SELECT 2 FROM RDB$DATABASE');
+  });
+
+  test('a cursor offset inside a SET TERM-delimited procedure body resolves to the whole procedure as one range', function () {
+    const sql = [
+      'SELECT 1 FROM RDB$DATABASE;',
+      'SET TERM ^ ;',
+      'CREATE PROCEDURE P AS BEGIN',
+      '  EXIT;',
+      'END^',
+      'SET TERM ; ^',
+      'SELECT 2 FROM RDB$DATABASE;',
+    ].join('\n');
+    const ranges = splitStatementsWithOffsets(sql);
+    assert.strictEqual(ranges.length, 3);
+    const offsetInsideBody = sql.indexOf('EXIT;') + 1;
+    const hit = ranges.find(r => offsetInsideBody >= r.start && offsetInsideBody <= r.end);
+    assert.ok(hit?.text.startsWith('CREATE PROCEDURE P'), JSON.stringify(hit));
+    assert.ok(hit?.text.includes('EXIT;'), JSON.stringify(hit));
+  });
+
+  test('the SET TERM directive lines themselves are excluded from every range (not part of the procedure body, nor a standalone statement)', function () {
+    const sql = 'SET TERM ^ ;\nCREATE PROCEDURE P AS BEGIN EXIT; END^\nSET TERM ; ^';
+    const ranges = splitStatementsWithOffsets(sql);
+    assert.strictEqual(ranges.length, 1);
+    assert.ok(!ranges[0].text.includes('SET TERM'), ranges[0].text);
+  });
+
+  test('splitStatements() and splitStatementsWithOffsets() agree on the same statement text, in the same order', function () {
+    const sql = [
+      'DELETE FROM LOG;',
+      'SET TERM ^ ;',
+      'CREATE PROCEDURE REBUILD_LOG AS',
+      'BEGIN',
+      '  INSERT INTO LOG (MSG) VALUES (\'rebuilt\');',
+      'END^',
+      'SET TERM ; ^',
+      'SELECT * FROM REBUILD_LOG;',
+      'SELECT COUNT(*) FROM LOG;',
+    ].join('\n');
+    assert.deepStrictEqual(splitStatementsWithOffsets(sql).map(r => r.text), splitStatements(sql));
   });
 });

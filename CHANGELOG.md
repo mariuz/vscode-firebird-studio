@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.91 - 2026-07-18
+
+### Added
+
+- **Run Statement Under Cursor.** A new `firebird.runCurrentStatement` command (default keybinding `Ctrl+Shift+Enter`, `Cmd+Shift+Enter` on macOS) runs just the one SQL statement your cursor happens to be in, out of a multi-statement document, without requiring a selection first. Implements `docs/roadmap/run-statement-under-cursor.md`.
+
 ## 0.1.90 - 2026-07-18
 
 ### Changed
