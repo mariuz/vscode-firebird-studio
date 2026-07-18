@@ -187,13 +187,14 @@ $(() => {
     const $addRow     = $("<button>").addClass("btn-add-row").text("+ Add Row").hide();
     const $apply       = $("<button>").addClass("btn-apply-changes").text("Apply Changes").hide();
     const $freezeToggle  = $("<button>").addClass("btn-grid-action btn-freeze-col").text("❄ Freeze Column");
+    const $viewDiagram  = $("<button>").addClass("btn-grid-action btn-view-diagram").text("🗺 View Table Diagram");
     const $copyInsert    = $("<button>").addClass("btn-grid-action btn-copy-insert").text("Copy as INSERT");
     const $copyInClause  = $("<button>").addClass("btn-grid-action btn-copy-in").text("Copy as IN (...)");
     const $chartToggle  = $("<button>").addClass("btn-grid-action btn-chart-toggle").text("📊 Chart");
     const $textViewToggle = $("<button>").addClass("btn-grid-action btn-text-view-toggle").text("📄 Text View");
     const $selectionStats = $("<span>").addClass("selection-stats");
     const $status       = $("<span>").addClass("edit-status");
-    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle, $textViewToggle, $selectionStats);
+    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $viewDiagram, $copyInsert, $copyInClause, $chartToggle, $textViewToggle, $selectionStats);
 
     // "🤖 Analyze" and "🧭 Query Plan" only make sense when we actually know the SQL that produced
     // this result set (the single/legacy display() path — predefined actions like Show Table Info
@@ -553,6 +554,16 @@ $(() => {
       const frozen = $wrapper.toggleClass("fb-frozen").hasClass("fb-frozen");
       $freezeToggle.toggleClass("active", frozen);
       $freezeToggle.text(frozen ? "❄ Unfreeze Column" : "❄ Freeze Column");
+    });
+
+    // "🗺 View Table Diagram" (docs/roadmap/query-results-enhancements.md, phase 5): opens the
+    // existing Schema Designer webview, pre-focused on the table currently entered above --
+    // extension-host side (ResultView#handleMessage()) resolves the actual connection, since the
+    // webview itself only ever knows a table *name*, not any ConnectionOptions.
+    $viewDiagram.on("click", () => {
+      const tableName = $tableNameInput.val();
+      if (!tableName) { $status.text("Enter a table name first."); return; }
+      vscode.postMessage({ command: "viewTableDiagram", data: { tableName } });
     });
 
     $copyInsert.on("click", () => {

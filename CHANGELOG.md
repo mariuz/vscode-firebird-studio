@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.80 - 2026-07-18
+
+### Added
+
+- **Query results: "View Table Diagram" button.** A new "🗺 View Table Diagram" button in the row-editing toolbar opens the table currently being edited directly in the Schema Designer, pre-focused on it. Completes `docs/roadmap/query-results-enhancements.md` (all five phases now done).
+
 ## 0.1.79 - 2026-07-18
 
 ### Added

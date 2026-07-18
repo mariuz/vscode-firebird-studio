@@ -10,7 +10,7 @@ import {Global} from "./shared/global";
 import {CredentialStore} from "./shared/credential-store";
 import {logger} from "./logger/logger";
 import {KeywordsDb} from "./language-server/db-words.provider";
-import QueryResultsView, {AnalyzeResultsRequest, AnalyzePlanRequest} from "./result-view";
+import QueryResultsView, {AnalyzeResultsRequest, AnalyzePlanRequest, ViewTableDiagramRequest} from "./result-view";
 import {SchemaDesigner} from "./schema-designer";
 import {QueryPlanView} from "./query-plan-view";
 import {ProfilerView} from "./profiler";
@@ -188,6 +188,23 @@ export function activate(context: ExtensionContext) {
   };
   firebirdQueryPlanView.on("analyzePlan", analyzePlanHandler);
   firebirdQueryResults.on("analyzePlan", analyzePlanHandler);
+
+  /* Query results "🗺 View Table Diagram" button (docs/roadmap/query-results-enhancements.md,
+     phase 5) — same delegation pattern as above; opens the shared Schema Designer instance,
+     pre-focused on the table currently entered for row editing. Uses Global.activeConnection,
+     the same source row editing's own applyChanges() already implicitly resolves its connection
+     from (via Driver.runQuery() with no explicit connectionOptions). */
+  firebirdQueryResults.on("viewTableDiagram", (data: ViewTableDiagramRequest) => {
+    if (!Global.activeConnection) {
+      logger.showError("No Firebird database selected!", ["Cancel", "Set Active Database"]).then(selected => {
+        if (selected === "Set Active Database") {
+          commands.executeCommand("firebird.chooseActive");
+        }
+      });
+      return;
+    }
+    firebirdSchemaDesigner.openForAlterTable(Global.activeConnection, data.tableName);
+  });
 
   /* SQL Notebooks (.fbnb) — serializer + execution controller */
   context.subscriptions.push(...registerSqlNotebook(context));

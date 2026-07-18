@@ -57,6 +57,11 @@ export interface AnalyzePlanRequest {
   plan: string;
 }
 
+/** Payload for the "viewTableDiagram" message sent from the webview's "🗺 View Table Diagram" button. */
+export interface ViewTableDiagramRequest {
+  tableName: string;
+}
+
 export default class ResultView extends QueryResultsView implements Disposable {
   private resultSet?: ResultSet;
   private resultTableName?: string;
@@ -144,6 +149,17 @@ export default class ResultView extends QueryResultsView implements Disposable {
 
     if (message.command === "getActualPlan") {
       this.handleGetActualPlan(message.data as { requestId: string; sql: string });
+      return;
+    }
+
+    if (message.command === "viewTableDiagram") {
+      // "🗺 View Table Diagram" (docs/roadmap/query-results-enhancements.md, phase 5). Delegated
+      // to extension.ts, the same as "analyzeResults"/"analyzePlan" above -- it owns the shared
+      // SchemaDesigner instance, and this view only ever knows a table *name*, not a
+      // ConnectionOptions to open it against (that comes from Global.activeConnection on the
+      // extension-host side, the same source row editing's own applyChanges() already resolves
+      // its connection from).
+      this.emit("viewTableDiagram", message.data as ViewTableDiagramRequest);
       return;
     }
   }
