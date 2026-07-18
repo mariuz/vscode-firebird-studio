@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.85 - 2026-07-18
+
+### Added
+
+- **Generate Migration Script.** A new "Generate Migration Script..." command compares two saved connections and opens a runnable SQL script — column/table/view/procedure/trigger/domain/generator/exception/role/user changes included, not just tables — for review before you run it yourself. Reuses Database Projects' existing publish machinery rather than the read-only `Schema Diff` text report. Completes `docs/roadmap/schema-diff-migration-script.md`.
+
 ## 0.1.84 - 2026-07-18
 
 ### Added

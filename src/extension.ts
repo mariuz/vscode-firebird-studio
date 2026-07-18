@@ -34,7 +34,7 @@ import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
 import {registerMcpServer, openMcpWriteAuditLog} from "./mcp-server";
-import {runBuildProject, runPublishProject} from "./database-projects";
+import {runBuildProject, runPublishProject, runGenerateMigrationScript} from "./database-projects";
 import {runContainerProvisionWizard} from "./container-provisioning";
 
 /** Matches shared/row-edit.ts's assertValidIdentifier() — used for inline input-box validation before that throws. */
@@ -1286,6 +1286,18 @@ export function activate(context: ExtensionContext) {
           if (sel === "Show Logs") { logger.showOutput(); }
         });
       }
+    })
+  );
+
+  /* COMMAND: generate a runnable migration script between two live connections (docs/roadmap/schema-diff-migration-script.md) */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.schemaDiff.generateMigrationScript", () => {
+      runGenerateMigrationScript(context).catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Generate Migration Script failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
     })
   );
 

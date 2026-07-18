@@ -277,3 +277,73 @@ export async function runPublishProject(context: ExtensionContext): Promise<void
     logger.showError(`Could not generate the publish script: ${err?.message ?? err}`);
   }
 }
+
+/**
+ * "Generate Migration Script" (docs/roadmap/schema-diff-migration-script.md) — the same
+ * diff-and-script machinery runPublishProject() above uses (fetchProjectSnapshot() +
+ * diffProjects() + buildPublishScript()), but for two *live connections* instead of a saved
+ * project snapshot vs. one live connection. No new diffing/DDL-generation logic at all: the
+ * roadmap doc originally proposed converting schema-diff.ts's own SchemaDiffResult (used by the
+ * separate, existing firebird.schemaDiff text-report command) into a PublishDiff, but
+ * SchemaDiffResult's SchemaSnapshot turned out to be missing everything PublishDiff/
+ * buildPublishScript() actually need beyond bare table/column names and types — view/procedure/
+ * trigger *source text* (SchemaSnapshot only ever fetched their names), foreign keys, domains,
+ * generators, exceptions, roles, and users. fetchProjectSnapshot() already fetches all of that
+ * directly from a live connection into exactly the ProjectInput shape diffProjects() consumes, so
+ * reusing it here needed zero conversion code, unlike the SchemaDiffResult path that would have.
+ * A source/target picker distinguishes this from schemaDiff's own — that command's is
+ * intentionally not reused here, to keep both commands independent (see the roadmap doc for why).
+ */
+export async function runGenerateMigrationScript(context: ExtensionContext): Promise<void> {
+  const savedConnections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);
+  if (!savedConnections || Object.keys(savedConnections).length < 2) {
+    logger.showError("You need at least two saved connections to generate a migration script.");
+    return;
+  }
+
+  const items = Object.values(savedConnections).map(c => ({ label: getConnectionLabel(c), detail: c.id, conn: c }));
+  const sourcePick = await window.showQuickPick(items, { placeHolder: "Select the SOURCE database (the one to migrate FROM)" });
+  if (!sourcePick) {
+    return;
+  }
+  const targetItems = items.filter(i => i.detail !== sourcePick.detail);
+  const targetPick = await window.showQuickPick(targetItems, { placeHolder: "Select the TARGET database (the one to bring in line with source)" });
+  if (!targetPick) {
+    return;
+  }
+
+  const includeDropsPick = await window.showQuickPick(
+    [
+      { label: "No", description: "Only additive/modifying changes (default, safer)" },
+      { label: "Yes", description: "Also drop objects present in the target but not in the source — DESTRUCTIVE" },
+    ],
+    { placeHolder: "Include DROP statements for objects only in the target database?" }
+  );
+  if (!includeDropsPick) {
+    return;
+  }
+
+  try {
+    const [sourcePassword, targetPassword] = await Promise.all([
+      CredentialStore.getPassword(sourcePick.conn.id),
+      CredentialStore.getPassword(targetPick.conn.id),
+    ]);
+    const sourceConnection = { ...sourcePick.conn, password: sourcePassword ?? "" };
+    const targetConnection = { ...targetPick.conn, password: targetPassword ?? "" };
+
+    const [sourceSnapshot, targetSnapshot] = await Promise.all([
+      fetchProjectSnapshot(sourceConnection),
+      fetchProjectSnapshot(targetConnection),
+    ]);
+
+    const diff = diffProjects(sourceSnapshot, targetSnapshot);
+    const script = buildPublishScript(diff, targetSnapshot, { includeDrops: includeDropsPick.label === "Yes" });
+
+    const doc = await workspace.openTextDocument({ content: script, language: "sql" });
+    await window.showTextDocument(doc, ViewColumn.Beside);
+    logger.showInfo(`Migration script generated: ${sourcePick.label} → ${targetPick.label}. Review it carefully, then run it yourself against the target database.`);
+  } catch (err: any) {
+    logger.error(`Generate Migration Script failed: ${err?.message ?? err}`);
+    logger.showError(`Could not generate the migration script: ${err?.message ?? err}`);
+  }
+}
