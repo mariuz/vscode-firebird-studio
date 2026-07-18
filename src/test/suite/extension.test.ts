@@ -67,6 +67,7 @@ suite('Extension Host – roadmap feature commands', function () {
 
   const roadmapCommands: Record<string, string[]> = {
     'connection-management-enhancements.md': ['firebird.database.copyConnectionString', 'firebird.database.editConnection', 'firebird.tasks.clearCompleted'],
+    'cross-extension-connection-api.md': ['firebird.connectionSharing.listConnections', 'firebird.connectionSharing.getActiveConnection'],
     'data-api-builder.md': ['firebird.database.generateDataApiSpec', 'firebird.database.generateDataApiSpecWithCopilot'],
     'database-projects.md': ['firebird.project.extract', 'firebird.project.build', 'firebird.project.publish'],
     'flat-file-import-wizard.md': ['firebird.database.importFlatFile'],

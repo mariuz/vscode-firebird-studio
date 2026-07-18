@@ -4,7 +4,14 @@
 
 ## Current state in Firebird Studio
 
-**Not started.** `activate()` (`src/extension.ts`) doesn't return anything — there is no `exports` object at all, so another VS Code extension has no supported way to discover or reuse a Firebird Studio connection today. Anything wanting Firebird access currently has to either bundle its own `node-firebird` dependency and ask the user to re-enter connection details, or (the one existing integration point) go through the MCP server (`docs/roadmap/mcp-server.md`) — but that's scoped to AI-agent hosts speaking MCP-over-stdio to a spawned subprocess, not an in-process API another VS Code extension's own code could call directly and synchronously.
+**Phase 1 is done.** Before this, `activate()` (`src/extension.ts`) didn't return anything — there was no `exports` object at all, so another VS Code extension had no supported way to discover or reuse a Firebird Studio connection. Anything wanting Firebird access still has to either bundle its own `node-firebird` dependency and ask the user to re-enter connection details, or (the one other existing integration point) go through the MCP server (`docs/roadmap/mcp-server.md`) — but that's scoped to AI-agent hosts speaking MCP-over-stdio to a spawned subprocess, not an in-process API another VS Code extension's own code could call directly and synchronously.
+
+- **Phase 1 — `listConnections`/`getActiveConnection` — done.** New `src/connection-sharing/index.ts` exports `listConnections(context, requestingExtensionId?)` (every connection this workspace can see — the same set `FirebirdTreeDataProvider.getHostNodes()` merges: `globalState`-saved connections plus this workspace's own `.vscode/firebird.json`, if any) and `getActiveConnection(requestingExtensionId?)` (whatever's currently in `Global.activeConnection`, or `undefined`). Both reshape a `ConnectionOptions` into a new `SharedConnectionInfo` (`id`/`label`/`host`/`database`/`embedded`) that structurally cannot carry a password — there's no field for one to leak into by accident. Registered as `firebird.connectionSharing.listConnections`/`firebird.connectionSharing.getActiveConnection` commands in `extension.ts`, matching mssql's actual command-based surface exactly as planned below; deliberately **not** declared in `package.json`'s `contributes.commands`, since these are an API surface for other extensions to call via `commands.executeCommand()`, not end-user Command Palette entries. `requestingExtensionId` is accepted and logged (`logger.debug`) but not yet checked against anything — there's no permission gate until phase 2, so phase 1 is scoped, as planned, to information the tree view already shows visually to anyone looking at this workspace.
+- Not done yet: the permission gate (phase 2), `runQuery` (phase 3), and the speculative write variant (phase 4).
+
+### Testing
+
+`src/test/connection-sharing.test.ts` (8 tests) covers the unbundled `listConnections()`/`getActiveConnection()` functions directly against a mock `ExtensionContext`: empty/populated connection lists, multiple connections, the embedded case, and — the point of this phase — that a password set on the underlying `ConnectionOptions` never appears anywhere in the returned `SharedConnectionInfo`, by structural type (`!('password' in info)`) as well as by string search. A new `src/test/suite/connection-sharing-integration.test.ts` (4 tests) separately drives the *real, bundled* commands via `vscode.commands.executeCommand()` — the same module-duplication gotcha documented in several other suite tests this session (`out/extension.js`'s bundled copy vs. the plain-tsc-compiled module a suite test would otherwise import) means this can't assert a *specific* expected connection, only that the real registered commands return a well-shaped result (right types, no `password` field, no throw) for whatever this environment's real state happens to be, including with `requestingExtensionId` omitted entirely.
 
 ## Proposed feature
 
@@ -22,7 +29,7 @@ Checked against mssql's actual implementation (`extensions/mssql/src/connectionS
 
 ## Suggested phases
 
-1. `firebird.connectionSharing.listConnections(extensionId)`/`getActiveConnection(extensionId)` commands only (no query execution, no permission gate yet) — lowest-risk starting slice, since neither leaks anything beyond what the tree view already shows visually.
+1. ~~`firebird.connectionSharing.listConnections(extensionId)`/`getActiveConnection(extensionId)` commands only (no query execution, no permission gate yet).~~ — **done**, see above.
 2. Permission gate: first-call consent prompt, `SecretStorage`-persisted grants, an `editPermissions` review/revoke command.
 3. `runQuery(extensionId, connectionId, sql)`, read-only, reusing `Driver.runQuery()` and `validateReadOnlyStatement()`, gated behind the permission check from phase 2.
 4. (Speculative, deferred) an opt-in write variant, mirroring the MCP server's write-access toggle.

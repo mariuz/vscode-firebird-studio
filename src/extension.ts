@@ -34,6 +34,7 @@ import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
 import {registerMcpServer, openMcpWriteAuditLog} from "./mcp-server";
+import {listConnections, getActiveConnection} from "./connection-sharing";
 import {runBuildProject, runPublishProject, runGenerateMigrationScript} from "./database-projects";
 import {runContainerProvisionWizard} from "./container-provisioning";
 
@@ -220,6 +221,21 @@ export function activate(context: ExtensionContext) {
     commands.registerCommand("firebird.mcp.showWriteAuditLog", () => {
       openMcpWriteAuditLog(context).catch(err => logger.error(err?.message ?? err));
     })
+  );
+
+  /* Cross-Extension Connection Sharing API (docs/roadmap/cross-extension-connection-api.md),
+     phase 1: read-only discovery commands for other VS Code extensions. Deliberately not declared
+     in package.json's contributes.commands -- these are an API surface for other extensions to
+     call programmatically via commands.executeCommand(), not end-user Command Palette entries. */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.connectionSharing.listConnections", (requestingExtensionId?: string) =>
+      listConnections(context, requestingExtensionId)
+    )
+  );
+  context.subscriptions.push(
+    commands.registerCommand("firebird.connectionSharing.getActiveConnection", (requestingExtensionId?: string) =>
+      getActiveConnection(requestingExtensionId)
+    )
   );
   context.subscriptions.push(
     commands.registerCommand("firebird.notebook.new", async () => {

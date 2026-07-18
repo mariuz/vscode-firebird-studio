@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.86 - 2026-07-18
+
+### Added
+
+- **Cross-extension connection discovery API (phase 1).** Other VS Code extensions can now discover this workspace's saved Firebird connections and the currently active one via new `firebird.connectionSharing.listConnections`/`firebird.connectionSharing.getActiveConnection` commands — read-only, never including a password. No query execution and no permission gate yet (planned for later phases of `docs/roadmap/cross-extension-connection-api.md`); this first phase is scoped to information already visible in the tree.
+
 ## 0.1.85 - 2026-07-18
 
 ### Added
