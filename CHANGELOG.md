@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.82 - 2026-07-18
+
+### Added
+
+- **Copy Connection String.** A new right-click command on a database node copies a Firebird-native `host/port:database` connection string (a bare path for embedded connections) to the clipboard — the password is never included, matching this extension's usual credential-handling posture. Second of four phases in `docs/roadmap/connection-management-enhancements.md`.
+
 ## 0.1.81 - 2026-07-18
 
 ### Added

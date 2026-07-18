@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.81",
+  "version": "0.1.82",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -386,6 +386,11 @@
       {
         "command": "firebird.database.setPassword",
         "title": "Set Connection Password",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.database.copyConnectionString",
+        "title": "Copy Connection String",
         "category": "Firebird"
       },
       {
@@ -1116,6 +1121,11 @@
           "command": "firebird.database.toggleMcpWriteAccess",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "manage@7"
+        },
+        {
+          "command": "firebird.database.copyConnectionString",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "manage@8"
         },
         {
           "command": "firebird.table.createTable",

@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri, ThemeIcon, ThemeColor} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri, ThemeIcon, ThemeColor, env} from "vscode";
 import {join} from "path";
 import {NodeTable, NodeCategoryFolder, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeSystemTable, NodeUser} from "./";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
@@ -11,6 +11,7 @@ import {databaseInfoQry, getTablesQuery, getViewsQuery, getStoredProceduresQuery
 import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
 import {getObjectFilter, matchesObjectFilter} from "../shared/object-explorer-filter";
+import {buildConnectionString} from "../shared/connection-string";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
@@ -461,6 +462,15 @@ export class NodeDatabase implements FirebirdTree {
     if (password === undefined) { return; }
     await CredentialStore.storePassword(this.dbDetails.id, password);
     logger.showInfo("Password updated.");
+  }
+
+  /**
+   * "Copy Connection String" (docs/roadmap/connection-management-enhancements.md, phase 2).
+   * Never includes the password — see buildConnectionString()'s own doc comment for why.
+   */
+  public async copyConnectionString(): Promise<void> {
+    await env.clipboard.writeText(buildConnectionString(this.dbDetails));
+    logger.showInfo("Connection string copied to clipboard (password not included).");
   }
 
   /**

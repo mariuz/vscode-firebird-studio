@@ -1,5 +1,20 @@
 import * as assert from 'assert';
-import { parseConnectionString } from '../shared/connection-string';
+import { parseConnectionString, buildConnectionString } from '../shared/connection-string';
+import { ConnectionOptions } from '../interfaces';
+
+function conn(overrides: Partial<ConnectionOptions>): ConnectionOptions {
+  return {
+    id: 'test-id',
+    host: 'localhost',
+    port: 3050,
+    database: 'employee',
+    user: 'sysdba',
+    password: 'masterkey',
+    role: null,
+    embedded: false,
+    ...overrides,
+  };
+}
 
 suite('connection-string – parseConnectionString()', function () {
   test('parses host/port/database/user/password', function () {
@@ -72,5 +87,43 @@ suite('connection-string – parseConnectionString()', function () {
 
   test('returns undefined when there is no database path at all', function () {
     assert.strictEqual(parseConnectionString('firebird://sysdba:masterkey@localhost:3050'), undefined);
+  });
+});
+
+suite('connection-string – buildConnectionString() (docs/roadmap/connection-management-enhancements.md, phase 2)', function () {
+  test('builds a Firebird-native host/port:database DSN for a network connection', function () {
+    const text = buildConnectionString(conn({}));
+    assert.ok(text.startsWith('localhost/3050:employee'), text);
+  });
+
+  test('omits the port segment when unset', function () {
+    const text = buildConnectionString(conn({ port: null }));
+    assert.ok(text.startsWith('localhost:employee'), text);
+  });
+
+  test('an embedded connection is just the bare database path -- no host/port at all', function () {
+    const text = buildConnectionString(conn({ embedded: true, host: '', port: null, database: '/var/lib/firebird/data/test.fdb' }));
+    assert.ok(text.startsWith('/var/lib/firebird/data/test.fdb'), text);
+  });
+
+  test('the password never appears anywhere in the output', function () {
+    const text = buildConnectionString(conn({ password: 'super-secret-value' }));
+    assert.ok(!text.includes('super-secret-value'), text);
+    assert.ok(!text.toLowerCase().includes('super-secret'));
+  });
+
+  test('a real, non-empty user is called out on its own line', function () {
+    const text = buildConnectionString(conn({ user: 'sysdba' }));
+    assert.ok(text.includes('-- User: sysdba'), text);
+  });
+
+  test('an unset user is not mentioned at all, rather than printing a blank "User:" line', function () {
+    const text = buildConnectionString(conn({ user: '' }));
+    assert.ok(!text.includes('-- User:'), text);
+  });
+
+  test('always notes that the password was deliberately left out', function () {
+    const text = buildConnectionString(conn({}));
+    assert.ok(text.includes('Password not included'), text);
   });
 });

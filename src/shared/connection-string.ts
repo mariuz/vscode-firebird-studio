@@ -79,3 +79,22 @@ export function parseConnectionString(input: string): Partial<ConnectionOptions>
   }
   return result;
 }
+
+/**
+ * "Copy Connection String" (docs/roadmap/connection-management-enhancements.md, phase 2). Not the
+ * inverse of parseConnectionString() above — that firebird:// scheme requires a hostname and has
+ * no representation for an embedded (local-file, no host) connection at all, which this needs to
+ * handle too. Uses Firebird's own native DSN shape instead (`host/port:database`, or a bare
+ * `database` path for embedded — the same shape `isql -c`/JDBC/ODBC connection strings use, minus
+ * their own scheme prefixes), which every Firebird user already recognizes and which naturally
+ * covers both cases without inventing a new format. Deliberately never includes the password
+ * (matching this repo's "password never leaves SecretStorage casually" posture) — callers that
+ * want a full one-line credential dump should not use this.
+ */
+export function buildConnectionString(options: ConnectionOptions): string {
+  const dsn = options.embedded
+    ? options.database
+    : `${options.host}${options.port ? `/${options.port}` : ""}:${options.database}`;
+  const userLine = options.user ? `\n-- User: ${options.user}` : "";
+  return `${dsn}${userLine}\n-- Password not included; set it separately.`;
+}

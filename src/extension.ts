@@ -325,6 +325,13 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB ITEM: copy a Firebird-native (host/port:database) connection string, password excluded */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.copyConnectionString", (databaseNode: NodeDatabase) => {
+      databaseNode.copyConnectionString().catch(err => logger.error(err));
+    })
+  );
+
   /* DB ITEM: set/update the stored SSH tunnel password/passphrase for this connection */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.setSshTunnelPassword", (databaseNode: NodeDatabase) => {
