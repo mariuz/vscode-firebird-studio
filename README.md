@@ -7,7 +7,7 @@
 </h1>
 <h4 align="center">Explore, query, and manage your Firebird&reg; databases without leaving VS Code.</h4>
 
-![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/mariuz.vscode-firebird-studio.svg) ![Visual Studio Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/mariuz.vscode-firebird-studio.svg)
+[![GitHub release](https://img.shields.io/github/v/release/mariuz/vscode-firebird-studio)](https://github.com/mariuz/vscode-firebird-studio/releases/latest)
 
 This extension allows you to connect directly to your [Firebird&reg; databases](https://firebirdsql.org/), list tables and fields, run queries, display/export results and more.
 
@@ -19,7 +19,6 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 
 - **Table alias** in code completion
 - [_Experimental_] Native driver support (required for WireCrypt support)
-- Fixed query results and mock data view
 - 45 Firebird SQL **code snippets** (type `fb` in any `.sql` file)
 - [SQL Mock Data Generator](https://github.com/mariuz/vscode-firebird-studio/wiki/SQL-Mock-Data-Generator)
 - Manage multiple database connections
@@ -39,18 +38,18 @@ This extension allows you to connect directly to your [Firebird&reg; databases](
 - **Schema visualizer** — an interactive entity-relationship diagram of a database's tables, columns, and foreign key relationships, with pan/zoom, auto-layout, and a minimap
 - **isql in the integrated terminal** — connect with `isql`/`isql-fb` for backslash-command-style administration, or run a `.sql` file through it directly, without leaving VS Code
 - **Graphical query plan** — an interactive, pannable/zoomable diagram of a query's execution plan (native driver required)
-- **Live Profiler** — a continuously-refreshing view of active connections, their current statement, and live I/O rates
+- **Live Profiler** — a continuously-refreshing view of active connections and open transactions, with Table/Dashboard/Queries/Sessions view modes, filtering/pinning, and Kill/Rollback actions
 - **Results grid**: freeze/show-hide columns, and copy a cell selection as an `INSERT` statement or a SQL `IN (...)` clause
 - **Configurable results-grid shortcuts** (`firebird.shortcuts`) and per-session **transaction settings** (isolation level, lock timeout, read-only, wait mode)
-- **Flat File Import Wizard** — import a CSV/TSV/JSON file into a new table, with local column-type inference
+- **Flat File Import Wizard** — import a CSV/TSV/JSON file into a new table or map it onto an existing one, with column-type inference and large-file streaming
 - **SQL Notebooks** — a native `.fbnb` notebook editor mixing markdown and SQL cells, with results rendered per cell
 - **Data API Builder** — generate an OpenAPI 3.0 REST spec (one CRUD route set per table) from the connected schema
-- **Database Projects** — extract the connected schema into a folder of versioned `.sql` files, and build one back into a deployable script
+- **Database Projects** — extract the connected schema into a folder of versioned `.sql` files, build one back into a deployable script, or **Publish** it (or a **Generate Migration Script...** diff between two connections) as a targeted `CREATE`/`ALTER`/`DROP` migration
 - **Create, rename, and drop whole databases** from the connection tree, not just objects within one
 - **Object Search** — fuzzy-search every table, view, procedure, trigger, generator, and domain by name in one connection
 - **Create Local Firebird Container** — provision a brand-new Dockerized Firebird server from the extension
 - **Color-coded connection groups**, and paste a full connection string to prefill the "Add New Connection" wizard
-- **MCP Server** — expose opted-in connections' schema to any MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode)
+- **MCP Server** — expose opted-in connections to any MCP-compatible AI client (Claude Desktop, Cursor, VS Code Copilot Agent mode): schema inspection, read-only query execution and query plans by default, plus an explicit, separately-confirmed opt-in for a single write query, fully audit-logged
 - **AI Query Actions in the editor** — right-click SQL for Explain/Optimize without opening the Copilot Chat panel first
 - **Chart visualization for query results** — Bar/Line/Pie/Scatter charts alongside the results grid
 - **Generic "Script as Create" / "Script as Drop"** — reconstruct DDL for any object type from one pair of tree actions
@@ -61,7 +60,7 @@ For a detailed step-by-step walkthrough see **[docs/getting-started.md](docs/get
 
 Quick start:
 
-1. [Install the extension](https://marketplace.visualstudio.com/items?itemName=mariuz.vscode-firebird-studio)
+1. Not yet on the VS Code Marketplace — download the `.vsix` from the [latest GitHub release](https://github.com/mariuz/vscode-firebird-studio/releases/latest) and install it: `code --install-extension vscode-firebird-studio-*.vsix`, or in VS Code's Extensions view, `···` menu → **Install from VSIX...**
 2. Restart VS Code and click the **Firebird flame icon** in the Activity Bar.
 3. Click **+** in the DB Explorer title bar to add a connection.
 4. Right-click your database and choose **Set Active**, then open a `.sql` file and press `Ctrl+Alt+Q` to run a query.
@@ -80,7 +79,7 @@ For advanced options (native driver, WireCrypt) see **[docs/connection-setup.md]
 
 ### MCP Server
 
-Turn on `firebird.mcp.enabled`, then right-click a database → **Toggle MCP Server Exposure** for each connection you want reachable — nothing is exposed by default even with the setting on. Any MCP-compatible AI client (Claude Desktop, Cursor, VS Code's own Copilot in Agent mode) can then call `list_connections` and `get_schema` to inspect an opted-in connection's schema, independent of this extension's own `@firebird` Copilot Chat participant. This is read-only schema inspection only — there's no query-execution tool yet, and passwords never reach the MCP client, only the schema data it asks for.
+Turn on `firebird.mcp.enabled`, then right-click a database → **Toggle MCP Server Exposure** for each connection you want reachable — nothing is exposed by default even with the setting on. Any MCP-compatible AI client (Claude Desktop, Cursor, VS Code's own Copilot in Agent mode) can then call `list_connections`/`get_schema` to inspect an opted-in connection, and `run_query`/`get_query_plan` to run a read-only query or fetch its plan, independent of this extension's own `@firebird` Copilot Chat participant. Write access is a separate, explicit opt-in — right-click a database → **Toggle MCP Server Write Access** (its own modal confirmation) enables `run_write_query`, a single INSERT/UPDATE/DELETE per call; every write attempt, successful or not, is logged to a write-audit log (**Show MCP Write Audit Log**). Passwords never reach the MCP client either way.
 
 ### AI Query Actions in the Editor
 
@@ -171,7 +170,14 @@ With a query in the editor, press `Ctrl+Alt+Shift+E` (`Cmd+Alt+Shift+E` on macOS
 
 ### Live Profiler
 
-Right-click a database → **Monitor Database** opens a continuously-refreshing view of every connection to that database: user, remote address, current statement, and live I/O rates (page reads/writes/fetches per second). **Pause**/**Resume** stops and restarts polling; the interval is controlled by `firebird.profiler.pollIntervalMs` (default 3s).
+Right-click a database → **Monitor Database** opens a continuously-refreshing view of every connection to that database, with four view modes (a toolbar switcher, no extra polling to switch between them):
+
+- **Table** — one row per connection: user, remote address, current statement, and live I/O rates (page reads/writes/fetches per second)
+- **Dashboard** — sparkline charts for connection count, cache hit %, and page I/O, with a time-range selector (1/5/15 min or all)
+- **Queries** — the current connections ranked by a chosen rate metric
+- **Sessions** — one row per open transaction, with lock-wait/conflict rates and the oldest active transaction (the closest Firebird proxy for "what's blocking garbage collection") flagged
+
+A filter box narrows by user/address/state/statement text, and a **⭐ Pin** button keeps a row sorted to the top regardless of filter. Every row also has **Kill** (force-detach the connection) and, for one with an open transaction, **Rollback** — both behind a modal confirmation naming who/what is affected. The polling interval is controlled by `firebird.profiler.pollIntervalMs` (default 3s).
 
 ### Results Grid: Freeze, Show/Hide, and Copy as SQL
 
@@ -181,7 +187,7 @@ Click **📊 Chart** to reveal a chart alongside the grid: pick Bar, Line, Pie, 
 
 ### Flat File Import Wizard
 
-Right-click a database → **Import Flat File...**, then pick a CSV, TSV, or JSON file. The wizard sniffs a Firebird column type per column (`INTEGER`/`BIGINT`/`NUMERIC`/`BOOLEAN`/`DATE`/`TIMESTAMP`/`VARCHAR`) from the file's own data, opens the generated `CREATE TABLE` statement in an editor for you to review or edit, and — once you confirm — creates the table and batch-inserts every row with a progress notification. Only creating a brand-new table is supported today; mapping onto an existing table's columns is a planned follow-up.
+Right-click a database → **Import Flat File...**, then pick a CSV, TSV, or JSON file. The wizard sniffs a Firebird column type per column (`INTEGER`/`BIGINT`/`NUMERIC`/`BOOLEAN`/`DATE`/`TIMESTAMP`/`VARCHAR`) from the file's own data — optionally with Copilot-assisted type/naming suggestions — and either opens a generated `CREATE TABLE` statement in an editor for you to review/edit before creating a brand-new table, or lets you map the file's columns onto an existing table's instead. Once you confirm, it batch-inserts every row with a progress notification; a large CSV/TSV file is streamed row-by-row rather than read entirely into memory (JSON files are still read fully, a disclosed scope cut).
 
 ### SQL Notebooks
 
@@ -193,7 +199,11 @@ Right-click a database → **Generate Data API Spec...** to generate an OpenAPI 
 
 ### Database Projects (schema-as-code)
 
-Right-click a database → **Extract Database Project...**, pick a destination folder, and every table, view, procedure, trigger, and generator is written out as its own `.sql` file (under `tables/`, `views/`, `procedures/`, `triggers/`, `generators/`), alongside a `firebird.project.json` manifest recording a safe deploy order (tables, then foreign keys, then views/procedures/triggers/generators). Run **Build Database Project...** from the Command Palette and pick that folder to concatenate it back into one script, opened for review — nothing runs automatically; run the script yourself once you're happy with it. Domains, roles, exceptions, and users aren't extracted yet, and a `NUMERIC`/`DECIMAL` column's precision/scale can be lost in the round trip (see the design doc for why).
+Right-click a database → **Extract Database Project...**, pick a destination folder, and every table, view, procedure, trigger, generator, domain, role, exception, and user is written out as its own `.sql` file, alongside a `firebird.project.json` manifest recording a safe deploy order. Run **Build Database Project...** from the Command Palette and pick that folder to concatenate it back into one script, opened for review — nothing runs automatically; run the script yourself once you're happy with it.
+
+**Publish** compares a project folder against a live connection and generates only the `CREATE`/`ALTER`/`DROP` statements needed to bring it in line — column add/drop/type/default/not-null changes, new foreign keys, generators, and procedures included, again opened for review rather than run automatically. **Generate Migration Script...** does the same comparison between two saved connections directly (no project folder needed) when you just want to diff two databases.
+
+A `NUMERIC`/`DECIMAL` column's precision/scale can be lost in the extract/build round trip (see the design doc for why) — Publish's direct schema comparison isn't affected by this.
 
 ### Creating, Renaming, and Dropping Whole Databases
 
@@ -219,6 +229,7 @@ Run **Create Local Firebird Container...** from the Command Palette — Docker's
 | `firebird.mockarooApiKey` | string | *(blank)* | API key for the Mock Data Generator |
 | `firebird.useNativeDriver` | boolean | `false` | Use the experimental native Firebird client driver |
 | `firebird.isqlPath` | string | *(blank)* | Path to the `isql`/`isql-fb` executable; leave blank to search `PATH` automatically |
+| `firebird.gbakPath` | string | *(blank)* | Path to the `gbak` executable used by **Backup Database** / **Restore Database**; leave blank to search `PATH` automatically |
 | `firebird.showSystemObjects` | boolean | `false` | Show a **System Tables** folder listing Firebird's built-in `RDB$` system/metadata tables under each database |
 | `firebird.dockerPath` | string | *(blank)* | Path to the `docker` executable, used to auto-detect running Firebird containers in **Add New Connection**; leave blank to search `PATH` automatically |
 | `firebird.enableConnectionPooling` | boolean | `false` | Keep idle connections alive and reuse them instead of reconnecting per query |
@@ -226,6 +237,12 @@ Run **Create Local Firebird Container...** from the Command Palette — Docker's
 | `firebird.connectionPool.idleTimeoutMs` | number | `60000` | How long an idle pooled connection is kept before being closed |
 | `firebird.profiler.pollIntervalMs` | number | `3000` | How often the Live Profiler re-polls connection activity while its panel is visible |
 | `firebird.shortcuts` | object | `{}` | Keyboard shortcuts for actions inside the **Query Results** webview (edit mode, freeze column, copy as INSERT/IN); see the setting's description for event names and combo syntax |
+| `firebird.resultsFontFamily` | string | *(blank)* | Font family for the **Query Results** grid; blank uses the webview's own default font |
+| `firebird.resultsFontSize` | number | `0` | Font size (px) for the **Query Results** grid; `0` uses the webview's own default size |
+| `firebird.linting.enabled` | boolean | `true` | Enable SQL linting for Firebird SQL documents |
+| `firebird.linting.selectStarWarning` | boolean | `true` | Warn when `SELECT *` is used |
+| `firebird.linting.missingWhereWarning` | boolean | `true` | Warn when `UPDATE`/`DELETE` statements are missing a `WHERE` clause |
+| `firebird.linting.validateTableNames` | boolean | `true` | Validate table names against the active database schema |
 | `firebird.transaction.isolationLevel` | string | *(blank)* | Isolation level for every transaction this extension opens (`READ_COMMITTED_RECORD_VERSION`, `READ_COMMITTED_NO_RECORD_VERSION`, `SNAPSHOT`, `SNAPSHOT_TABLE_STABILITY`); blank uses the driver's own default |
 | `firebird.transaction.lockTimeoutSec` | number | `0` | Lock wait timeout in seconds before a blocked query gives up (`0` = wait indefinitely); only honored by the pure-JS driver |
 | `firebird.transaction.readOnly` | boolean | `false` | Open every query's transaction as READ ONLY |
