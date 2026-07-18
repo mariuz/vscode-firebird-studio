@@ -427,6 +427,18 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB ITEM: edit an existing connection's fields, pre-filled, saved back over the same id */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.database.editConnection", (databaseNode: NodeDatabase) => {
+      databaseNode.editConnection(context, firebirdTreeDataProvider).catch(err => {
+        logger.error(err?.message ?? err);
+        logger.showError("Edit Connection failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      });
+    })
+  );
+
   /* DB ITEM: permanently drop the database itself (not just its saved connection entry) */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.dropDatabase", async (databaseNode: NodeDatabase) => {

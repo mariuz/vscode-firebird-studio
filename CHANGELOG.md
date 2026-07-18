@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.83 - 2026-07-18
+
+### Added
+
+- **Edit Connection.** A new "Edit Connection..." command lets you change a saved connection's fields in place — the same wizard used to add a connection, pre-filled with its current values, saved back over the same connection (not a new one). Leaving a field unchanged keeps its current value, including the password. Not available for connections declared in a workspace's `.vscode/firebird.json` (edit the file directly instead). Third of four phases in `docs/roadmap/connection-management-enhancements.md`.
+
 ## 0.1.82 - 2026-07-18
 
 ### Added

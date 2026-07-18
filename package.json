@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.82",
+  "version": "0.1.83",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -146,6 +146,11 @@
       {
         "command": "firebird.database.renameDatabase",
         "title": "Rename Database...",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.database.editConnection",
+        "title": "Edit Connection...",
         "category": "Firebird"
       },
       {
@@ -883,14 +888,19 @@
           "group": "second@1"
         },
         {
-          "command": "firebird.database.dropDatabase",
+          "command": "firebird.database.editConnection",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "second@2"
         },
         {
-          "command": "firebird.schemaDiff",
+          "command": "firebird.database.dropDatabase",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "second@3"
+        },
+        {
+          "command": "firebird.schemaDiff",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "second@4"
         },
         {
           "command": "firebird.mockData",

@@ -54,11 +54,29 @@ async function suggestDatabasePathFor(dockerExe: string, containerId: string): P
   return suggestDatabasePath(parseDockerInspectEnv(stdout)["FIREBIRD_DATABASE"]);
 }
 
-export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connection") {
+/**
+ * `existing`, when passed, puts the wizard in edit mode (docs/roadmap/connection-management-enhancements.md,
+ * phase 3): every text field pre-fills from it (so leaving a step unchanged keeps the current
+ * value), the "paste a connection string" prompt and the connection-type/Docker-discovery step are
+ * both skipped (jumping straight to database()/host() depending on existing.embedded — changing a
+ * connection's *type* isn't supported here, only its fields), and the terminal Test Connection step
+ * is unchanged. Callers must pass `existing` with its password already resolved (e.g. via
+ * NodeDatabase.getResolvedConnectionDetails()) for the password field to prefill correctly and for
+ * an in-wizard connection test to work without the user having to retype an unchanged password.
+ */
+export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connection", existing?: ConnectionOptions) {
   const title = wizardTitle;
 
   async function collectInputs(): Promise<ConnectionOptions> {
     logger.info("Connection wizard start...");
+
+    if (existing) {
+      const options: Partial<ConnectionOptions> = { ...existing };
+      await MultiStepInput.run(input =>
+        existing.embedded ? database(input, options, 2, 5) : host(input, options)
+      );
+      return options as ConnectionOptions;
+    }
 
     const pasted = await window.showInputBox({
       title,
@@ -195,7 +213,8 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       totalSteps: 8,
       prompt: "[REQUIRED] The hostname of the database.",
       placeHolder: "e.g. 'localhost'",
-      ignoreFocusOut: true
+      ignoreFocusOut: true,
+      value: existing?.host
     });
     if (!options.host) {
       return Promise.reject("Hostname cannot be empty. Add Connection canceled.");
@@ -222,7 +241,7 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       prompt,
       placeHolder: "e.g. '/var/db/mydb.fdb'",
       ignoreFocusOut: true,
-      value: suggestedPath
+      value: suggestedPath ?? existing?.database
     });
     if (!options.database) {
       return Promise.reject("Database cannot be empty. Add Connection canceled.");
@@ -245,7 +264,8 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       totalSteps,
       prompt: "[OPTIONAL] Port number. Leave empty for default.",
       placeHolder: "defaults to 3050",
-      ignoreFocusOut: true
+      ignoreFocusOut: true,
+      value: existing?.port != null ? String(existing.port) : undefined
     });
     if (!portInput) {
       logger.info("Default port 3050 selected.");
@@ -268,7 +288,8 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       totalSteps,
       prompt: "[OPTIONAL] Firebird user to authenticate as. Leave empty for default.",
       placeHolder: "defaults to SYSDBA",
-      ignoreFocusOut: true
+      ignoreFocusOut: true,
+      value: existing?.user
     });
     if (!options.user) {
       logger.info("Default user sysdba selected.");
@@ -290,7 +311,8 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       prompt: "[OPTIONAL] The password of the Firebird user. Leave empty for default.",
       placeHolder: "defaults to masterkey",
       ignoreFocusOut: true,
-      password: true
+      password: true,
+      value: existing?.password
     });
 
     if (!options.password) {
@@ -312,7 +334,8 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       totalSteps,
       prompt: "[OPTIONAL] User Role. Leave empty for default.",
       placeHolder: "Defaults to null",
-      ignoreFocusOut: true
+      ignoreFocusOut: true,
+      value: existing?.role ?? undefined
     });
 
     if (!options.role) {
@@ -347,10 +370,17 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       ignoreFocusOut: true
     });
 
-    if (picked && picked.label !== "Enabled") {
-      options.wireCrypt = picked.label as ConnectionOptions["wireCrypt"];
+    if (picked) {
+      // Enabled is the default, so it's cleared rather than stored explicitly -- but still an
+      // explicit clear, not left alone, so editing an existing "Disabled" connection back to
+      // "Enabled" actually takes effect rather than leaving the old value in place (see the
+      // "dismissed" case below, which *does* leave it alone, for edit mode's own "unchanged"
+      // default).
+      options.wireCrypt = picked.label === "Enabled" ? undefined : picked.label as ConnectionOptions["wireCrypt"];
     }
-    // Enabled is the default so we don't need to store it explicitly
+    // Dismissed (Escape): leave options.wireCrypt untouched -- in edit mode that means "keep the
+    // existing value" (already pre-populated before this step ran); in create mode it was never
+    // set to begin with, same as picking "Enabled" explicitly.
 
     return (input: MultiStepInput) => sshTunnel(input, options, step + 1, totalSteps);
   }
@@ -375,7 +405,14 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
       ignoreFocusOut: true
     });
 
-    if (!picked || picked.label === "No") {
+    if (picked?.label === "No") {
+      // Explicit "No": clear any existing tunnel config -- distinct from dismissing (below),
+      // which in edit mode should leave a pre-populated existing.sshTunnel untouched instead.
+      options.sshTunnel = undefined;
+      options.sshTunnelPassword = undefined;
+      return (input: MultiStepInput) => testConnection(input, options, step, totalSteps);
+    }
+    if (!picked) {
       return (input: MultiStepInput) => testConnection(input, options, step, totalSteps);
     }
 

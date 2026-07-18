@@ -12,6 +12,7 @@ import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
 import {getObjectFilter, matchesObjectFilter} from "../shared/object-explorer-filter";
 import {buildConnectionString} from "../shared/connection-string";
+import {connectionWizard} from "../shared/connection-wizard";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
@@ -425,6 +426,50 @@ export class NodeDatabase implements FirebirdTree {
 
     firebirdTreeDataProvider.refresh();
     logger.showInfo(`Database renamed to ${getDatabaseFileName(newPath)}.`);
+  }
+
+  /**
+   * "Edit Connection" (docs/roadmap/connection-management-enhancements.md, phase 3) — runs the
+   * same wizard used to create a connection, pre-filled from this one, and saves the result back
+   * over the existing saved entry (same id) instead of creating a new one. The real password is
+   * resolved first so the wizard's password field prefills correctly and an in-wizard "Test
+   * Connection" works without the user having to retype an unchanged password.
+   */
+  public async editConnection(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+    if (this.dbDetails.workspace) {
+      logger.showInfo("This connection comes from this workspace's .vscode/firebird.json — edit or remove it there instead.");
+      return;
+    }
+
+    const resolved = await this.resolvedDetails();
+    let updated: ConnectionOptions;
+    try {
+      updated = await connectionWizard("FIREBIRD: Edit Connection", resolved);
+    } catch (err: any) {
+      // Cancelled (Escape at any step) -- connectionWizard()'s step chain rejects rather than
+      // resolving, same as the create-connection flow; nothing to save.
+      if (err) { logger.info(String(err)); }
+      return;
+    }
+
+    const id = this.dbDetails.id;
+    await CredentialStore.storePassword(id, updated.password || "");
+    if (updated.sshTunnel) {
+      await CredentialStore.storeSshPassword(id, updated.sshTunnelPassword || "");
+    } else {
+      await CredentialStore.deleteSshPassword(id);
+    }
+
+    const connections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey) ?? {};
+    connections[id] = { ...updated, id, password: undefined, sshTunnelPassword: undefined };
+    await context.globalState.update(Constants.ConectionsKey, connections);
+
+    if (Global.activeConnection?.id === id) {
+      Global.activeConnection = { ...updated, id };
+    }
+
+    firebirdTreeDataProvider.refresh();
+    logger.showInfo("Connection updated.");
   }
 
   /** Deletes this connection's saved entry from globalState (not the database file itself). */
