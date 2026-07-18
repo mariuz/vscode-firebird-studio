@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.77 - 2026-07-18
+
+### Added
+
+- **Query results: Text View mode.** A new "📄 Text View" toolbar button in the query results grid renders the current result set as aligned plain text (header, dashed separator, one line per row, `NULL` shown explicitly) with a one-click Copy button — useful for pasting a whole result set elsewhere without HTML/DataTables formatting, or for a very wide result set where the table layout is awkward. First of five phases in `docs/roadmap/query-results-enhancements.md`.
+
 ## 0.1.76 - 2026-07-18
 
 ### Fixed

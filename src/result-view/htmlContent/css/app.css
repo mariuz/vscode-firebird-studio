@@ -452,6 +452,34 @@ body.vscode-high-contrast table.dataTable thead .sorting {
 .btn-chart-toggle.active {
   background: var(--vscode-statusBarItem-prominentBackground, #00457a);
 }
+
+/* ── Text View panel ──────────────────────────────────────────────────────── */
+.text-view-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--vscode-tab-border, #444);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, #252526);
+}
+.text-view-toolbar {
+  margin-bottom: 6px;
+}
+.text-view-pre {
+  margin: 0;
+  max-height: 480px;
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 12px);
+  color: var(--vscode-editor-foreground, #ccc);
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-input-border, #555);
+  border-radius: 3px;
+  padding: 8px;
+}
+.btn-text-view-toggle.active {
+  background: var(--vscode-statusBarItem-prominentBackground, #00457a);
+}
 .btn-plan-toggle.active {
   background: var(--vscode-statusBarItem-prominentBackground, #00457a);
 }

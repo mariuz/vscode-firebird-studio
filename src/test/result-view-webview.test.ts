@@ -184,4 +184,51 @@ suite('result-view app.js – pure helpers (via __test__ hook)', function () {
       assert.strictEqual((svg.match(/<circle/g) || []).length, 3);
     });
   });
+
+  suite('buildTextView() — Text View mode (docs/roadmap/query-results-enhancements.md, phase 1)', function () {
+    test('renders a header line, a dashed separator, and one line per row', function () {
+      const text = hooks.buildTextView([{ title: 'ID' }, { title: 'NAME' }], [['1', 'Ada'], ['2', 'Bob']]);
+      const lines = text.split('\n');
+      assert.strictEqual(lines.length, 4);
+      assert.strictEqual(lines[0], 'ID | NAME');
+      assert.strictEqual(lines[1], '---+-----');
+      assert.strictEqual(lines[2], '1  | Ada ');
+      assert.strictEqual(lines[3], '2  | Bob ');
+    });
+
+    test('every column is padded to the width of its widest value, header included', function () {
+      const text = hooks.buildTextView([{ title: 'X' }], [['a'], ['much-longer-value']]);
+      const lines = text.split('\n');
+      const width = 'much-longer-value'.length;
+      assert.strictEqual(lines[0].length, width); // header padded out to the widest cell
+      assert.strictEqual(lines[2].length, width); // the short value padded out too
+    });
+
+    test('a header wider than every value still gets its own column width, not truncated', function () {
+      const text = hooks.buildTextView([{ title: 'A_LONG_HEADER' }], [['x']]);
+      const lines = text.split('\n');
+      assert.strictEqual(lines[0], 'A_LONG_HEADER');
+      assert.strictEqual(lines[2].trimEnd(), 'x');
+      assert.strictEqual(lines[2].length, 'A_LONG_HEADER'.length);
+    });
+
+    test('null and undefined cells render as the literal NULL, distinguishing from an empty string', function () {
+      const text = hooks.buildTextView([{ title: 'A' }, { title: 'B' }], [[null, undefined], ['', 'x']]);
+      const lines = text.split('\n');
+      assert.ok(lines[2].startsWith('NULL'), lines[2]);
+      // Column B's widest value is "NULL" (4 chars) vs "x" (1 char) -- an empty string still
+      // renders as an empty, padded cell, not coerced into "NULL" the way null/undefined are.
+      assert.strictEqual(lines[3].split(' | ')[0].trimEnd(), '');
+    });
+
+    test('an empty result set (zero rows) still renders a header and separator line, nothing more', function () {
+      const text = hooks.buildTextView([{ title: 'ID' }], []);
+      assert.strictEqual(text, 'ID\n--');
+    });
+
+    test('a numeric cell (not just strings) is stringified correctly', function () {
+      const text = hooks.buildTextView([{ title: 'N' }], [[42]]);
+      assert.strictEqual(text.split('\n')[2], '42');
+    });
+  });
 });

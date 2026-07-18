@@ -176,8 +176,9 @@ $(() => {
     const $copyInsert    = $("<button>").addClass("btn-grid-action btn-copy-insert").text("Copy as INSERT");
     const $copyInClause  = $("<button>").addClass("btn-grid-action btn-copy-in").text("Copy as IN (...)");
     const $chartToggle  = $("<button>").addClass("btn-grid-action btn-chart-toggle").text("📊 Chart");
+    const $textViewToggle = $("<button>").addClass("btn-grid-action btn-text-view-toggle").text("📄 Text View");
     const $status       = $("<span>").addClass("edit-status");
-    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle);
+    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $copyInsert, $copyInClause, $chartToggle, $textViewToggle);
 
     // "🤖 Analyze" and "🧭 Query Plan" only make sense when we actually know the SQL that produced
     // this result set (the single/legacy display() path — predefined actions like Show Table Info
@@ -252,8 +253,16 @@ $(() => {
     const numericColumns = detectNumericColumns(headers, tableBody);
     if (numericColumns.length > 0) { $chartYSelect.val(String(numericColumns[0])); }
 
+    // ── Text View panel (hidden until "📄 Text View" is toggled) ──────────────
+    const $textViewCopy = $("<button>").addClass("btn-grid-action btn-text-view-copy").text("Copy");
+    const $textViewPre = $("<pre>").addClass("text-view-pre");
+    const $textViewPanel = $("<div>").addClass("text-view-panel").append(
+      $("<div>").addClass("text-view-toolbar").append($textViewCopy),
+      $textViewPre
+    ).hide();
+
     // $planPanel is null when sql is unknown (see above) -- jQuery's append() no-ops on a null arg.
-    $wrapper.append($editToolbar, $table, $chartPanel, $planPanel);
+    $wrapper.append($editToolbar, $table, $chartPanel, $textViewPanel, $planPanel);
     $container.append($wrapper);
 
     // A leading "actions" column (row-delete toggle) is always present but
@@ -593,6 +602,19 @@ $(() => {
     $chartXSelect.on("change", renderChart);
     $chartYSelect.on("change", renderChart);
 
+    // ── Text View toggle ────────────────────────────────────────────────────
+
+    $textViewToggle.on("click", () => {
+      const shown = $textViewPanel.toggle().is(":visible");
+      $textViewToggle.toggleClass("active", shown);
+      if (shown) { $textViewPre.text(buildTextView(headers, tableBody)); }
+    });
+
+    $textViewCopy.on("click", () => {
+      copyToClipboard($textViewPre.text());
+      $status.text("Copied the text view to the clipboard.");
+    });
+
     // Registered for firebird.shortcuts dispatch; first table built becomes the
     // default active one (tab 0), later ones only via an explicit tab click.
     tableActions[tableId] = {
@@ -664,6 +686,36 @@ $(() => {
 
   function buildInClause(values) {
     return `IN (${values.map(sqlLiteral).join(", ")})`;
+  }
+
+  // ── Text View (plain-text rendering of a result set) ───────────────────────
+  // Renders the *original* headers/rows (not DataTables' current sort/filter/page state), the
+  // same deliberate scope cut the chart panel above already established for the same reason:
+  // a second, independent presentation of the query's actual result set, not a live mirror of
+  // grid interaction state.
+
+  const TEXT_VIEW_NULL = "NULL";
+  const TEXT_VIEW_COLUMN_SEP = " | ";
+
+  function textViewCell(value) {
+    return value === null || value === undefined ? TEXT_VIEW_NULL : String(value);
+  }
+
+  /** Tab-client-style aligned plain text: a header row, a dashed separator, then one line per row. */
+  function buildTextView(headers, rows) {
+    const titles = headers.map(h => h.title);
+    const widths = titles.map((title, colIndex) => {
+      const cellWidths = rows.map(row => textViewCell(row[colIndex]).length);
+      return Math.max(title.length, ...cellWidths);
+    });
+    const padCell = (str, width) => str + " ".repeat(Math.max(0, width - str.length));
+    const formatRow = cells => cells.map((cell, i) => padCell(cell, widths[i])).join(TEXT_VIEW_COLUMN_SEP);
+
+    const headerLine = formatRow(titles);
+    const sepLine = widths.map(w => "-".repeat(w)).join("-+-");
+    const dataLines = rows.map(row => formatRow(titles.map((_t, i) => textViewCell(row[i]))));
+
+    return [headerLine, sepLine, ...dataLines].join("\n");
   }
 
   /** Normalizes an (anchor, end) pair of {row,col} points into an inclusive rectangle. */
@@ -865,6 +917,7 @@ $(() => {
       sqlLiteral, buildInsertStatement, buildInClause, selectionRange,
       parseShortcut, matchesShortcut,
       detectNumericColumns, buildBarChartSvg, buildLineChartSvg, buildPieChartSvg, buildScatterChartSvg,
+      buildTextView,
     };
   }
 });
