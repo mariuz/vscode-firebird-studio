@@ -13,27 +13,17 @@ jobs:
     permissions:
       contents: read
 
-    services:
-      firebird:
-        image: firebirdsql/firebird:5
-        env:
-          FIREBIRD_ROOT_PASSWORD: masterkey
-          FIREBIRD_DATABASE: test.fdb
-          FIREBIRD_CONF_WireCrypt: Disabled
-        ports:
-          - 3050:3050
-        options: >-
-          --health-cmd="bash -c 'cat < /dev/null > /dev/tcp/localhost/3050'"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
     env:
       FIREBIRD_HOST: localhost
       FIREBIRD_PORT: 3050
-      FIREBIRD_DATABASE: /var/lib/firebird/data/test.fdb
+      FIREBIRD_DATABASE: /tmp/test.fdb
       FIREBIRD_USER: sysdba
       FIREBIRD_PASSWORD: masterkey
+      # This install's firebird.conf is unmodified from the tarball's own shipped default, which
+      # is WireCrypt=Enabled (unlike the old Docker image, which was explicitly configured with
+      # WireCrypt=Disabled) -- tell the test suite so it connects the same way local development
+      # against a real Firebird 6 snapshot already does.
+      FIREBIRD_WIRE_CRYPT: Enabled
 
     steps:
       - name: Checkout repository
@@ -47,9 +37,32 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install Firebird client tools (isql-fb, for the isql-terminal integration tests)
-        run: sudo apt-get update && sudo apt-get install -y firebird3.0-utils
-        continue-on-error: true
+      - name: Install Firebird runtime dependencies
+        # libtommath1 is the one runtime shared library Firebird's own tar.gz doesn't bundle
+        # (unlike libtomcrypt/libfbclient, which it ships in its own lib/) and isn't guaranteed
+        # present on a stock ubuntu-latest runner -- confirmed via ldd against a real installed
+        # Firebird 6 snapshot server binary. libicu is not installed explicitly: Firebird loads it
+        # dynamically (not a hard link dependency) and searches across several ICU major versions,
+        # at least one of which ubuntu-latest already ships as a transitive base dependency.
+        run: sudo apt-get update && sudo apt-get install -y libtommath1
+
+      - name: Download Firebird 6 snapshot build (Linux x64 tar.gz)
+        # FirebirdSQL/snapshots' "snapshot-master" release is continuously overwritten with the
+        # latest daily build from FirebirdSQL/firebird's own master-branch CI (see that repo's
+        # .github/workflows/main.yml) -- the exact same distribution mechanism and tarball/install.sh
+        # layout used for every official Firebird release, just for the in-development version.
+        # The asset filename embeds a build number and commit hash that changes daily, so it's
+        # matched by a glob pattern rather than a hardcoded name.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download snapshot-master --repo FirebirdSQL/snapshots --pattern "Firebird-*-linux-x64.tar.gz" --clobber
+
+      - name: Install Firebird 6 snapshot
+        run: |
+          tar xzf Firebird-*-linux-x64.tar.gz
+          cd Firebird-*-linux-x64
+          sudo ./install.sh -silent
+          echo "/opt/firebird/bin" >> "$GITHUB_PATH"
 
       - name: Wait for Firebird to be ready
         run: |
@@ -63,6 +76,37 @@ jobs:
             sleep 3
           done
           bash -c 'cat < /dev/null > /dev/tcp/localhost/3050' 2>/dev/null || (echo "Firebird did not become ready in time" && exit 1)
+
+      - name: Reset SYSDBA password to masterkey
+        # A silent install always generates a random SYSDBA password (there's no -password flag)
+        # and writes it to SYSDBA.password -- read it back and use it to log in once and reset the
+        # password to the fixed one every other step in this workflow (and scripts/seed-test-db.js)
+        # already expects. ALTER USER, not gsec (confirmed live against a real Firebird 6 snapshot:
+        # gsec prints "*** gsec is deprecated, will be removed soon ***" and its -modify syntax no
+        # longer parses the way older Firebird versions accepted) -- ALTER USER needs an active
+        # connection to *some* database, so it connects to the "employee" sample database that
+        # ships with every Firebird install (also confirmed live) rather than the security database
+        # directly, which isn't reachable this way (security.db's own alias sets RemoteAccess=false).
+        run: |
+          ISC_PASSWORD=$(sudo grep '^ISC_PASSWORD=' /opt/firebird/SYSDBA.password | cut -d= -f2)
+          isql -user sysdba -password "$ISC_PASSWORD" localhost/3050:employee <<'EOSQL'
+          ALTER USER SYSDBA PASSWORD 'masterkey';
+          COMMIT;
+          EOSQL
+
+      - name: Create test database
+        # Unlike the old Docker image (which auto-creates its FIREBIRD_DATABASE on first start),
+        # a fresh tarball install has no database at all yet -- scripts/seed-test-db.js only
+        # attaches and seeds, it doesn't create. Uses the explicit host/port network protocol
+        # prefix rather than a bare path -- confirmed live that this makes the running server
+        # process (which owns the file as the "firebird" service user) create the database, not
+        # isql's own invoking shell user; a bare local path risks an ownership/permission mismatch
+        # against the server process that later steps (seed-test-db.js, the test suite itself)
+        # connect as instead.
+        run: |
+          isql <<'EOSQL'
+          CREATE DATABASE 'localhost/3050:${{ env.FIREBIRD_DATABASE }}' USER '${{ env.FIREBIRD_USER }}' PASSWORD '${{ env.FIREBIRD_PASSWORD }}';
+          EOSQL
 
       - name: Seed test database
         run: node scripts/seed-test-db.js

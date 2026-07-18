@@ -6,8 +6,9 @@
  * src/test/isql-terminal.test.ts covers buildIsqlTarget()/buildIsqlArgs()/
  * buildIsqlEnv()/resolveIsqlExecutable()'s logic in isolation with fake
  * data; this suite instead resolves whatever real isql binary is on the
- * runner's PATH (installed via `firebird3.0-utils` in vscode-host.yml) and
- * actually launches it with exactly the arguments/environment
+ * runner's PATH (the Firebird 6 snapshot's own bin/ directory, added to PATH
+ * by vscode-host.yml's tar.gz install step) and actually launches it with
+ * exactly the arguments/environment
  * extension.ts's launchIsqlTask() would use, to prove the two integrate
  * correctly — not just that each one's output "looks right" in isolation.
  *
