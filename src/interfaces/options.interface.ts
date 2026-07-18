@@ -8,6 +8,8 @@ export interface Options {
   useNativeDriver: boolean;
   /** Explicit path to the isql/isql-fb executable; empty string means "search PATH". */
   isqlPath: string;
+  /** Explicit path to the gbak executable (used by Backup/Restore Database); empty string means "search PATH". */
+  gbakPath: string;
   /** Show a "System Tables" folder listing Firebird's built-in RDB$ system/metadata tables. */
   showSystemObjects: boolean;
   /** Explicit path to the docker executable; empty string means "search PATH". */

@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.87",
+  "version": "0.1.88",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -690,6 +690,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path to the `isql` or `isql-fb` executable used by **Connect with ISQL** / **Run File with ISQL**. Leave empty to search `PATH` automatically."
+        },
+        "firebird.gbakPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `gbak` executable used by **Backup Database** / **Restore Database**. Leave empty to search `PATH` automatically."
         },
         "firebird.showSystemObjects": {
           "type": "boolean",

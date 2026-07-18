@@ -30,6 +30,7 @@ import {TaskTracker} from "./task-panel/task-tracker";
 import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
 import {registerAiQueryActions, runAnalyzeResultsAction, runAnalyzePlanAction} from "./copilot/ai-query-actions";
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
+import {resolveGbakExecutable} from "./shared/gbak-options";
 import {getConnectionLabel} from "./shared/utils";
 import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
@@ -1084,15 +1085,25 @@ export function activate(context: ExtensionContext) {
 
   /* DB: backup database */
   context.subscriptions.push(
-    commands.registerCommand("firebird.database.backupDatabase", (databaseNode: NodeDatabase) => {
-      databaseNode.backupDatabase(taskTracker).catch(err => logger.error(err));
+    commands.registerCommand("firebird.database.backupDatabase", async (databaseNode: NodeDatabase) => {
+      const gbak = await resolveGbakExecutable(getOptions().gbakPath || undefined, checkGbakExecutable);
+      if (!gbak) {
+        logger.showError("Could not find the gbak executable. Install the Firebird server/client tools, or set the firebird.gbakPath setting.");
+        return;
+      }
+      databaseNode.backupDatabase(taskTracker, gbak).catch(err => logger.error(err));
     })
   );
 
   /* DB: restore database */
   context.subscriptions.push(
-    commands.registerCommand("firebird.database.restoreDatabase", (databaseNode: NodeDatabase) => {
-      databaseNode.restoreDatabase(taskTracker).catch(err => logger.error(err));
+    commands.registerCommand("firebird.database.restoreDatabase", async (databaseNode: NodeDatabase) => {
+      const gbak = await resolveGbakExecutable(getOptions().gbakPath || undefined, checkGbakExecutable);
+      if (!gbak) {
+        logger.showError("Could not find the gbak executable. Install the Firebird server/client tools, or set the firebird.gbakPath setting.");
+        return;
+      }
+      databaseNode.restoreDatabase(taskTracker, gbak).catch(err => logger.error(err));
     })
   );
 
@@ -1175,6 +1186,27 @@ export function activate(context: ExtensionContext) {
 
   /* isql/isql-fb terminal integration (similar to "psql in the terminal" in Microsoft's
      PostgreSQL extension for VS Code) */
+
+  /**
+   * Unlike isql's own `-z` (exits cleanly), gbak's `-z` always exits non-zero -- confirmed
+   * directly against a real gbak (Firebird 6.0): it still prints its version banner to stdout
+   * ("gbak:gbak version ...") first, then errors with "requires both input and output filenames"
+   * since `-z` alone isn't a full backup/restore command. Checking the exit code the way
+   * checkIsqlExecutable() does would incorrectly report a real, working gbak as "not found" --
+   * check for the version banner in stdout instead.
+   */
+  function checkGbakExecutable(candidate: string): Promise<boolean> {
+    return new Promise(resolve => {
+      try {
+        const child = cp.execFile(candidate, ["-z"], {timeout: 3000}, (_err, stdout) => {
+          resolve((stdout || "").toLowerCase().includes("gbak version"));
+        });
+        child.on("error", () => resolve(false));
+      } catch {
+        resolve(false);
+      }
+    });
+  }
 
   function checkIsqlExecutable(candidate: string): Promise<boolean> {
     return new Promise(resolve => {

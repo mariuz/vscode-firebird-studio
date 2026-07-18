@@ -15,6 +15,7 @@ export function getOptions() {
     recordsPerPage: _recordsPerPage(),
     useNativeDriver: _useNativeDriver(),
     isqlPath: _isqlPath(),
+    gbakPath: _gbakPath(),
     showSystemObjects: _showSystemObjects(),
     dockerPath: _dockerPath(),
     enableConnectionPooling: _enableConnectionPooling(),
@@ -125,6 +126,11 @@ function _logLevel(): string {
 function _isqlPath(): string {
   const isqlPathConf: any = getConfig().get("isqlPath");
   return typeof isqlPathConf === "string" ? isqlPathConf : "";
+}
+
+function _gbakPath(): string {
+  const gbakPathConf: any = getConfig().get("gbakPath");
+  return typeof gbakPathConf === "string" ? gbakPathConf : "";
 }
 
 function _dockerPath(): string {

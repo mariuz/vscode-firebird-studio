@@ -1,4 +1,4 @@
-import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri, ThemeIcon, ThemeColor, env} from "vscode";
+import {ExtensionContext, TreeItem, TreeItemCollapsibleState, window, Uri, ThemeIcon, ThemeColor, env, QuickPickItem} from "vscode";
 import {join} from "path";
 import {NodeTable, NodeCategoryFolder, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeSystemTable, NodeUser} from "./";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
@@ -14,6 +14,7 @@ import {getObjectFilter, matchesObjectFilter} from "../shared/object-explorer-fi
 import {buildConnectionString} from "../shared/connection-string";
 import {connectionWizard} from "../shared/connection-wizard";
 import {TaskTracker} from "../task-panel/task-tracker";
+import {buildBackupFlags, BackupFlagChoices} from "../shared/gbak-options";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
@@ -25,6 +26,13 @@ import {notifyMcpExposureChanged} from "../mcp-server";
 import {themeColorIdFor, CONNECTION_COLORS, ConnectionColor} from "../shared/connection-color";
 import * as cp from 'node:child_process';
 
+/** backupDatabase()'s options QuickPick (docs/roadmap/backup-restore-options.md, phase 1). */
+const BACKUP_OPTION_ITEMS: (QuickPickItem & { key: keyof BackupFlagChoices })[] = [
+  { label: "Skip garbage collection", description: "Faster backup, but doesn't reclaim space", key: "skipGarbageCollection" },
+  { label: "Compress backup file", description: ".zip format", key: "compress" },
+  { label: "Metadata only", description: "Schema only, no table data", key: "metadataOnly" },
+  { label: "Non-transportable format", description: "Faster/smaller, but only restorable on the same platform/architecture", key: "nonTransportable" },
+];
 
 export class NodeDatabase implements FirebirdTree {
 
@@ -553,7 +561,13 @@ export class NodeDatabase implements FirebirdTree {
   }
 
   // backup database using gbak
-  public async backupDatabase(taskTracker?: TaskTracker): Promise<void> {
+  public async backupDatabase(taskTracker?: TaskTracker, gbakExecutable: string = "gbak"): Promise<void> {
+    const pickedOptions = await window.showQuickPick(BACKUP_OPTION_ITEMS, {
+      canPickMany: true,
+      placeHolder: "Backup options (leave everything unchecked for Firebird's own defaults)",
+    });
+    if (pickedOptions === undefined) { return; } // Escape/dismissed -- cancel the whole backup, matching the file picker below.
+
     const saveUri = await window.showSaveDialog({
       title: "Backup Firebird Database",
       filters: { "Firebird Backup": ["fbk"], "All files": ["*"] },
@@ -564,7 +578,9 @@ export class NodeDatabase implements FirebirdTree {
     const backupPath = saveUri.fsPath;
     const { host, port, database, user, password } = this.dbDetails;
     const hostPort = `${host}/${port ?? 3050}:${database}`;
-    const args = ["-b", "-user", user, "-password", password ?? "", hostPort, backupPath];
+    const choices: BackupFlagChoices = {};
+    for (const item of pickedOptions) { choices[item.key] = true; }
+    const args = ["-b", ...buildBackupFlags(choices), "-user", user, "-password", password ?? "", hostPort, backupPath];
 
     logger.info(`Starting backup to ${backupPath}`);
     const statusItem = window.createStatusBarItem();
@@ -575,7 +591,7 @@ export class NodeDatabase implements FirebirdTree {
     // isn't watching the status bar when a backup finishes.
     const task = taskTracker?.start(`Backup: ${getDatabaseFileName(database)} → ${backupPath}`);
 
-    const child = cp.execFile("gbak", args);
+    const child = cp.execFile(gbakExecutable, args);
     child.stderr?.on("data", d => logger.output(`[gbak] ${d}`));
     child.on("error", err => {
       statusItem.dispose();
@@ -598,7 +614,7 @@ export class NodeDatabase implements FirebirdTree {
   }
 
   // restore database using gbak
-  public async restoreDatabase(taskTracker?: TaskTracker): Promise<void> {
+  public async restoreDatabase(taskTracker?: TaskTracker, gbakExecutable: string = "gbak"): Promise<void> {
     const openUris = await window.showOpenDialog({
       title: "Select Firebird Backup File",
       filters: { "Firebird Backup": ["fbk"], "All files": ["*"] },
@@ -626,7 +642,7 @@ export class NodeDatabase implements FirebirdTree {
     statusItem.show();
     const task = taskTracker?.start(`Restore: ${getDatabaseFileName(backupPath)} → ${restorePath}`);
 
-    const child = cp.execFile("gbak", args);
+    const child = cp.execFile(gbakExecutable, args);
     child.stderr?.on("data", d => logger.output(`[gbak] ${d}`));
     child.on("error", err => {
       statusItem.dispose();

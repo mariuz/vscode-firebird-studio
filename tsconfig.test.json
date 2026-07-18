@@ -43,6 +43,7 @@
     "src/connection-sharing/index.ts",
     "src/connection-sharing/permissions.ts",
     "src/connection-sharing/run-query.ts",
+    "src/shared/gbak-options.ts",
     "src/copilot/schema-context.ts",
     "src/copilot/json-extraction.ts",
     "src/language-server/completionProvider.ts",

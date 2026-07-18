@@ -2,6 +2,17 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.88 - 2026-07-18
+
+### Added
+
+- **Backup Database: options.** Backup now offers a quick options picker before the file dialog — skip garbage collection, compress the backup file, back up metadata only, or use the non-transportable format — leaving everything unchecked behaves exactly as before. First phase of `docs/roadmap/backup-restore-options.md`.
+- **New `firebird.gbakPath` setting**, mirroring the existing `firebird.isqlPath` — lets you point Backup/Restore Database at a `gbak` executable that isn't on `PATH`.
+
+### Fixed
+
+- Backup/Restore Database now reports a clear "Could not find the gbak executable..." error immediately when `gbak` isn't on `PATH` and no `firebird.gbakPath` is set, instead of only discovering this after already stepping through the options picker and file dialog and hitting a raw `spawn gbak ENOENT` error.
+
 ## 0.1.87 - 2026-07-18
 
 ### Added
