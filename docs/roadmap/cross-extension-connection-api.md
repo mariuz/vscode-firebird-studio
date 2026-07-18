@@ -1,0 +1,28 @@
+# Cross-Extension Connection Sharing API
+
+**Inspired by**: [vscode-mssql](https://github.com/microsoft/vscode-mssql)'s connection-sharing permissions API (1.34.0) — "Added connection-sharing permissions API for other VS Code extensions that wish to use MSSQL connections," letting a separate extension (e.g. a data-visualization or ORM-tooling extension) reuse a connection the user already configured in mssql, gated by an explicit per-requesting-extension permission the user grants.
+
+## Current state in Firebird Studio
+
+**Not started.** `activate()` (`src/extension.ts`) doesn't return anything — there is no `exports` object at all, so another VS Code extension has no supported way to discover or reuse a Firebird Studio connection today. Anything wanting Firebird access currently has to either bundle its own `node-firebird` dependency and ask the user to re-enter connection details, or (the one existing integration point) go through the MCP server (`docs/roadmap/mcp-server.md`) — but that's scoped to AI-agent hosts speaking MCP-over-stdio to a spawned subprocess, not an in-process API another VS Code extension's own code could call directly and synchronously.
+
+## Proposed feature
+
+Checked against mssql's actual implementation (`extensions/mssql/src/connectionSharing/connectionSharingService.ts`, not just the changelog blurb) rather than guessing the shape — two design choices there are worth deliberately copying:
+
+- **A command-based surface, not an `activate()` exports object.** mssql registers plain `vscode.commands.registerCommand("mssql.connectionSharing.xxx", (extensionId, ...) => ...)` handlers instead. That's not an arbitrary choice: a VS Code command has no reliable way to know who's calling it, so the *caller* passes its own extension id as the first argument, and the service treats that id as an (unverified, but at least explicit and logged) claim of identity for the permission check below. An `activate()`-returned exports object would have the same "any caller can claim to be anyone" property, so the command-based surface isn't meaningfully less secure — Firebird Studio should follow the same pattern rather than inventing a different one, since a real consumer extension may already assume `commands.executeCommand("firebird.connectionSharing.xxx", ...)`-style discovery if it's used to mssql's shape. Proposed commands: `firebird.connectionSharing.listConnections(extensionId)`, `firebird.connectionSharing.getActiveConnection(extensionId)`, `firebird.connectionSharing.runQuery(extensionId, connectionId, sql)`.
+- **Permissions persisted in `SecretStorage`, not `globalState`.** mssql's `ConnectionSharingService` stores its `{ [extensionId]: "approved" | "denied" }` map via `context.secrets.store()`, not `globalState` — worth matching rather than the `globalState`-only approach the rest of this extension's non-credential settings use, since a permission grant is closer in sensitivity to a credential (it's "who gets to run queries as this user") than to a UI preference. First call from an unrecognized extension id triggers `showInformationMessage("<extensionId> wants to use your Firebird connections", "Approve", "Deny")`; the choice is cached, so it's asked once per requesting extension, not per call. A `firebird.connectionSharing.editPermissions` command (QuickPick over `vscode.extensions.all`, matching mssql's own `editConnectionSharingPermissions`) lets the user review or revoke a grant later.
+- **Passwords never cross this boundary at all**, the same rule already established for the MCP server's `get_schema` (`docs/roadmap/mcp-server.md`'s point 3) — `runQuery()` executes on Firebird Studio's own side using its own already-resolved `CredentialStore` password; the calling extension never receives connection credentials, only query results.
+- Read-only by default (`runQuery()` rejects non-`SELECT` statements via the same `validateReadOnlyStatement()` the MCP server's `run_query` tool already uses) — a write-capable variant, if ever added, should require the same explicit opt-in toggle pattern `docs/roadmap/mcp-server.md` established for MCP write access, not ship enabled by the base permission grant.
+
+## Technical notes
+
+- This is a genuinely different risk profile from anything else in this extension's roadmap: it's the first time *arbitrary third-party extension code*, not a spawned subprocess or a webview's sandboxed JS, would get to call directly into `Driver`. The permission-gate design above exists specifically to keep that from being an ambient trust grant.
+- Low urgency without a concrete consumer in mind — mssql shipped this once other Microsoft-authored extensions (Azure Functions SQL bindings tooling, notably) had a real reason to want it; worth deferring until/unless a specific companion extension for Firebird Studio would actually use it, per this repo's general preference for building against a real need over a speculative API surface.
+
+## Suggested phases
+
+1. `firebird.connectionSharing.listConnections(extensionId)`/`getActiveConnection(extensionId)` commands only (no query execution, no permission gate yet) — lowest-risk starting slice, since neither leaks anything beyond what the tree view already shows visually.
+2. Permission gate: first-call consent prompt, `SecretStorage`-persisted grants, an `editPermissions` review/revoke command.
+3. `runQuery(extensionId, connectionId, sql)`, read-only, reusing `Driver.runQuery()` and `validateReadOnlyStatement()`, gated behind the permission check from phase 2.
+4. (Speculative, deferred) an opt-in write variant, mirroring the MCP server's write-access toggle.
