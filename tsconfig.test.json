@@ -39,6 +39,7 @@
     "src/schema-diff/schema-diff.ts",
     "src/bookmarks/bookmark-provider.ts",
     "src/query-history/query-history-provider.ts",
+    "src/task-panel/task-tracker.ts",
     "src/copilot/schema-context.ts",
     "src/copilot/json-extraction.ts",
     "src/language-server/completionProvider.ts",

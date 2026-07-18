@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.83",
+  "version": "0.1.84",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -551,6 +551,11 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.tasks.clearCompleted",
+        "title": "Clear Completed Tasks",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.history.refresh",
         "title": "Refresh History",
         "category": "Firebird",
@@ -843,6 +848,11 @@
         {
           "command": "firebird.history.refresh",
           "when": "view == firebird-query-history",
+          "group": "navigation"
+        },
+        {
+          "command": "firebird.tasks.clearCompleted",
+          "when": "view == firebird-tasks",
           "group": "navigation"
         }
       ],
@@ -1407,6 +1417,10 @@
         {
           "id": "firebird-query-history",
           "name": "Query History"
+        },
+        {
+          "id": "firebird-tasks",
+          "name": "Background Tasks"
         }
       ]
     },

@@ -26,6 +26,7 @@ import {SqlLinter} from "./shared/sql-linter";
 import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
 import {fetchSchemaSnapshot, diffSchemas, renderDiffReport} from "./schema-diff/schema-diff";
 import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
+import {TaskTracker} from "./task-panel/task-tracker";
 import {registerCopilotChatParticipant} from "./copilot/copilot-chat-participant";
 import {registerAiQueryActions, runAnalyzeResultsAction, runAnalyzePlanAction} from "./copilot/ai-query-actions";
 import {buildIsqlArgs, buildIsqlEnv, resolveIsqlExecutable} from "./shared/isql-terminal";
@@ -156,6 +157,10 @@ export function activate(context: ExtensionContext) {
   sqlLinter.setSchemaProvider(() => firebirdDatabaseWords.getSchema());
   sqlLinter.activate(context);
 
+  /* Background Tasks — discoverability panel for long-running operations (container
+     provisioning, backup/restore) alongside their existing withProgress/status-bar notifications */
+  const taskTracker = new TaskTracker();
+
   /* Bookmarks */
   const bookmarkProvider = new BookmarkProvider(context);
 
@@ -230,6 +235,8 @@ export function activate(context: ExtensionContext) {
     window.registerTreeDataProvider(Constants.FirebirdExplorerViewId, firebirdTreeDataProvider),
     window.registerTreeDataProvider("firebird-bookmarks", bookmarkProvider),
     window.registerTreeDataProvider("firebird-query-history", queryHistoryProvider),
+    window.registerTreeDataProvider("firebird-tasks", taskTracker),
+    taskTracker,
     firebirdMockData,
     firebirdQueryResults,
     firebirdSchemaDesigner,
@@ -275,7 +282,7 @@ export function activate(context: ExtensionContext) {
   /* EXPLORER TOOLBAR: provision a brand-new local Firebird server in Docker, then add it as a connection */
   context.subscriptions.push(
     commands.registerCommand("firebird.explorer.createContainer", () => {
-      runContainerProvisionWizard(firebirdTreeDataProvider).catch(err => {
+      runContainerProvisionWizard(firebirdTreeDataProvider, taskTracker).catch(err => {
         logger.error(err?.message ?? err);
         logger.showError("Create Firebird Container failed. Check logs for details.", ["Show Logs"]).then(sel => {
           if (sel === "Show Logs") { logger.showOutput(); }
@@ -1026,14 +1033,14 @@ export function activate(context: ExtensionContext) {
   /* DB: backup database */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.backupDatabase", (databaseNode: NodeDatabase) => {
-      databaseNode.backupDatabase().catch(err => logger.error(err));
+      databaseNode.backupDatabase(taskTracker).catch(err => logger.error(err));
     })
   );
 
   /* DB: restore database */
   context.subscriptions.push(
     commands.registerCommand("firebird.database.restoreDatabase", (databaseNode: NodeDatabase) => {
-      databaseNode.restoreDatabase().catch(err => logger.error(err));
+      databaseNode.restoreDatabase(taskTracker).catch(err => logger.error(err));
     })
   );
 
@@ -1345,6 +1352,13 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.bookmarks.refresh", () => {
       bookmarkProvider.refresh();
+    })
+  );
+
+  /* COMMAND: clear finished (succeeded/failed) entries from the Background Tasks view */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.tasks.clearCompleted", () => {
+      taskTracker.clearCompleted();
     })
   );
 

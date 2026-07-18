@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.84 - 2026-07-18
+
+### Added
+
+- **Background Tasks view.** A new "Background Tasks" panel (in the Firebird activity-bar container) tracks Docker container provisioning and database backup/restore alongside their existing progress notifications, so you can check whether one finished even after its toast is gone. A "Clear Completed Tasks" button removes finished entries, keeping anything still running. Completes `docs/roadmap/connection-management-enhancements.md` (all four phases now done).
+
 ## 0.1.83 - 2026-07-18
 
 ### Added

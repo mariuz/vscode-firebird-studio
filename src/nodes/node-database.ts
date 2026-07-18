@@ -13,6 +13,7 @@ import {getDatabaseFileName} from "../shared/utils";
 import {getObjectFilter, matchesObjectFilter} from "../shared/object-explorer-filter";
 import {buildConnectionString} from "../shared/connection-string";
 import {connectionWizard} from "../shared/connection-wizard";
+import {TaskTracker} from "../task-panel/task-tracker";
 import {SchemaDesigner} from "../schema-designer";
 import {ProfilerView} from "../profiler";
 import {runFlatFileImportWizard} from "../flat-file-import";
@@ -552,7 +553,7 @@ export class NodeDatabase implements FirebirdTree {
   }
 
   // backup database using gbak
-  public async backupDatabase(): Promise<void> {
+  public async backupDatabase(taskTracker?: TaskTracker): Promise<void> {
     const saveUri = await window.showSaveDialog({
       title: "Backup Firebird Database",
       filters: { "Firebird Backup": ["fbk"], "All files": ["*"] },
@@ -569,6 +570,10 @@ export class NodeDatabase implements FirebirdTree {
     const statusItem = window.createStatusBarItem();
     statusItem.text = "$(loading~spin) Backing up database...";
     statusItem.show();
+    // Background Tasks entry (docs/roadmap/connection-management-enhancements.md, phase 4) --
+    // alongside, not instead of, the status bar spinner above: a durable record for anyone who
+    // isn't watching the status bar when a backup finishes.
+    const task = taskTracker?.start(`Backup: ${getDatabaseFileName(database)} → ${backupPath}`);
 
     const child = cp.execFile("gbak", args);
     child.stderr?.on("data", d => logger.output(`[gbak] ${d}`));
@@ -576,21 +581,24 @@ export class NodeDatabase implements FirebirdTree {
       statusItem.dispose();
       logger.error(`Backup error: ${err.message}`);
       logger.showError(`Backup failed: ${err.message}`);
+      task?.fail(err.message);
     });
     child.on("close", code => {
       statusItem.dispose();
       if (code === 0) {
         logger.info(`Backup completed: ${backupPath}`);
         window.showInformationMessage(`Database backed up successfully to ${backupPath}`);
+        task?.complete();
       } else {
         logger.error(`Backup failed with exit code ${code}`);
         logger.showError(`Backup failed (exit code ${code}). Check the log for details.`);
+        task?.fail(`gbak exited with code ${code}`);
       }
     });
   }
 
   // restore database using gbak
-  public async restoreDatabase(): Promise<void> {
+  public async restoreDatabase(taskTracker?: TaskTracker): Promise<void> {
     const openUris = await window.showOpenDialog({
       title: "Select Firebird Backup File",
       filters: { "Firebird Backup": ["fbk"], "All files": ["*"] },
@@ -616,6 +624,7 @@ export class NodeDatabase implements FirebirdTree {
     const statusItem = window.createStatusBarItem();
     statusItem.text = "$(loading~spin) Restoring database...";
     statusItem.show();
+    const task = taskTracker?.start(`Restore: ${getDatabaseFileName(backupPath)} → ${restorePath}`);
 
     const child = cp.execFile("gbak", args);
     child.stderr?.on("data", d => logger.output(`[gbak] ${d}`));
@@ -623,15 +632,18 @@ export class NodeDatabase implements FirebirdTree {
       statusItem.dispose();
       logger.error(`Restore error: ${err.message}`);
       logger.showError(`Restore failed: ${err.message}`);
+      task?.fail(err.message);
     });
     child.on("close", code => {
       statusItem.dispose();
       if (code === 0) {
         logger.info(`Restore completed: ${restorePath}`);
         window.showInformationMessage(`Database restored successfully to ${restorePath}`);
+        task?.complete();
       } else {
         logger.error(`Restore failed with exit code ${code}`);
         logger.showError(`Restore failed (exit code ${code}). Check the log for details.`);
+        task?.fail(`gbak exited with code ${code}`);
       }
     });
   }

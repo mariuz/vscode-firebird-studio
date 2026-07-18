@@ -6,6 +6,7 @@ import { resolveDockerExecutable } from "../shared/docker-discovery";
 import { FirebirdTreeDataProvider } from "../firebirdTreeDataProvider";
 import { ConnectionOptions } from "../interfaces";
 import { logger } from "../logger/logger";
+import { TaskTracker } from "../task-panel/task-tracker";
 import {
   ProvisionContainerOptions, dockerRunArgs, parseContainerId, resolveDatabasePath,
   suggestContainerName, FIREBIRD_IMAGE_TAGS,
@@ -116,7 +117,10 @@ async function waitForFirebirdReady(options: Firebird.Options, timeoutMs: number
  * "create one from scratch"), then adds it as a saved connection once it's confirmed to accept
  * connections.
  */
-export async function runContainerProvisionWizard(firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+export async function runContainerProvisionWizard(
+  firebirdTreeDataProvider: FirebirdTreeDataProvider,
+  taskTracker?: TaskTracker
+): Promise<void> {
   const dockerExe = await resolveDockerExecutable(getOptions().dockerPath || undefined, checkDockerExecutable);
   if (!dockerExe) {
     logger.showError("Docker executable not found. Install Docker, or set \"firebird.dockerPath\" to its full path.");
@@ -126,6 +130,11 @@ export async function runContainerProvisionWizard(firebirdTreeDataProvider: Fire
   const options = await promptForOptions();
   if (!options) { return; }
 
+  // Background Tasks entry (docs/roadmap/connection-management-enhancements.md, phase 4) —
+  // alongside, not instead of, the withProgress notification below: a durable record for anyone
+  // who dismisses or misses the toast before the container finishes coming up.
+  const task = taskTracker?.start(`Creating Firebird container "${options.containerName}"`);
+
   await window.withProgress(
     { location: ProgressLocation.Notification, title: `Creating Firebird container "${options.containerName}"...`, cancellable: false },
     async progress => {
@@ -134,6 +143,7 @@ export async function runContainerProvisionWizard(firebirdTreeDataProvider: Fire
         const message = (runResult.stderr || runResult.error.message).trim();
         logger.error(`docker run failed: ${message}`);
         logger.showError(`Could not create the container: ${message}`);
+        task?.fail(message);
         return;
       }
       const containerId = parseContainerId(runResult.stdout);
@@ -159,10 +169,12 @@ export async function runContainerProvisionWizard(firebirdTreeDataProvider: Fire
 
       if (ready) {
         logger.showInfo(`Firebird container "${options.containerName}" is up and connected.`);
+        task?.complete();
       } else {
         logger.showInfo(
           `Firebird container "${options.containerName}" was created and added as a connection, but hasn't responded within ${READY_TIMEOUT_MS / 1000}s yet — it may still be starting up. Try the connection again shortly.`
         );
+        task?.fail(`Container created but didn't respond within ${READY_TIMEOUT_MS / 1000}s — it may still be starting up.`);
       }
     }
   );
