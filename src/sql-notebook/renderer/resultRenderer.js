@@ -213,6 +213,12 @@ function toJson(rows, headers) {
   }), null, 2);
 }
 
+// Test-only export: harmless in the real renderer context (VS Code's Notebook Renderer API only
+// ever imports `activate`) — lets a Node-based test load this module's pure helpers directly via
+// dynamic import(), the ESM equivalent of the CommonJS `module.exports.__test__` hook the other
+// three webview app.js files use (see src/test/webview-harness.ts's doc comment for why).
+export const __test__ = { compareCells, csvCell, toCsv, toJson };
+
 function copyToClipboard(text, statusEl, label) {
   const ok = () => { statusEl.textContent = `Copied as ${label}.`; setTimeout(() => { statusEl.textContent = ''; }, 2000); };
   const fail = () => { statusEl.textContent = `Could not copy ${label} to the clipboard.`; };

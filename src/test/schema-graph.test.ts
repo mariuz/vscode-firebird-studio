@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { buildSchemaGraph, SchemaColumnRow, ForeignKeyRow } from '../schema-designer/schema-graph';
+import { buildSchemaGraph, normalizeDefault, SchemaColumnRow, ForeignKeyRow } from '../schema-designer/schema-graph';
 
 function columnRow(overrides: Partial<SchemaColumnRow> = {}): SchemaColumnRow {
   return {
@@ -23,6 +23,45 @@ function fkRow(overrides: Partial<ForeignKeyRow> = {}): ForeignKeyRow {
     ...overrides,
   };
 }
+
+// normalizeDefault() is exercised indirectly through buildSchemaGraph()'s default-value tests
+// below, but is also reused directly by database-projects/project-model.ts (buildTableCreateDDL())
+// — worth its own direct edge-case coverage rather than relying solely on that indirect exercise.
+suite('normalizeDefault()', function () {
+  test('strips a leading "DEFAULT " keyword', function () {
+    assert.strictEqual(normalizeDefault('DEFAULT 0'), '0');
+  });
+
+  test('is case-insensitive on the "DEFAULT" keyword', function () {
+    assert.strictEqual(normalizeDefault('default 0'), '0');
+  });
+
+  test('a value with no "DEFAULT" prefix passes through trimmed', function () {
+    assert.strictEqual(normalizeDefault("'ACTIVE'"), "'ACTIVE'");
+  });
+
+  test('null/undefined/empty-string all normalize to undefined', function () {
+    assert.strictEqual(normalizeDefault(null), undefined);
+    assert.strictEqual(normalizeDefault(undefined), undefined);
+    assert.strictEqual(normalizeDefault(''), undefined);
+  });
+
+  test('whitespace-only input normalizes to undefined', function () {
+    assert.strictEqual(normalizeDefault('   '), undefined);
+  });
+
+  test('"DEFAULT" alone with no trailing whitespace/value is left as-is — the stripping regex requires \\s+ after the keyword, and a real RDB$DEFAULT_SOURCE is never just the bare keyword', function () {
+    assert.strictEqual(normalizeDefault('DEFAULT'), 'DEFAULT');
+  });
+
+  test('trims surrounding whitespace after stripping the keyword', function () {
+    assert.strictEqual(normalizeDefault('  DEFAULT   42  '), '42');
+  });
+
+  test('a multi-word expression after DEFAULT is preserved as-is', function () {
+    assert.strictEqual(normalizeDefault("DEFAULT CURRENT_TIMESTAMP"), 'CURRENT_TIMESTAMP');
+  });
+});
 
 suite('buildSchemaGraph', function () {
 

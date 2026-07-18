@@ -53,6 +53,44 @@ suite('Extension Host – commands', function () {
   });
 });
 
+/**
+ * One command per docs/roadmap/*.md item, confirming each feature's entry point is actually wired
+ * up (package.json's contributes.commands declaration + a matching commands.registerCommand() call
+ * in extension.ts#activate() both present and consistent) in a real Extension Development Host —
+ * the "registers all expected commands" suite above only ever checked five original commands, none
+ * of them roadmap-feature-specific, so every roadmap item's command registration had actually never
+ * been verified here at all before this. Grouped/commented by roadmap doc so a missing command
+ * points straight at which feature broke.
+ */
+suite('Extension Host – roadmap feature commands', function () {
+  this.timeout(10000);
+
+  const roadmapCommands: Record<string, string[]> = {
+    'data-api-builder.md': ['firebird.database.generateDataApiSpec', 'firebird.database.generateDataApiSpecWithCopilot'],
+    'database-projects.md': ['firebird.project.extract', 'firebird.project.build', 'firebird.project.publish'],
+    'flat-file-import-wizard.md': ['firebird.database.importFlatFile'],
+    'live-profiler.md': ['firebird.database.monitorDatabase'],
+    'mcp-server.md': ['firebird.database.toggleMcpExposure', 'firebird.database.toggleMcpWriteAccess', 'firebird.mcp.showWriteAuditLog'],
+    'query-plan-visualizer.md': ['firebird.showEstimatedPlan', 'firebird.explainPlan'],
+    'sql-notebooks.md': ['firebird.notebook.new'],
+    'ssh-tunneling.md': ['firebird.database.setSshTunnelPassword'],
+    'visual-schema-designer.md': ['firebird.schemaVisualizer.open', 'firebird.table.createTable', 'firebird.table.alterTable'],
+  };
+
+  test('every roadmap doc\'s key command(s) are actually registered', async function () {
+    const registered = new Set(await vscode.commands.getCommands(true));
+    const missing: string[] = [];
+
+    for (const [doc, commands] of Object.entries(roadmapCommands)) {
+      for (const cmd of commands) {
+        if (!registered.has(cmd)) { missing.push(`${cmd} (${doc})`); }
+      }
+    }
+
+    assert.deepStrictEqual(missing, [], `Missing command registration(s): ${missing.join(', ')}`);
+  });
+});
+
 suite('Extension Host – What\'s New notification', function () {
   test('extension still activates cleanly with the What\'s New check wired into activate()', function () {
     const ext = vscode.extensions.getExtension(EXTENSION_ID);
