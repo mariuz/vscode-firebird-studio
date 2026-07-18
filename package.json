@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.86",
+  "version": "0.1.87",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -426,6 +426,11 @@
       {
         "command": "firebird.mcp.showWriteAuditLog",
         "title": "Show MCP Write Audit Log",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.connectionSharing.editPermissions",
+        "title": "Review Connection Sharing Permissions",
         "category": "Firebird"
       },
       {

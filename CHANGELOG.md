@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.87 - 2026-07-18
+
+### Added
+
+- **Cross-extension connection sharing: permission gate, query execution, opt-in write access.** Other VS Code extensions can now run a real read-only query (`firebird.connectionSharing.runQuery`) against a connection they've been granted access to — the first call from a new extension prompts you once to Approve or Deny; the choice is remembered. A new "Review Connection Sharing Permissions..." command lets you see, revoke, or deny access later, and — a separate, explicit opt-in with its own confirmation — grant write access (`firebird.connectionSharing.runWriteQuery`, a single INSERT/UPDATE/DELETE). Passwords never cross this boundary. Completes `docs/roadmap/cross-extension-connection-api.md`.
+
 ## 0.1.86 - 2026-07-18
 
 ### Added

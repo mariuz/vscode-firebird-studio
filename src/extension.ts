@@ -35,6 +35,8 @@ import {loadWorkspaceConnections} from "./shared/workspace-config";
 import {registerSqlNotebook, FIREBIRD_NOTEBOOK_TYPE} from "./sql-notebook";
 import {registerMcpServer, openMcpWriteAuditLog} from "./mcp-server";
 import {listConnections, getActiveConnection} from "./connection-sharing";
+import {runQuery, runWriteQuery} from "./connection-sharing/run-query";
+import {editConnectionSharingPermissions} from "./connection-sharing/permissions";
 import {runBuildProject, runPublishProject, runGenerateMigrationScript} from "./database-projects";
 import {runContainerProvisionWizard} from "./container-provisioning";
 
@@ -237,6 +239,40 @@ export function activate(context: ExtensionContext) {
       getActiveConnection(requestingExtensionId)
     )
   );
+
+  /* Cross-Extension Connection Sharing API, phase 3 -- runQuery, gated by
+     requestConnectionSharingPermission()'s cached per-extension grant. Also not declared in
+     contributes.commands, same reasoning as phase 1's two commands above. */
+  context.subscriptions.push(
+    commands.registerCommand(
+      "firebird.connectionSharing.runQuery",
+      (requestingExtensionId: string, connectionId: string, sql: string) =>
+        runQuery(context, requestingExtensionId, connectionId, sql)
+    )
+  );
+
+  /* Cross-Extension Connection Sharing API, phase 4 -- the opt-in write variant, gated by both
+     the base read grant above and a separate, manually-toggled write grant (never auto-prompted
+     on first write attempt, unlike the read grant -- see toggleWriteAccess()'s own doc comment).
+     Also not declared in contributes.commands. */
+  context.subscriptions.push(
+    commands.registerCommand(
+      "firebird.connectionSharing.runWriteQuery",
+      (requestingExtensionId: string, connectionId: string, sql: string) =>
+        runWriteQuery(context, requestingExtensionId, connectionId, sql)
+    )
+  );
+
+  /* "Review Connection Sharing Permissions" -- the one user-facing command in this feature,
+     letting the user see/revoke a read grant or toggle write access for an extension that's
+     already requested access. Unlike the four commands above, this one *is* meant for the
+     Command Palette. */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.connectionSharing.editPermissions", () => {
+      editConnectionSharingPermissions(context).catch(err => logger.error(err?.message ?? err));
+    })
+  );
+
   context.subscriptions.push(
     commands.registerCommand("firebird.notebook.new", async () => {
       const notebookData = new vscode.NotebookData([
