@@ -253,6 +253,12 @@ export class NodeDatabase implements FirebirdTree {
 
     const nowExposed = !this.dbDetails.mcpExposed;
     await this.updateSavedConnectionField(context, "mcpExposed", nowExposed);
+    if (!nowExposed && this.dbDetails.mcpWriteEnabled) {
+      // Disabling base exposure also revokes write access, rather than leaving it dormant in
+      // storage — re-enabling exposure later must go back through toggleMcpWriteAccess()'s own
+      // confirmation, not silently reactivate a write grant set before exposure was last turned off.
+      await this.updateSavedConnectionField(context, "mcpWriteEnabled", false);
+    }
     firebirdTreeDataProvider.refresh();
     notifyMcpExposureChanged();
     logger.showInfo(nowExposed
@@ -260,8 +266,55 @@ export class NodeDatabase implements FirebirdTree {
       : `${getDatabaseFileName(this.dbDetails.database)} is no longer exposed to the Firebird MCP server.`);
   }
 
-  /** Patches one field of this connection's saved globalState entry (color/group/mcpExposed tags — not password, which never lives there). */
-  private async updateSavedConnectionField<K extends "color" | "group" | "mcpExposed">(
+  /**
+   * Explicit, separate opt-in on top of toggleMcpExposure() — lets the MCP server's opt-in
+   * run_write_query tool (docs/roadmap/mcp-server.md's write-query path) run a single INSERT/
+   * UPDATE/DELETE against this connection, not just read it. Requires mcpExposed to already be on
+   * (there's nothing to write-enable on a connection the MCP server can't even see).
+   *
+   * Enabling requires an explicit modal confirmation — the only point in the whole write-query
+   * path where a real VS Code UI is available to ask the user, since the spawned MCP server
+   * subprocess that actually runs a write has no way to show a dialog of its own (see the roadmap
+   * doc's security model). Disabling never needs confirmation, matching every other permission-
+   * reducing toggle in this codebase (e.g. toggleMcpExposure() itself, above).
+   */
+  public async toggleMcpWriteAccess(context: ExtensionContext, firebirdTreeDataProvider: FirebirdTreeDataProvider): Promise<void> {
+    if (this.dbDetails.workspace) {
+      logger.showInfo("This connection comes from this workspace's .vscode/firebird.json — edit it there instead.");
+      return;
+    }
+    if (!this.dbDetails.mcpExposed) {
+      logger.showError('Turn on "Toggle MCP Server Exposure" for this connection first — write access needs a connection the MCP server can already see.');
+      return;
+    }
+
+    const nowEnabled = !this.dbDetails.mcpWriteEnabled;
+    const dbName = getDatabaseFileName(this.dbDetails.database);
+
+    if (nowEnabled) {
+      const confirm = await window.showWarningMessage(
+        `Grant MCP write access to ${dbName}?`,
+        {
+          modal: true,
+          detail: `Any MCP-compatible AI client or agent already connected to the Firebird MCP server will be able to run INSERT/UPDATE/DELETE statements against ${dbName}, not just read its schema/data. There is no per-query confirmation once this is on — the spawned MCP server process has no way to show a VS Code dialog for an individual write. Every write attempt, successful or not, is still logged (see "Show MCP Write Audit Log"). Only grant this for a connection you trust every MCP client configured in this VS Code instance to write to.`,
+        },
+        "Grant Write Access"
+      );
+      if (confirm !== "Grant Write Access") {
+        return;
+      }
+    }
+
+    await this.updateSavedConnectionField(context, "mcpWriteEnabled", nowEnabled);
+    firebirdTreeDataProvider.refresh();
+    notifyMcpExposureChanged();
+    logger.showInfo(nowEnabled
+      ? `${dbName} now allows MCP write access (INSERT/UPDATE/DELETE via run_write_query).`
+      : `${dbName} no longer allows MCP write access.`);
+  }
+
+  /** Patches one field of this connection's saved globalState entry (color/group/mcpExposed/mcpWriteEnabled tags — not password, which never lives there). */
+  private async updateSavedConnectionField<K extends "color" | "group" | "mcpExposed" | "mcpWriteEnabled">(
     context: ExtensionContext, field: K, value: ConnectionOptions[K]
   ): Promise<void> {
     const connections = context.globalState.get<{ [key: string]: ConnectionOptions }>(Constants.ConectionsKey);

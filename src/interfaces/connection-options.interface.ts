@@ -30,6 +30,8 @@ export interface ConnectionOptions {
   color?: ConnectionColor;
   /** Explicit opt-in: exposes this connection's schema (never its password) to the firebird.mcp MCP server, if enabled. Defaults to false/unset — an MCP client sees nothing unless a connection opts in. */
   mcpExposed?: boolean;
+  /** Explicit, separate opt-in on top of mcpExposed: lets the MCP server's run_write_query tool run a single INSERT/UPDATE/DELETE against this connection, not just read it. Defaults to false/unset. Toggling mcpExposed off also clears this — see NodeDatabase.toggleMcpExposure(), so re-enabling exposure later never silently reactivates write access without its own confirmation. */
+  mcpWriteEnabled?: boolean;
   /** Reach host/port through an SSH tunnel (bastion/jump host) rather than connecting directly — see src/shared/ssh-tunnel.ts. The SSH password/passphrase itself is never stored here; it's kept in SecretStorage via CredentialStore, the same way the database password is. */
   sshTunnel?: SshTunnelOptions;
   /** SSH password (authMethod "password") or private key passphrase (authMethod "privateKey"), collected by the connection wizard. Like `password`, this is stored in SecretStorage (CredentialStore.storeSshPassword()) and stripped before persisting to globalState — never present outside the wizard-to-save round trip. */

@@ -1,7 +1,7 @@
 {
   "name": "vscode-firebird-studio",
   "displayName": "Firebird Studio for VS Code",
-  "version": "0.1.74",
+  "version": "0.1.75",
   "description": "Firebird Studio — explore, query, and manage Firebird databases directly inside VS Code.",
   "categories": [
     "Programming Languages",
@@ -406,6 +406,16 @@
       {
         "command": "firebird.database.toggleMcpExposure",
         "title": "Toggle MCP Server Exposure",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.database.toggleMcpWriteAccess",
+        "title": "Toggle MCP Server Write Access",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.mcp.showWriteAuditLog",
+        "title": "Show MCP Write Audit Log",
         "category": "Firebird"
       },
       {
@@ -1091,6 +1101,11 @@
           "command": "firebird.database.toggleMcpExposure",
           "when": "view == firebird-explorer && viewItem == database",
           "group": "manage@6"
+        },
+        {
+          "command": "firebird.database.toggleMcpWriteAccess",
+          "when": "view == firebird-explorer && viewItem == database",
+          "group": "manage@7"
         },
         {
           "command": "firebird.table.createTable",

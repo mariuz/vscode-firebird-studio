@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.75 - 2026-07-18
+
+### Added
+
+- **MCP Server: opt-in write access.** A new `run_write_query` tool lets an MCP client run a single INSERT/UPDATE/DELETE against a connection — but only one that's *both* exposed to the MCP server *and* separately write-enabled via the new **Toggle MCP Server Write Access** command, which requires an explicit modal confirmation before granting it. Every write attempt, successful or not, is logged to a new MCP write-audit log (**Show MCP Write Audit Log**), and relayed live into the output channel as it happens. `run_query`/`get_query_plan` remain unconditionally read-only, unaffected.
+
 ## 0.1.74 - 2026-07-18
 
 ### Added

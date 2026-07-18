@@ -103,3 +103,29 @@ export function validateReadOnlyStatement(sql: string): string | undefined {
   }
   return undefined;
 }
+
+const WRITE_LEADING_KEYWORD = /^(INSERT|UPDATE|DELETE)\b/i;
+
+/**
+ * Validates that `sql` is exactly one INSERT, UPDATE, or DELETE statement — used by the MCP
+ * server's opt-in run_write_query tool (docs/roadmap/mcp-server.md's write-query path) to reject
+ * anything else (SELECT, DDL, EXECUTE BLOCK, MERGE, multi-statement scripts) before it ever reaches
+ * a real connection. MERGE is deliberately not included in this first pass — INSERT/UPDATE/DELETE
+ * covers ordinary CRUD writes; MERGE's combined insert-or-update-or-delete semantics can be added
+ * later if there's real demand for it, matching this feature's "start narrow" scope. Returns an
+ * error message describing why the input was rejected, or undefined if it's acceptable to run.
+ */
+export function validateWriteStatement(sql: string): string | undefined {
+  const statements = splitStatements(sql);
+  if (statements.length === 0) {
+    return "No SQL statement found.";
+  }
+  if (statements.length > 1) {
+    return `Only a single INSERT, UPDATE, or DELETE statement is allowed; got ${statements.length} statements.`;
+  }
+  const stmt = stripLeadingCommentsAndWhitespace(statements[0]);
+  if (!WRITE_LEADING_KEYWORD.test(stmt)) {
+    return "Only INSERT, UPDATE, or DELETE statements are allowed here — DDL (CREATE/ALTER/DROP) and EXECUTE BLOCK are rejected, and SELECT belongs in run_query instead.";
+  }
+  return undefined;
+}
