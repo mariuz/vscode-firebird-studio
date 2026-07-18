@@ -9,6 +9,10 @@ import {buildGeneratorCreateDDL} from "../database-projects/project-model";
 export class NodeGenerator implements FirebirdTree {
   constructor(private readonly generatorName: string, private readonly dbDetails?: ConnectionOptions) {}
 
+  public getDragIdentifier(): string {
+    return this.generatorName.trim();
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
       label: this.generatorName.trim(),

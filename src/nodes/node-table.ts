@@ -18,6 +18,10 @@ export class NodeTable implements FirebirdTree {
     return this.table.trim();
   }
 
+  public getDragIdentifier(): string {
+    return this.table.trim();
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
       label: this.table.trim(),

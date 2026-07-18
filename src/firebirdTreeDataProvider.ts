@@ -1,4 +1,4 @@
-import { TreeDataProvider, EventEmitter, Event, ExtensionContext, TreeItem } from "vscode";
+import { TreeDataProvider, TreeDragAndDropController, EventEmitter, Event, ExtensionContext, TreeItem, DataTransfer, DataTransferItem, CancellationToken } from "vscode";
 import { v1  as uuidv1 } from "uuid";
 import { NodeHost } from "./nodes";
 import { ConnectionOptions, FirebirdTree } from "./interfaces";
@@ -9,14 +9,31 @@ import { CredentialStore } from "./shared/credential-store";
 import { Driver } from "./shared/driver";
 import { loadWorkspaceConnections } from "./shared/workspace-config";
 import { logger } from "./logger/logger";
+import { quoteIdentifierIfNeeded } from "./shared/identifier-quoting";
 
-export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree> {
+export class FirebirdTreeDataProvider implements TreeDataProvider<FirebirdTree>, TreeDragAndDropController<FirebirdTree> {
   public _onDidChangeTreeData: EventEmitter<FirebirdTree | undefined> = new EventEmitter<FirebirdTree | undefined>();
   public readonly onDidChangeTreeData: Event<FirebirdTree | undefined> = this._onDidChangeTreeData.event;
 
   private savedConnections: { [key: string]: ConnectionOptions } = {};
 
   constructor(private context: ExtensionContext) {}
+
+  // Drag Object Explorer Entity into Editor (docs/roadmap/drag-identifier-into-editor.md) — drag
+  // only, no drop target support, so dropMimeTypes stays empty and handleDrop() is never called.
+  public readonly dropMimeTypes: readonly string[] = [];
+  public readonly dragMimeTypes: readonly string[] = ["text/plain"];
+
+  public handleDrag(source: readonly FirebirdTree[], dataTransfer: DataTransfer, _token: CancellationToken): void {
+    const identifiers = source
+      .map(node => node.getDragIdentifier?.())
+      .filter((name): name is string => !!name)
+      .map(name => quoteIdentifierIfNeeded(name));
+    if (identifiers.length === 0) {
+      return;
+    }
+    dataTransfer.set("text/plain", new DataTransferItem(identifiers.join(", ")));
+  }
 
   public getTreeItem(element: FirebirdTree): Promise<TreeItem> | TreeItem {
     return element.getTreeItem(this.context);

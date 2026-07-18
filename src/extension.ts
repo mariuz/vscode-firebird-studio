@@ -287,7 +287,13 @@ export function activate(context: ExtensionContext) {
   );
 
   context.subscriptions.push(
-    window.registerTreeDataProvider(Constants.FirebirdExplorerViewId, firebirdTreeDataProvider),
+    // createTreeView() (not the plain registerTreeDataProvider() every other view below still
+    // uses) -- dragAndDropController is only configurable through this API (docs/roadmap/
+    // drag-identifier-into-editor.md).
+    window.createTreeView(Constants.FirebirdExplorerViewId, {
+      treeDataProvider: firebirdTreeDataProvider,
+      dragAndDropController: firebirdTreeDataProvider,
+    }),
     window.registerTreeDataProvider("firebird-bookmarks", bookmarkProvider),
     window.registerTreeDataProvider("firebird-query-history", queryHistoryProvider),
     window.registerTreeDataProvider("firebird-tasks", taskTracker),

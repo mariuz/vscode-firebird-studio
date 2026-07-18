@@ -9,6 +9,10 @@ import {buildDomainCreateDDL} from "../script-as/ddl-builders";
 export class NodeDomain implements FirebirdTree {
   constructor(private readonly domain: any, private readonly dbDetails?: ConnectionOptions) {}
 
+  public getDragIdentifier(): string {
+    return this.domain.DOMAIN_NAME ? this.domain.DOMAIN_NAME.trim() : "";
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     const name = this.domain.DOMAIN_NAME ? this.domain.DOMAIN_NAME.trim() : "";
     const type = this.domain.DOMAIN_TYPE ? this.domain.DOMAIN_TYPE.trim() : "UNKNOWN";

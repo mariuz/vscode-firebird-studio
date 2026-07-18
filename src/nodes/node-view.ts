@@ -16,6 +16,10 @@ export class NodeView implements FirebirdTree {
     return this.viewName.trim();
   }
 
+  public getDragIdentifier(): string {
+    return this.viewName.trim();
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
       label: this.viewName.trim(),

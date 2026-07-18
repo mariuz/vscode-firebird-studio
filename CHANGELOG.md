@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.92 - 2026-07-18
+
+### Added
+
+- **Drag Object Explorer entity into editor.** Drag a table, view, column, procedure, generator, or domain from the Firebird Explorer tree straight into a SQL editor to insert its identifier — correctly double-quoted (and reserved-word-safe) only when it actually needs it. Implements `docs/roadmap/drag-identifier-into-editor.md`.
+
 ## 0.1.91 - 2026-07-18
 
 ### Added

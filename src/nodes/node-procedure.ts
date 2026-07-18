@@ -12,6 +12,10 @@ import {buildProcedureCreateDDL, buildProcedureParameterHeader, ProcedureParamet
 export class NodeProcedure implements FirebirdTree {
   constructor(private readonly dbDetails: ConnectionOptions, private readonly procedureName: string) {}
 
+  public getDragIdentifier(): string {
+    return this.procedureName.trim();
+  }
+
   public getTreeItem(context: ExtensionContext): TreeItem {
     return {
       label: this.procedureName.trim(),
