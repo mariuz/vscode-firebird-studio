@@ -22,6 +22,10 @@ suite('connection-health – isConnectionLostError() (docs/roadmap/connection-lo
     assert.strictEqual(isConnectionLostError(new Error('Unable to complete network request to host "localhost".')), true);
   });
 
+  test('node-firebird\'s own generic close-without-a-captured-socket-error fallback message is a connection-lost error', function () {
+    assert.strictEqual(isConnectionLostError(new Error('Connection to Firebird server was lost.')), true);
+  });
+
   test('an ordinary SQL syntax error is NOT a connection-lost error', function () {
     assert.strictEqual(isConnectionLostError(new Error('Dynamic SQL Error -- SQL error code = -104 -- Token unknown')), false);
   });

@@ -41,6 +41,10 @@ const CONNECTION_LOST_PATTERNS = [
   "unable to complete network request", "network error",
   "connection reset", "connection lost", "connection terminated",
   "socket hang up", "socket has been ended",
+  // node-firebird's own generic fallback (lib/wire/connection.js's socket 'close' handler) for a
+  // dropped connection that wasn't accompanied by a distinct socket 'error' event -- confirmed
+  // directly against the installed package's source (v2.14.0).
+  "connection to firebird server was lost",
 ];
 
 function extractMessage(error: unknown): string {

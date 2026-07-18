@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.90 - 2026-07-18
+
+### Changed
+
+- **Updated `node-firebird` (the pure-JS driver used unless `firebird.useNativeDriver` is on) from 2.3.4 to 2.14.0.** Ten releases' worth of fixes land with it — most visibly, a long-standing bug where a table with several `VARCHAR` columns could come back with a column's value missing/garbled (surfaced in this project's own suite as two previously-known, pre-existing test failures — both now pass, confirmed by two clean full-suite runs against a real Firebird 6.0 server) is fixed. Also: the Firebird 6.0 Protocol 20 "prepare hang" is fixed (protocol 20 is now negotiated by default against FB 6.0 servers), dead idle pooled connections are now proactively evicted instead of handed out, and an unlistened driver-internal `'error'` event can no longer crash the extension host — the affected operation's own callback still receives the error either way. No code changes were needed on Firebird Studio's side; `docs/roadmap/connection-lost-indicator.md`'s error-shape detection (added earlier this same day) was re-verified against the new version's source and gained one extra recognized message pattern (`connection-health.ts`) for a fallback error string the updated driver can now produce.
+
 ## 0.1.89 - 2026-07-18
 
 ### Added
