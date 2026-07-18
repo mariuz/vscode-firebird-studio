@@ -2,6 +2,17 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.76 - 2026-07-18
+
+### Fixed
+
+- **Query Plan Visualizer: "Actual Plan" could hang indefinitely.** `getActualPlan()` fetched its two result sets (per-record-source access paths and their timing stats) concurrently over the same database connection — the pure-JS driver's single request/response socket can stall forever when two query round-trips are interleaved on it. Both queries now run sequentially, same connection, no behavior change beyond no longer being able to hang.
+- **Query results/profiler/query-plan webviews: a rapid open-then-close could crash.** Closing one of these panels while its HTML was still loading (a narrow race, most reachable via fast repeated opens) hit a stale reference and threw instead of no-oping.
+
+### Added (tests)
+
+- Extension Development Host coverage for Live Profiler, Query Plan Visualizer, Data API Builder, and SSH Tunneling — the last four roadmap items with no suite-tier coverage, driving each feature's real classes against a real Firebird server (and, for SSH Tunneling, a real throwaway `sshd`) rather than mocks.
+
 ## 0.1.75 - 2026-07-18
 
 ### Added

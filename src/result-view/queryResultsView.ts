@@ -78,12 +78,16 @@ export class QueryResultsView extends EventEmitter implements Disposable {
   }
 
   private replaceUris(html: string, htmlPath: string) {
-      
+
     const path = dirname(htmlPath);
     const x = (str: string): string => {
-      // replaceUris() only runs from readWithCache()'s callback, which show() always
-      // invokes after init() has created the panel.
-      return this.panel!.webview.asWebviewUri(Uri.file(path + str)).toString();
+      // The panel exists whenever show() *calls* readWithCache() (init() always runs first), but
+      // readFile() below is async -- dispose() can run in between (e.g. the panel is closed again
+      // before its HTML even finished loading) and clear this.panel before this callback fires.
+      // There's nothing to build a webview URI *for* at that point, and show()'s own `if
+      // (this.panel)` check already discards this result rather than assigning it anywhere, so
+      // just return the original string unchanged instead of crashing on a stale non-null assertion.
+      return this.panel ? this.panel.webview.asWebviewUri(Uri.file(path + str)).toString() : str;
     };
     const regex = /(?<=(href|src)=")(.+?)(?=")/g;
     html = html.replace(regex, x);

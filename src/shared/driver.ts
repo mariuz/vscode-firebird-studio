@@ -150,6 +150,16 @@ export interface HistoryLogEntry {
 
 export class Driver {
 
+  /**
+   * Resolves once `client` has been assigned at least once. extension.ts#activate() calls
+   * setClient() without awaiting it (native-driver construction can trigger a slow node-gyp
+   * build via firebird.buildNative, which must not block activation) — so `client` can briefly
+   * be undefined right after activate() resolves. Anything that needs a guaranteed-ready
+   * `client` before activate()'s own caller has had a chance to do other async work first (e.g.
+   * a test driving a command immediately after activation) should await this.
+   */
+  static clientReady: Promise<void> = Promise.resolve();
+
   static async setClient(
     useNativeDriver: boolean,
     context: ExtensionContext,
@@ -531,10 +541,13 @@ export class Driver {
           throw new Error("Could not identify the profiled statement.");
         }
 
-        const [recordSources, stats] = await Promise.all([
-          this.client.queryPromise(connection, profilerRecordSourcesQuery(schemaPrefix, profileId, statementId)),
-          this.client.queryPromise(connection, profilerRecordSourceStatsQuery(schemaPrefix, profileId, statementId)),
-        ]);
+        // Sequential, not Promise.all: both queries run over the same physical connection, and
+        // node-firebird's single request/response socket can hang indefinitely if two
+        // transaction()+query() cycles are interleaved concurrently on it (reproduced reliably
+        // inside a real Extension Development Host, though not in a plain Node process — the
+        // concurrent pattern was never actually safe, just inconsistently timed).
+        const recordSources = await this.client.queryPromise(connection, profilerRecordSourcesQuery(schemaPrefix, profileId, statementId));
+        const stats = await this.client.queryPromise(connection, profilerRecordSourceStatsQuery(schemaPrefix, profileId, statementId));
 
         return buildActualPlanTree(recordSources as any, stats as any);
       } finally {
