@@ -1,9 +1,10 @@
-import { window, Disposable, QuickInput, QuickInputButtons, QuickPickItem } from "vscode";
+import { window, Disposable, ProgressLocation, QuickInput, QuickInputButtons, QuickPickItem } from "vscode";
 import * as cp from "node:child_process";
 import { ConnectionOptions } from "../interfaces";
 import { logger } from "../logger/logger";
 import { getOptions } from "../config";
 import { parseConnectionString } from "./connection-string";
+import { Driver } from "./driver";
 import {
   DiscoveredFirebirdContainer,
   dockerPsArgs,
@@ -322,7 +323,7 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
     if (!options.embedded) {
       return (input: MultiStepInput) => wireCrypt(input, options, step + 1, totalSteps);
     }
-    return undefined;
+    return (input: MultiStepInput) => testConnection(input, options, step + 1, totalSteps);
   }
 
   async function wireCrypt(
@@ -375,7 +376,7 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
     });
 
     if (!picked || picked.label === "No") {
-      return undefined;
+      return (input: MultiStepInput) => testConnection(input, options, step, totalSteps);
     }
 
     const sshHost = await input.showInputBox({
@@ -459,9 +460,77 @@ export async function connectionWizard(wizardTitle = "FIREBIRD: Add New Connecti
         password: true
       });
     }
+    // No testConnection step here: CredentialStore.getSshPassword() (which SshTunnelClient's
+    // connect path requires) is keyed by a saved connection's id, which doesn't exist yet at this
+    // point in the wizard -- testing an SSH-tunneled connection reliably needs the credential to
+    // already be stored, which only happens once this connection is actually saved.
+    return undefined;
+  }
+
+  /**
+   * "Test Connection" (docs/roadmap/connection-management-enhancements.md, phase 1): a real
+   * connect-then-detach against the collected (but not yet saved) options, surfacing a wrong
+   * password or unreachable host before the connection is added to the tree rather than only on
+   * first use afterward. Optional (defaults to "Save Without Testing") and never a hard block --
+   * a failed test still offers "Save Anyway", matching this wizard's existing non-blocking
+   * posture elsewhere (e.g. a malformed pasted connection string just falls through to the
+   * guided wizard rather than refusing outright).
+   */
+  async function testConnection(
+    input: MultiStepInput,
+    options: Partial<ConnectionOptions>,
+    step: number,
+    totalSteps: number
+  ): Promise<InputStep | void> {
+    const items: QuickPickItem[] = [
+      { label: "$(plug) Test Connection", description: "Try connecting now, before saving" },
+      { label: "$(check) Save Without Testing", description: "Skip the test and save as-is" }
+    ];
+
+    const picked = await input.showQuickPick({
+      title,
+      step,
+      totalSteps,
+      items,
+      placeholder: "Test the connection before saving?",
+      ignoreFocusOut: true
+    });
+
+    if (!picked || picked.label.includes("Save Without Testing")) {
+      return undefined;
+    }
+
+    const error = await attemptConnection(options as ConnectionOptions);
+    if (!error) {
+      window.showInformationMessage("✅ Connection successful.");
+      return undefined;
+    }
+
+    const choice = await window.showErrorMessage(`❌ Connection failed: ${error}`, "Retry", "Save Anyway");
+    if (choice === "Retry") {
+      return (input: MultiStepInput) => testConnection(input, options, step, totalSteps);
+    }
+    return undefined;
   }
 
   return await collectInputs();
+}
+
+/** Real connect-then-detach; returns the error message on failure, undefined on success. */
+/** Exported for suite-tier testing against a real server — real connect-then-detach, no throw. */
+export async function attemptConnection(options: ConnectionOptions): Promise<string | undefined> {
+  return window.withProgress(
+    { location: ProgressLocation.Notification, title: `Testing connection to ${options.host || options.database}...`, cancellable: false },
+    async () => {
+      try {
+        const connection = await Driver.client.createConnection(options);
+        await Driver.client.detach(connection);
+        return undefined;
+      } catch (err: any) {
+        return err?.message ?? String(err);
+      }
+    }
+  );
 }
 
 class InputFlowAction {

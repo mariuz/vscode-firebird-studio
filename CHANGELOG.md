@@ -2,6 +2,12 @@
 
 All notable changes to the "vscode-firebird-studio" extension will be documented in this file.
 
+## 0.1.81 - 2026-07-18
+
+### Added
+
+- **Add Connection wizard: Test Connection step.** After collecting every field, the wizard now offers to test the connection for real before saving — surfacing a wrong password or unreachable host immediately rather than only on first use. Optional and never blocking (a failed test still offers "Save Anyway"); not offered for SSH-tunneled connections, whose credential can't be tested until the connection is actually saved. First of four phases in `docs/roadmap/connection-management-enhancements.md`.
+
 ## 0.1.80 - 2026-07-18
 
 ### Added
