@@ -1,5 +1,5 @@
 import {ExtensionContext, window, commands, workspace, QuickPickItem} from "vscode";
-import {Constants, getOptions} from "./config";
+import {Constants, getOptions, getSchemaDiffFilter} from "./config";
 import {FirebirdTreeDataProvider} from "./firebirdTreeDataProvider";
 import {NodeHost, NodeDatabase, NodeTable, NodeField, NodeView, NodeProcedure, NodeTrigger, NodeGenerator, NodeDomain, NodeRole, NodeException, NodeUser, NodeIndex, NodeIndexFolder, NodeCategoryFolder} from "./nodes";
 import {Options, FirebirdTree, ConnectionOptions} from "./interfaces";
@@ -42,7 +42,7 @@ import {
 } from "./shared/quick-queries";
 import {SqlLinter} from "./shared/sql-linter";
 import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
-import {fetchSchemaSnapshot, diffSchemas, renderDiffReport, renderDiffMarkdown} from "./schema-diff/schema-diff";
+import {fetchSchemaSnapshot, diffSchemas, renderDiffReport, renderDiffMarkdown, SchemaDiffFilter} from "./schema-diff/schema-diff";
 import {renderKnexMigration, knexMigrationTimestamp} from "./schema-diff/knex-migration";
 import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
 import {TaskTracker} from "./task-panel/task-tracker";
@@ -2126,8 +2126,9 @@ export function activate(context: ExtensionContext) {
               fetchSchemaSnapshot(tgt, maxTables),
             ]);
 
-            const diff = diffSchemas(sourceSnapshot, targetSnapshot);
-            const report = renderDiffReport(diff, sourcePick.label, targetPick.label);
+            const activeFilter = getSchemaDiffFilter();
+            const diff = diffSchemas(sourceSnapshot, targetSnapshot, activeFilter);
+            const report = renderDiffReport(diff, sourcePick.label, targetPick.label, activeFilter);
 
             const doc = await workspace.openTextDocument({ content: report, language: "plaintext" });
             await window.showTextDocument(doc, vscode.ViewColumn.Beside);
@@ -2191,8 +2192,9 @@ export function activate(context: ExtensionContext) {
               fetchSchemaSnapshot(tgt, maxTables),
             ]);
 
-            const diff = diffSchemas(sourceSnapshot, targetSnapshot);
-            const markdown = renderDiffMarkdown(diff, sourcePick.label, targetPick.label);
+            const activeFilter = getSchemaDiffFilter();
+            const diff = diffSchemas(sourceSnapshot, targetSnapshot, activeFilter);
+            const markdown = renderDiffMarkdown(diff, sourcePick.label, targetPick.label, undefined, activeFilter);
 
             // Open as a virtual markdown document and show the preview beside the current editor.
             // workspace.openTextDocument({ content, language }) creates an untitled document — that
@@ -2210,6 +2212,147 @@ export function activate(context: ExtensionContext) {
       } catch (err: any) {
         logger.error(err?.message ?? err);
         logger.showError("Schema Diff Markdown Preview failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      }
+    })
+  );
+
+  /* COMMAND: schema diff with interactive filters (object categories, changes, name patterns) */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.schemaDiff.filter", async (node?: any) => {
+      const connections = context.globalState.get<{ [key: string]: import('./interfaces').ConnectionOptions }>(Constants.ConectionsKey);
+      if (!connections || Object.keys(connections).length < 1) {
+        logger.showError("Please add at least one database connection to use Schema Diff.");
+        return;
+      }
+
+      const allConns = Object.values(connections);
+      const items = allConns.map(c => ({
+        label: c.embedded ? `[embedded] ${c.database}` : `${c.host}: ${c.database}`,
+        detail: c.id,
+        conn: c,
+      }));
+
+      // Pre-select source if triggered from an explorer database node
+      let sourcePick = (node && node.connectionOptions)
+        ? items.find(i => i.detail === node.connectionOptions.id)
+        : undefined;
+
+      if (!sourcePick) {
+        sourcePick = await window.showQuickPick(items, { placeHolder: "Select SOURCE database (the baseline schema)" });
+        if (!sourcePick) { return; }
+      }
+
+      const targetItems = items.filter(i => i.detail !== sourcePick.detail);
+      if (targetItems.length === 0) {
+        logger.showError("You need at least two database connections for Schema Diff.");
+        return;
+      }
+      const targetPick = await window.showQuickPick(targetItems, { placeHolder: "Select TARGET database (the comparison schema)" });
+      if (!targetPick) { return; }
+
+      // 1. Select Object Types (multi-select)
+      const defaultFilter = getSchemaDiffFilter();
+      interface FilterQuickPickItem extends QuickPickItem {
+        key: "tables" | "views" | "procedures" | "triggers" | "added" | "removed" | "modified";
+      }
+
+      const objCategoryPicks: FilterQuickPickItem[] = [
+        { label: "$(table) Tables", description: "Include tables & column changes", picked: defaultFilter.tables !== false, key: "tables" },
+        { label: "$(eye) Views", description: "Include view definitions", picked: defaultFilter.views !== false, key: "views" },
+        { label: "$(symbol-function) Stored Procedures", description: "Include stored procedures", picked: defaultFilter.procedures !== false, key: "procedures" },
+        { label: "$(zap) Triggers", description: "Include table triggers", picked: defaultFilter.triggers !== false, key: "triggers" },
+      ];
+
+      const chosenCategories = await window.showQuickPick(objCategoryPicks, {
+        placeHolder: "Select object categories to compare",
+        canPickMany: true,
+      });
+      if (!chosenCategories) { return; }
+      if (chosenCategories.length === 0) {
+        logger.showWarn("No object categories selected; Schema Diff cancelled.");
+        return;
+      }
+
+      // 2. Select Change Types (multi-select)
+      const changeTypePicks: FilterQuickPickItem[] = [
+        { label: "$(diff-added) Added Objects", description: "Objects existing in target but not source", picked: defaultFilter.added !== false, key: "added" },
+        { label: "$(diff-removed) Removed Objects", description: "Objects existing in source but not target", picked: defaultFilter.removed !== false, key: "removed" },
+        { label: "$(diff-modified) Modified Objects", description: "Objects altered with differences", picked: defaultFilter.modified !== false, key: "modified" },
+      ];
+
+      const chosenChanges = await window.showQuickPick(changeTypePicks, {
+        placeHolder: "Select change types to include",
+        canPickMany: true,
+      });
+      if (!chosenChanges) { return; }
+      if (chosenChanges.length === 0) {
+        logger.showWarn("No change types selected; Schema Diff cancelled.");
+        return;
+      }
+
+      // 3. Optional Name Filter
+      const namePatternInput = await window.showInputBox({
+        title: "Object Name Filter (Optional)",
+        prompt: "Enter name substring or /regex/ to restrict comparison (leave blank for all)",
+        placeHolder: "e.g. USR_ or /^CUST_.*_V[12]$/i",
+      });
+      if (namePatternInput === undefined) { return; }
+
+      // 4. Output Presentation Choice
+      const outputChoice = await window.showQuickPick([
+        { label: "$(markdown) Markdown Preview", description: "Rich visual report rendered in VS Code's Markdown preview", viewType: "markdown" },
+        { label: "$(file-text) Text Report", description: "Standard plaintext diff report in an editor", viewType: "plaintext" },
+      ], { placeHolder: "Select output format" });
+      if (!outputChoice) { return; }
+
+      const interactiveFilter: SchemaDiffFilter = {
+        tables: chosenCategories.some(c => c.key === "tables"),
+        views: chosenCategories.some(c => c.key === "views"),
+        procedures: chosenCategories.some(c => c.key === "procedures"),
+        triggers: chosenCategories.some(c => c.key === "triggers"),
+        added: chosenChanges.some(c => c.key === "added"),
+        removed: chosenChanges.some(c => c.key === "removed"),
+        modified: chosenChanges.some(c => c.key === "modified"),
+        namePattern: namePatternInput.trim() || undefined,
+      };
+
+      const maxTables = config.maxTablesCount;
+
+      try {
+        await window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: "Comparing filtered schemas…", cancellable: false },
+          async () => {
+            const [sourceConn, targetConn] = await Promise.all([
+              import('./shared/credential-store').then(m => m.CredentialStore.getPassword(sourcePick.conn.id)),
+              import('./shared/credential-store').then(m => m.CredentialStore.getPassword(targetPick.conn.id)),
+            ]);
+            const src = { ...sourcePick.conn, password: sourceConn ?? "" };
+            const tgt = { ...targetPick.conn, password: targetConn ?? "" };
+
+            const [sourceSnapshot, targetSnapshot] = await Promise.all([
+              fetchSchemaSnapshot(src, maxTables),
+              fetchSchemaSnapshot(tgt, maxTables),
+            ]);
+
+            const diff = diffSchemas(sourceSnapshot, targetSnapshot, interactiveFilter);
+
+            if (outputChoice.viewType === "markdown") {
+              const markdown = renderDiffMarkdown(diff, sourcePick.label, targetPick.label, undefined, interactiveFilter);
+              const doc = await workspace.openTextDocument({ content: markdown, language: "markdown" });
+              await window.showTextDocument(doc, vscode.ViewColumn.Beside, true);
+              await commands.executeCommand("markdown.showPreviewToSide", doc.uri);
+            } else {
+              const report = renderDiffReport(diff, sourcePick.label, targetPick.label, interactiveFilter);
+              const doc = await workspace.openTextDocument({ content: report, language: "plaintext" });
+              await window.showTextDocument(doc, vscode.ViewColumn.Beside);
+            }
+          }
+        );
+      } catch (err: any) {
+        logger.error(err?.message ?? err);
+        logger.showError("Filtered Schema Diff failed. Check logs for details.", ["Show Logs"]).then(sel => {
           if (sel === "Show Logs") { logger.showOutput(); }
         });
       }

@@ -5,6 +5,7 @@ import {
   SchemaSnapshot,
   ColumnSnapshot,
 } from '../schema-diff/schema-diff';
+import { getSchemaDiffFilter } from '../config/config';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -508,4 +509,214 @@ suite('Schema Diff – renderDiffMarkdown', function () {
     assert.ok(!md.includes('1 column changes'), 'Should NOT use plural form for singular');
   });
 });
+
+// ── Schema Diff Filtering ───────────────────────────────────────────────────
+
+import {
+  SchemaDiffFilter,
+  DEFAULT_SCHEMA_DIFF_FILTER,
+  isFilterActive,
+  formatFilterSummary,
+  filterDiffResult,
+} from '../schema-diff/schema-diff';
+
+suite('Schema Diff – Object & Action Filtering', function () {
+  function sampleDiff(): SchemaDiffResult {
+    return {
+      tablesOnlyInSource: ['NEW_TABLE', 'LOG_TABLE'],
+      tablesOnlyInTarget: ['OLD_TABLE'],
+      modifiedTables: [
+        {
+          name: 'CUSTOMERS',
+          columnsOnlyInSource: [col('EXTRA_COL')],
+          columnsOnlyInTarget: [col('DEPRECATED_COL')],
+          modifiedColumns: [{ source: col('STATUS', 'VARCHAR', 10), target: col('STATUS', 'VARCHAR', 20) }],
+        },
+        {
+          name: 'AUDIT_LOG',
+          columnsOnlyInSource: [col('AUDIT_ID')],
+          columnsOnlyInTarget: [],
+          modifiedColumns: [],
+        },
+      ],
+      viewsOnlyInSource: ['V_ACTIVE_USERS', 'V_LOGS'],
+      viewsOnlyInTarget: ['V_DEPRECATED'],
+      proceduresOnlyInSource: ['SP_SYNC_USERS', 'SP_PURGE_LOGS'],
+      proceduresOnlyInTarget: ['SP_LEGACY'],
+      triggersOnlyInSource: [
+        { name: 'TR_LOG_INSERT', table: 'LOG_TABLE', type: 1, inactive: false },
+        { name: 'TR_USER_BI', table: 'USERS', type: 1, inactive: false },
+      ],
+      triggersOnlyInTarget: [
+        { name: 'TR_OLD_AUDIT', table: 'CUSTOMERS', type: 1, inactive: false },
+      ],
+    };
+  }
+
+  test('isFilterActive correctly detects active vs default filters', function () {
+    assert.strictEqual(isFilterActive(), false);
+    assert.strictEqual(isFilterActive({ ...DEFAULT_SCHEMA_DIFF_FILTER }), false);
+    assert.strictEqual(isFilterActive({ tables: false }), true);
+    assert.strictEqual(isFilterActive({ views: false }), true);
+    assert.strictEqual(isFilterActive({ procedures: false }), true);
+    assert.strictEqual(isFilterActive({ triggers: false }), true);
+    assert.strictEqual(isFilterActive({ added: false }), true);
+    assert.strictEqual(isFilterActive({ removed: false }), true);
+    assert.strictEqual(isFilterActive({ modified: false }), true);
+    assert.strictEqual(isFilterActive({ namePattern: 'LOG' }), true);
+  });
+
+  test('formatFilterSummary formats categories, actions, and namePattern', function () {
+    assert.strictEqual(
+      formatFilterSummary({ tables: true, views: true, procedures: false, triggers: false }),
+      'Categories: Tables, Views'
+    );
+    assert.strictEqual(
+      formatFilterSummary({ added: true, removed: false, modified: true }),
+      'Actions: Added, Modified'
+    );
+    assert.strictEqual(
+      formatFilterSummary({ tables: true, views: false, procedures: false, triggers: false, namePattern: 'LOG' }),
+      'Categories: Tables · Name matching "LOG"'
+    );
+    assert.strictEqual(
+      formatFilterSummary({ namePattern: /^TR_/ }),
+      'Name matching /^TR_/'
+    );
+  });
+
+  test('filters out tables when tables: false', function () {
+    const filtered = filterDiffResult(sampleDiff(), { tables: false });
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 0);
+    assert.strictEqual(filtered.tablesOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.modifiedTables.length, 0);
+    assert.strictEqual(filtered.viewsOnlyInSource.length, 2);
+    assert.strictEqual(filtered.proceduresOnlyInSource.length, 2);
+    assert.strictEqual(filtered.triggersOnlyInSource.length, 2);
+  });
+
+  test('filters out views when views: false', function () {
+    const filtered = filterDiffResult(sampleDiff(), { views: false });
+    assert.strictEqual(filtered.viewsOnlyInSource.length, 0);
+    assert.strictEqual(filtered.viewsOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 2);
+  });
+
+  test('filters out procedures when procedures: false', function () {
+    const filtered = filterDiffResult(sampleDiff(), { procedures: false });
+    assert.strictEqual(filtered.proceduresOnlyInSource.length, 0);
+    assert.strictEqual(filtered.proceduresOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 2);
+  });
+
+  test('filters out triggers when triggers: false', function () {
+    const filtered = filterDiffResult(sampleDiff(), { triggers: false });
+    assert.strictEqual(filtered.triggersOnlyInSource.length, 0);
+    assert.strictEqual(filtered.triggersOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 2);
+  });
+
+  test('filters by added: false (suppresses additions in all categories)', function () {
+    const filtered = filterDiffResult(sampleDiff(), { added: false });
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 0);
+    assert.strictEqual(filtered.viewsOnlyInSource.length, 0);
+    assert.strictEqual(filtered.proceduresOnlyInSource.length, 0);
+    assert.strictEqual(filtered.triggersOnlyInSource.length, 0);
+    assert.strictEqual(filtered.tablesOnlyInTarget.length, 1);
+    assert.strictEqual(filtered.viewsOnlyInTarget.length, 1);
+    const cust = filtered.modifiedTables.find(t => t.name === 'CUSTOMERS');
+    assert.ok(cust);
+    assert.strictEqual(cust!.columnsOnlyInSource.length, 0);
+    assert.strictEqual(cust!.columnsOnlyInTarget.length, 1);
+  });
+
+  test('filters by removed: false (suppresses removals in all categories)', function () {
+    const filtered = filterDiffResult(sampleDiff(), { removed: false });
+    assert.strictEqual(filtered.tablesOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.viewsOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.proceduresOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.triggersOnlyInTarget.length, 0);
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 2);
+    const cust = filtered.modifiedTables.find(t => t.name === 'CUSTOMERS');
+    assert.ok(cust);
+    assert.strictEqual(cust!.columnsOnlyInTarget.length, 0);
+    assert.strictEqual(cust!.columnsOnlyInSource.length, 1);
+  });
+
+  test('filters by modified: false (suppresses modified tables)', function () {
+    const filtered = filterDiffResult(sampleDiff(), { modified: false });
+    assert.strictEqual(filtered.modifiedTables.length, 0);
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 2);
+  });
+
+  test('filters by namePattern (substring match)', function () {
+    const filtered = filterDiffResult(sampleDiff(), { namePattern: 'LOG' });
+    assert.deepStrictEqual(filtered.tablesOnlyInSource, ['LOG_TABLE']);
+    assert.deepStrictEqual(filtered.tablesOnlyInTarget, []);
+    assert.deepStrictEqual(filtered.viewsOnlyInSource, ['V_LOGS']);
+    assert.deepStrictEqual(filtered.proceduresOnlyInSource, ['SP_PURGE_LOGS']);
+    assert.strictEqual(filtered.modifiedTables.length, 1);
+    assert.strictEqual(filtered.modifiedTables[0].name, 'AUDIT_LOG');
+    assert.strictEqual(filtered.triggersOnlyInSource.length, 1);
+    assert.strictEqual(filtered.triggersOnlyInSource[0].name, 'TR_LOG_INSERT');
+  });
+
+  test('filters by namePattern (RegExp match)', function () {
+    const filtered = filterDiffResult(sampleDiff(), { namePattern: /^SP_SYNC/ });
+    assert.strictEqual(filtered.tablesOnlyInSource.length, 0);
+    assert.strictEqual(filtered.viewsOnlyInSource.length, 0);
+    assert.deepStrictEqual(filtered.proceduresOnlyInSource, ['SP_SYNC_USERS']);
+  });
+
+  test('diffSchemas forwards filter to filterDiffResult', function () {
+    const source: SchemaSnapshot = {
+      ...emptySnapshot(),
+      tables: [{ name: 'T1', columns: [] }],
+      views: ['V1'],
+    };
+    const target: SchemaSnapshot = {
+      ...emptySnapshot(),
+      tables: [{ name: 'T2', columns: [] }],
+      views: ['V2'],
+    };
+    const diff = diffSchemas(source, target, { tables: false });
+    assert.strictEqual(diff.tablesOnlyInSource.length, 0);
+    assert.strictEqual(diff.tablesOnlyInTarget.length, 0);
+    assert.deepStrictEqual(diff.viewsOnlyInSource, ['V1']);
+    assert.deepStrictEqual(diff.viewsOnlyInTarget, ['V2']);
+  });
+
+  test('renderDiffReport includes filter header and hides excluded sections', function () {
+    const diff = sampleDiff();
+    const report = renderDiffReport(diff, 'SRC', 'TGT', { tables: false, triggers: false });
+    assert.ok(report.includes('Filter: Categories: Views, Procedures'));
+    assert.ok(!report.includes('── TABLES'));
+    assert.ok(!report.includes('── TRIGGERS'));
+    assert.ok(report.includes('── VIEWS'));
+    assert.ok(report.includes('── STORED PROCEDURES'));
+  });
+
+  test('renderDiffMarkdown includes filter banner and marks excluded rows in summary', function () {
+    const diff = sampleDiff();
+    const md = renderDiffMarkdown(diff, 'SRC', 'TGT', FIXED_DATE, { tables: false });
+    assert.ok(md.includes('**Filter:** Categories: Views, Procedures, Triggers'));
+    assert.ok(md.includes('| Tables | *(filtered out)* | *(filtered out)* | *(filtered out)* |'));
+    assert.ok(!md.includes('## Tables'));
+    assert.ok(md.includes('## Views'));
+  });
+
+  test('renderDiffMarkdown displays filter notice when all diffs are filtered out', function () {
+    const diff = sampleDiff();
+    const md = renderDiffMarkdown(diff, 'SRC', 'TGT', FIXED_DATE, { namePattern: 'NON_EXISTENT_NAME_XYZ' });
+    assert.ok(md.includes('No differences found matching active filter'));
+    assert.ok(!md.includes('Schemas are identical'));
+  });
+
+  test('getSchemaDiffFilter reads configuration without throwing', function () {
+    const filter = getSchemaDiffFilter();
+    assert.ok(typeof filter === 'object');
+  });
+});
+
+
 

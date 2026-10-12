@@ -28,4 +28,16 @@ The new command itself (QuickPick/`withProgress` orchestration) isn't independen
 2. ~~"Generate Migration Script" action..., with an explicit target-direction picker.~~ — **done**, as `firebird.schemaDiff.generateMigrationScript`.
 3. ~~Reuse `buildPublishScript()` unchanged; open the result as a new SQL document.~~ — **done**.
 
-No further phases are planned; this doc now reflects the finished feature.
+## Object & Action Filtering (October 2026 update)
+
+**Inspired by**: [vscode-mssql](https://github.com/microsoft/vscode-mssql) 1.46.0's Schema Compare object category filtering and action grouping.
+
+### Capabilities & Configuration
+- **Filtering by Object Category**: Schema diff results can be filtered by `tables`, `views`, `procedures`, and `triggers`. Omitted categories are excluded from diff counts, reports, and Markdown previews.
+- **Filtering by Change Action**: Supports restricting comparisons to `added`, `removed`, and/or `modified` objects.
+- **Name Substring & Pattern Filtering**: Comparison results can be narrowed using case-insensitive substring matching or explicit `/pattern/flags` regular expressions.
+- **User Settings**:
+  - `firebird.schemaDiff.filterObjectTypes`: Default object categories included in comparisons (`["tables", "views", "procedures", "triggers"]`).
+  - `firebird.schemaDiff.filterChangeTypes`: Default change types included (`["added", "removed", "modified"]`).
+- **Interactive Command**:
+  - `firebird.schemaDiff.filter` ("Firebird: Schema Diff with Filters..."): Interactive command providing multi-select QuickPick selection for categories and change types, an optional name filter input, and presentation choice (Markdown preview or plaintext report). Also contributed to explorer database node context menu (`second@6a`).

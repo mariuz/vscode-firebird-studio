@@ -2,6 +2,7 @@ import { workspace, WorkspaceConfiguration } from "vscode";
 import { Options } from "../interfaces";
 import { Level, logger } from "../logger/logger";
 import { parseQuickQueries, QuickQuerySlot } from "../shared/quick-queries";
+import { SchemaDiffFilter } from "../schema-diff/schema-diff";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const properties = require("../../package.json").contributes.configuration.properties;
@@ -344,3 +345,27 @@ function _recordsPerPage(): string {
   logger.error("Invalid value detected in Records Per Page settings. Fallback to default value.");
   return recordsPerPage;
 }
+
+/**
+ * Reads user-configured default object and change type filters for Schema Diff.
+ */
+export function getSchemaDiffFilter(): SchemaDiffFilter {
+  const conf = getConfig();
+  const objTypes = conf.get<string[]>("schemaDiff.filterObjectTypes");
+  const changeTypes = conf.get<string[]>("schemaDiff.filterChangeTypes");
+
+  const filter: SchemaDiffFilter = {};
+  if (Array.isArray(objTypes)) {
+    filter.tables = objTypes.includes("tables");
+    filter.views = objTypes.includes("views");
+    filter.procedures = objTypes.includes("procedures");
+    filter.triggers = objTypes.includes("triggers");
+  }
+  if (Array.isArray(changeTypes)) {
+    filter.added = changeTypes.includes("added");
+    filter.removed = changeTypes.includes("removed");
+    filter.modified = changeTypes.includes("modified");
+  }
+  return filter;
+}
+

@@ -136,8 +136,193 @@ export async function fetchSchemaSnapshot(conn: ConnectionOptions, maxTables: nu
   }
 }
 
-/** Compares two schema snapshots and returns the differences */
-export function diffSchemas(source: SchemaSnapshot, target: SchemaSnapshot): SchemaDiffResult {
+export interface SchemaDiffFilter {
+  /** Include table differences (default: true) */
+  tables?: boolean;
+  /** Include view differences (default: true) */
+  views?: boolean;
+  /** Include stored procedure differences (default: true) */
+  procedures?: boolean;
+  /** Include trigger differences (default: true) */
+  triggers?: boolean;
+  /** Include objects/columns only in source / added (default: true) */
+  added?: boolean;
+  /** Include objects/columns only in target / removed (default: true) */
+  removed?: boolean;
+  /** Include modified tables and columns (default: true) */
+  modified?: boolean;
+  /** Optional filter pattern (substring or RegExp) matched against object names */
+  namePattern?: string | RegExp;
+}
+
+export const DEFAULT_SCHEMA_DIFF_FILTER: Readonly<Required<Omit<SchemaDiffFilter, 'namePattern'>>> = {
+  tables: true,
+  views: true,
+  procedures: true,
+  triggers: true,
+  added: true,
+  removed: true,
+  modified: true,
+};
+
+export function isFilterActive(filter?: SchemaDiffFilter): boolean {
+  if (!filter) {
+    return false;
+  }
+  return (
+    filter.tables === false ||
+    filter.views === false ||
+    filter.procedures === false ||
+    filter.triggers === false ||
+    filter.added === false ||
+    filter.removed === false ||
+    filter.modified === false ||
+    Boolean(filter.namePattern)
+  );
+}
+
+export function formatFilterSummary(filter: SchemaDiffFilter): string {
+  const catParts: string[] = [];
+  if (filter.tables !== false) catParts.push('Tables');
+  if (filter.views !== false) catParts.push('Views');
+  if (filter.procedures !== false) catParts.push('Procedures');
+  if (filter.triggers !== false) catParts.push('Triggers');
+
+  const actionParts: string[] = [];
+  if (filter.added !== false) actionParts.push('Added');
+  if (filter.removed !== false) actionParts.push('Removed');
+  if (filter.modified !== false) actionParts.push('Modified');
+
+  const summaryParts: string[] = [];
+  if (catParts.length < 4) {
+    summaryParts.push(`Categories: ${catParts.join(', ') || 'None'}`);
+  }
+  if (actionParts.length < 3) {
+    summaryParts.push(`Actions: ${actionParts.join(', ') || 'None'}`);
+  }
+  if (filter.namePattern) {
+    const pStr = filter.namePattern instanceof RegExp ? filter.namePattern.toString() : `"${filter.namePattern}"`;
+    summaryParts.push(`Name matching ${pStr}`);
+  }
+  return summaryParts.join(' · ') || 'All objects and actions';
+}
+
+function matchesName(name: string, pattern?: string | RegExp): boolean {
+  if (!pattern) {
+    return true;
+  }
+  if (pattern instanceof RegExp) {
+    return pattern.test(name);
+  }
+  return name.toLowerCase().includes(pattern.toLowerCase());
+}
+
+/** Filters an existing SchemaDiffResult according to a SchemaDiffFilter */
+export function filterDiffResult(diff: SchemaDiffResult, filter?: SchemaDiffFilter): SchemaDiffResult {
+  if (!filter) {
+    return diff;
+  }
+
+  const includeTables = filter.tables !== false;
+  const includeViews = filter.views !== false;
+  const includeProcs = filter.procedures !== false;
+  const includeTriggers = filter.triggers !== false;
+  const includeAdded = filter.added !== false;
+  const includeRemoved = filter.removed !== false;
+  const includeModified = filter.modified !== false;
+  const namePattern = filter.namePattern;
+
+  // Tables
+  let tablesOnlyInSource: string[] = [];
+  let tablesOnlyInTarget: string[] = [];
+  const modifiedTables: ModifiedTable[] = [];
+
+  if (includeTables) {
+    if (includeAdded) {
+      tablesOnlyInSource = diff.tablesOnlyInSource.filter(name => matchesName(name, namePattern));
+    }
+    if (includeRemoved) {
+      tablesOnlyInTarget = diff.tablesOnlyInTarget.filter(name => matchesName(name, namePattern));
+    }
+    if (includeModified) {
+      for (const t of diff.modifiedTables) {
+        if (!matchesName(t.name, namePattern)) {
+          continue;
+        }
+        const colsSource = includeAdded ? t.columnsOnlyInSource : [];
+        const colsTarget = includeRemoved ? t.columnsOnlyInTarget : [];
+        const modifiedCols = includeModified ? t.modifiedColumns : [];
+
+        if (colsSource.length > 0 || colsTarget.length > 0 || modifiedCols.length > 0) {
+          modifiedTables.push({
+            name: t.name,
+            columnsOnlyInSource: colsSource,
+            columnsOnlyInTarget: colsTarget,
+            modifiedColumns: modifiedCols,
+          });
+        }
+      }
+    }
+  }
+
+  // Views
+  let viewsOnlyInSource: string[] = [];
+  let viewsOnlyInTarget: string[] = [];
+  if (includeViews) {
+    if (includeAdded) {
+      viewsOnlyInSource = diff.viewsOnlyInSource.filter(name => matchesName(name, namePattern));
+    }
+    if (includeRemoved) {
+      viewsOnlyInTarget = diff.viewsOnlyInTarget.filter(name => matchesName(name, namePattern));
+    }
+  }
+
+  // Procedures
+  let proceduresOnlyInSource: string[] = [];
+  let proceduresOnlyInTarget: string[] = [];
+  if (includeProcs) {
+    if (includeAdded) {
+      proceduresOnlyInSource = diff.proceduresOnlyInSource.filter(name => matchesName(name, namePattern));
+    }
+    if (includeRemoved) {
+      proceduresOnlyInTarget = diff.proceduresOnlyInTarget.filter(name => matchesName(name, namePattern));
+    }
+  }
+
+  // Triggers
+  let triggersOnlyInSource: TriggerSnapshot[] = [];
+  let triggersOnlyInTarget: TriggerSnapshot[] = [];
+  if (includeTriggers) {
+    const matchesTrigger = (t: TriggerSnapshot) =>
+      matchesName(t.name, namePattern) || (t.table ? matchesName(t.table, namePattern) : false);
+
+    if (includeAdded) {
+      triggersOnlyInSource = diff.triggersOnlyInSource.filter(matchesTrigger);
+    }
+    if (includeRemoved) {
+      triggersOnlyInTarget = diff.triggersOnlyInTarget.filter(matchesTrigger);
+    }
+  }
+
+  return {
+    tablesOnlyInSource,
+    tablesOnlyInTarget,
+    modifiedTables,
+    viewsOnlyInSource,
+    viewsOnlyInTarget,
+    proceduresOnlyInSource,
+    proceduresOnlyInTarget,
+    triggersOnlyInSource,
+    triggersOnlyInTarget,
+  };
+}
+
+/** Compares two schema snapshots and returns the differences, optionally filtered */
+export function diffSchemas(
+  source: SchemaSnapshot,
+  target: SchemaSnapshot,
+  filter?: SchemaDiffFilter
+): SchemaDiffResult {
   const sourceTableMap = new Map(source.tables.map(t => [t.name, t]));
   const targetTableMap = new Map(target.tables.map(t => [t.name, t]));
 
@@ -184,7 +369,7 @@ export function diffSchemas(source: SchemaSnapshot, target: SchemaSnapshot): Sch
   const triggersOnlyInSource = source.triggers.filter(t => !targetTrigNames.has(t.name));
   const triggersOnlyInTarget = target.triggers.filter(t => !sourceTrigNames.has(t.name));
 
-  return {
+  const rawDiff: SchemaDiffResult = {
     tablesOnlyInSource,
     tablesOnlyInTarget,
     modifiedTables,
@@ -195,93 +380,112 @@ export function diffSchemas(source: SchemaSnapshot, target: SchemaSnapshot): Sch
     triggersOnlyInSource,
     triggersOnlyInTarget,
   };
+
+  return filter ? filterDiffResult(rawDiff, filter) : rawDiff;
 }
 
 /** Renders a SchemaDiffResult as a human-readable text report */
 export function renderDiffReport(
   diff: SchemaDiffResult,
   sourceLabel: string,
-  targetLabel: string
+  targetLabel: string,
+  filter?: SchemaDiffFilter
 ): string {
+  const activeDiff = filter ? filterDiffResult(diff, filter) : diff;
   const lines: string[] = [];
 
   lines.push(`SCHEMA DIFF: ${sourceLabel}  →  ${targetLabel}`);
   lines.push('='.repeat(70));
-  lines.push('');
+  if (isFilterActive(filter)) {
+    lines.push(`Filter: ${formatFilterSummary(filter!)}`);
+    lines.push('');
+  } else {
+    lines.push('');
+  }
 
   // Tables
-  lines.push('── TABLES ──────────────────────────────────────────────────────────');
-  if (diff.tablesOnlyInSource.length === 0 && diff.tablesOnlyInTarget.length === 0 && diff.modifiedTables.length === 0) {
-    lines.push('  (no differences)');
-  } else {
-    for (const t of diff.tablesOnlyInSource) {
-      lines.push(`  + ${t}  [only in source]`);
-    }
-    for (const t of diff.tablesOnlyInTarget) {
-      lines.push(`  - ${t}  [only in target]`);
-    }
-    for (const t of diff.modifiedTables) {
-      lines.push(`  ~ ${t.name}  [modified]`);
-      for (const c of t.columnsOnlyInSource) {
-        lines.push(`      + column: ${c.name} ${c.type}${c.length > 0 ? `(${c.length})` : ''}${c.notNull ? ' NOT NULL' : ''}`);
+  if (filter?.tables !== false) {
+    lines.push('── TABLES ──────────────────────────────────────────────────────────');
+    if (activeDiff.tablesOnlyInSource.length === 0 && activeDiff.tablesOnlyInTarget.length === 0 && activeDiff.modifiedTables.length === 0) {
+      lines.push('  (no differences)');
+    } else {
+      for (const t of activeDiff.tablesOnlyInSource) {
+        lines.push(`  + ${t}  [only in source]`);
       }
-      for (const c of t.columnsOnlyInTarget) {
-        lines.push(`      - column: ${c.name} ${c.type}${c.length > 0 ? `(${c.length})` : ''}${c.notNull ? ' NOT NULL' : ''}`);
+      for (const t of activeDiff.tablesOnlyInTarget) {
+        lines.push(`  - ${t}  [only in target]`);
       }
-      for (const m of t.modifiedColumns) {
-        lines.push(`      ~ column: ${m.source.name}`);
-        lines.push(`          source: ${m.source.type}(${m.source.length})${m.source.notNull ? ' NOT NULL' : ''}`);
-        lines.push(`          target: ${m.target.type}(${m.target.length})${m.target.notNull ? ' NOT NULL' : ''}`);
+      for (const t of activeDiff.modifiedTables) {
+        lines.push(`  ~ ${t.name}  [modified]`);
+        for (const c of t.columnsOnlyInSource) {
+          lines.push(`      + column: ${c.name} ${c.type}${c.length > 0 ? `(${c.length})` : ''}${c.notNull ? ' NOT NULL' : ''}`);
+        }
+        for (const c of t.columnsOnlyInTarget) {
+          lines.push(`      - column: ${c.name} ${c.type}${c.length > 0 ? `(${c.length})` : ''}${c.notNull ? ' NOT NULL' : ''}`);
+        }
+        for (const m of t.modifiedColumns) {
+          lines.push(`      ~ column: ${m.source.name}`);
+          lines.push(`          source: ${m.source.type}(${m.source.length})${m.source.notNull ? ' NOT NULL' : ''}`);
+          lines.push(`          target: ${m.target.type}(${m.target.length})${m.target.notNull ? ' NOT NULL' : ''}`);
+        }
       }
     }
+    lines.push('');
   }
-  lines.push('');
 
   // Views
-  lines.push('── VIEWS ───────────────────────────────────────────────────────────');
-  if (diff.viewsOnlyInSource.length === 0 && diff.viewsOnlyInTarget.length === 0) {
-    lines.push('  (no differences)');
-  } else {
-    for (const v of diff.viewsOnlyInSource) {
-      lines.push(`  + ${v}  [only in source]`);
+  if (filter?.views !== false) {
+    lines.push('── VIEWS ───────────────────────────────────────────────────────────');
+    if (activeDiff.viewsOnlyInSource.length === 0 && activeDiff.viewsOnlyInTarget.length === 0) {
+      lines.push('  (no differences)');
+    } else {
+      for (const v of activeDiff.viewsOnlyInSource) {
+        lines.push(`  + ${v}  [only in source]`);
+      }
+      for (const v of activeDiff.viewsOnlyInTarget) {
+        lines.push(`  - ${v}  [only in target]`);
+      }
     }
-    for (const v of diff.viewsOnlyInTarget) {
-      lines.push(`  - ${v}  [only in target]`);
-    }
+    lines.push('');
   }
-  lines.push('');
 
   // Procedures
-  lines.push('── STORED PROCEDURES ───────────────────────────────────────────────');
-  if (diff.proceduresOnlyInSource.length === 0 && diff.proceduresOnlyInTarget.length === 0) {
-    lines.push('  (no differences)');
-  } else {
-    for (const p of diff.proceduresOnlyInSource) {
-      lines.push(`  + ${p}  [only in source]`);
+  if (filter?.procedures !== false) {
+    lines.push('── STORED PROCEDURES ───────────────────────────────────────────────');
+    if (activeDiff.proceduresOnlyInSource.length === 0 && activeDiff.proceduresOnlyInTarget.length === 0) {
+      lines.push('  (no differences)');
+    } else {
+      for (const p of activeDiff.proceduresOnlyInSource) {
+        lines.push(`  + ${p}  [only in source]`);
+      }
+      for (const p of activeDiff.proceduresOnlyInTarget) {
+        lines.push(`  - ${p}  [only in target]`);
+      }
     }
-    for (const p of diff.proceduresOnlyInTarget) {
-      lines.push(`  - ${p}  [only in target]`);
-    }
+    lines.push('');
   }
-  lines.push('');
 
   // Triggers
-  lines.push('── TRIGGERS ────────────────────────────────────────────────────────');
-  if (diff.triggersOnlyInSource.length === 0 && diff.triggersOnlyInTarget.length === 0) {
-    lines.push('  (no differences)');
-  } else {
-    for (const t of diff.triggersOnlyInSource) {
-      lines.push(`  + ${t.name} ON ${t.table}  [only in source]`);
+  if (filter?.triggers !== false) {
+    lines.push('── TRIGGERS ────────────────────────────────────────────────────────');
+    if (activeDiff.triggersOnlyInSource.length === 0 && activeDiff.triggersOnlyInTarget.length === 0) {
+      lines.push('  (no differences)');
+    } else {
+      for (const t of activeDiff.triggersOnlyInSource) {
+        lines.push(`  + ${t.name} ON ${t.table}  [only in source]`);
+      }
+      for (const t of activeDiff.triggersOnlyInTarget) {
+        lines.push(`  - ${t.name} ON ${t.table}  [only in target]`);
+      }
     }
-    for (const t of diff.triggersOnlyInTarget) {
-      lines.push(`  - ${t.name} ON ${t.table}  [only in target]`);
-    }
+    lines.push('');
   }
-  lines.push('');
+
   lines.push('='.repeat(70));
 
   return lines.join('\n');
 }
+
 
 function columnsEqual(a: ColumnSnapshot, b: ColumnSnapshot): boolean {
   return a.type === b.type && a.length === b.length && a.notNull === b.notNull;
@@ -300,14 +504,16 @@ export function renderDiffMarkdown(
   diff: SchemaDiffResult,
   sourceLabel: string,
   targetLabel: string,
-  generatedAt: Date = new Date()
+  generatedAt: Date = new Date(),
+  filter?: SchemaDiffFilter
 ): string {
+  const activeDiff = filter ? filterDiffResult(diff, filter) : diff;
   const ts = generatedAt.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
   const totalChanges =
-    diff.tablesOnlyInSource.length + diff.tablesOnlyInTarget.length + diff.modifiedTables.length +
-    diff.viewsOnlyInSource.length + diff.viewsOnlyInTarget.length +
-    diff.proceduresOnlyInSource.length + diff.proceduresOnlyInTarget.length +
-    diff.triggersOnlyInSource.length + diff.triggersOnlyInTarget.length;
+    activeDiff.tablesOnlyInSource.length + activeDiff.tablesOnlyInTarget.length + activeDiff.modifiedTables.length +
+    activeDiff.viewsOnlyInSource.length + activeDiff.viewsOnlyInTarget.length +
+    activeDiff.proceduresOnlyInSource.length + activeDiff.proceduresOnlyInTarget.length +
+    activeDiff.triggersOnlyInSource.length + activeDiff.triggersOnlyInTarget.length;
 
   const lines: string[] = [];
 
@@ -316,10 +522,17 @@ export function renderDiffMarkdown(
   lines.push(`**Source:** \`${sourceLabel}\``);
   lines.push(`**Target:** \`${targetLabel}\``);
   lines.push(`**Generated:** ${ts}`);
+  if (isFilterActive(filter)) {
+    lines.push(`**Filter:** ${formatFilterSummary(filter!)}`);
+  }
   lines.push('');
 
   if (totalChanges === 0) {
-    lines.push('> ✅ **Schemas are identical** — no differences found.');
+    if (isFilterActive(filter)) {
+      lines.push('> ℹ️ **No differences found matching active filter.**');
+    } else {
+      lines.push('> ✅ **Schemas are identical** — no differences found.');
+    }
     lines.push('');
     return lines.join('\n');
   }
@@ -329,27 +542,43 @@ export function renderDiffMarkdown(
   lines.push('');
   lines.push('| Category | 🆕 Added (source only) | 🗑️ Removed (target only) | ✏️ Modified |');
   lines.push('|---|---|---|---|');
-  lines.push(`| Tables | ${diff.tablesOnlyInSource.length} | ${diff.tablesOnlyInTarget.length} | ${diff.modifiedTables.length} |`);
-  lines.push(`| Views | ${diff.viewsOnlyInSource.length} | ${diff.viewsOnlyInTarget.length} | — |`);
-  lines.push(`| Procedures | ${diff.proceduresOnlyInSource.length} | ${diff.proceduresOnlyInTarget.length} | — |`);
-  lines.push(`| Triggers | ${diff.triggersOnlyInSource.length} | ${diff.triggersOnlyInTarget.length} | — |`);
+  if (filter?.tables !== false) {
+    lines.push(`| Tables | ${activeDiff.tablesOnlyInSource.length} | ${activeDiff.tablesOnlyInTarget.length} | ${activeDiff.modifiedTables.length} |`);
+  } else {
+    lines.push(`| Tables | *(filtered out)* | *(filtered out)* | *(filtered out)* |`);
+  }
+  if (filter?.views !== false) {
+    lines.push(`| Views | ${activeDiff.viewsOnlyInSource.length} | ${activeDiff.viewsOnlyInTarget.length} | — |`);
+  } else {
+    lines.push(`| Views | *(filtered out)* | *(filtered out)* | — |`);
+  }
+  if (filter?.procedures !== false) {
+    lines.push(`| Procedures | ${activeDiff.proceduresOnlyInSource.length} | ${activeDiff.proceduresOnlyInTarget.length} | — |`);
+  } else {
+    lines.push(`| Procedures | *(filtered out)* | *(filtered out)* | — |`);
+  }
+  if (filter?.triggers !== false) {
+    lines.push(`| Triggers | ${activeDiff.triggersOnlyInSource.length} | ${activeDiff.triggersOnlyInTarget.length} | — |`);
+  } else {
+    lines.push(`| Triggers | *(filtered out)* | *(filtered out)* | — |`);
+  }
   lines.push('');
 
   // --- Tables ---
-  const hasTableChanges = diff.tablesOnlyInSource.length > 0 || diff.tablesOnlyInTarget.length > 0 || diff.modifiedTables.length > 0;
+  const hasTableChanges = filter?.tables !== false && (activeDiff.tablesOnlyInSource.length > 0 || activeDiff.tablesOnlyInTarget.length > 0 || activeDiff.modifiedTables.length > 0);
   if (hasTableChanges) {
     lines.push('## Tables');
     lines.push('');
 
-    for (const t of diff.tablesOnlyInSource) {
+    for (const t of activeDiff.tablesOnlyInSource) {
       lines.push(`### 🆕 \`${t}\` *(only in source)*`);
       lines.push('');
     }
-    for (const t of diff.tablesOnlyInTarget) {
+    for (const t of activeDiff.tablesOnlyInTarget) {
       lines.push(`### 🗑️ \`${t}\` *(only in target)*`);
       lines.push('');
     }
-    for (const t of diff.modifiedTables) {
+    for (const t of activeDiff.modifiedTables) {
       const colChangeCount = t.columnsOnlyInSource.length + t.columnsOnlyInTarget.length + t.modifiedColumns.length;
       lines.push(`### ✏️ \`${t.name}\` — ${colChangeCount} column change${colChangeCount === 1 ? '' : 's'}`);
       lines.push('');
@@ -377,42 +606,42 @@ export function renderDiffMarkdown(
   }
 
   // --- Views ---
-  const hasViewChanges = diff.viewsOnlyInSource.length > 0 || diff.viewsOnlyInTarget.length > 0;
+  const hasViewChanges = filter?.views !== false && (activeDiff.viewsOnlyInSource.length > 0 || activeDiff.viewsOnlyInTarget.length > 0);
   if (hasViewChanges) {
     lines.push('## Views');
     lines.push('');
-    for (const v of diff.viewsOnlyInSource) {
+    for (const v of activeDiff.viewsOnlyInSource) {
       lines.push(`- 🆕 \`${v}\` *(only in source)*`);
     }
-    for (const v of diff.viewsOnlyInTarget) {
+    for (const v of activeDiff.viewsOnlyInTarget) {
       lines.push(`- 🗑️ \`${v}\` *(only in target)*`);
     }
     lines.push('');
   }
 
   // --- Procedures ---
-  const hasProcChanges = diff.proceduresOnlyInSource.length > 0 || diff.proceduresOnlyInTarget.length > 0;
+  const hasProcChanges = filter?.procedures !== false && (activeDiff.proceduresOnlyInSource.length > 0 || activeDiff.proceduresOnlyInTarget.length > 0);
   if (hasProcChanges) {
     lines.push('## Stored Procedures');
     lines.push('');
-    for (const p of diff.proceduresOnlyInSource) {
+    for (const p of activeDiff.proceduresOnlyInSource) {
       lines.push(`- 🆕 \`${p}\` *(only in source)*`);
     }
-    for (const p of diff.proceduresOnlyInTarget) {
+    for (const p of activeDiff.proceduresOnlyInTarget) {
       lines.push(`- 🗑️ \`${p}\` *(only in target)*`);
     }
     lines.push('');
   }
 
   // --- Triggers ---
-  const hasTriggerChanges = diff.triggersOnlyInSource.length > 0 || diff.triggersOnlyInTarget.length > 0;
+  const hasTriggerChanges = filter?.triggers !== false && (activeDiff.triggersOnlyInSource.length > 0 || activeDiff.triggersOnlyInTarget.length > 0);
   if (hasTriggerChanges) {
     lines.push('## Triggers');
     lines.push('');
-    for (const t of diff.triggersOnlyInSource) {
+    for (const t of activeDiff.triggersOnlyInSource) {
       lines.push(`- 🆕 \`${t.name}\` on \`${t.table}\` *(only in source)*`);
     }
-    for (const t of diff.triggersOnlyInTarget) {
+    for (const t of activeDiff.triggersOnlyInTarget) {
       lines.push(`- 🗑️ \`${t.name}\` on \`${t.table}\` *(only in target)*`);
     }
     lines.push('');
@@ -425,3 +654,4 @@ export function renderDiffMarkdown(
 
   return lines.join('\n');
 }
+

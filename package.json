@@ -638,6 +638,12 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.schemaDiff.filter",
+        "title": "Schema Diff with Filters...",
+        "icon": "$(filter)",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.schemaDiff.knexMigration",
         "title": "Generate Knex Migration...",
         "icon": "$(file-code)",
@@ -1054,6 +1060,44 @@
           "minimum": 0,
           "default": 3000,
           "markdownDescription": "How long autocompletion waits for the database schema before offering Firebird keywords on their own, in milliseconds. The schema keeps loading in the background, so table and column names appear on the next keystroke. Set to `0` to wait as long as it takes."
+        },
+        "firebird.schemaDiff.filterObjectTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "tables",
+              "views",
+              "procedures",
+              "triggers"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "tables",
+            "views",
+            "procedures",
+            "triggers"
+          ],
+          "markdownDescription": "Object categories included by default in Schema Diff comparisons and reports (tables, views, procedures, triggers)."
+        },
+        "firebird.schemaDiff.filterChangeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "modified"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "added",
+            "removed",
+            "modified"
+          ],
+          "markdownDescription": "Change actions included by default in Schema Diff comparisons (added, removed, modified)."
         }
       }
     },
@@ -1268,6 +1312,11 @@
           "command": "firebird.schemaDiff.markdownPreview",
           "when": "view == firebird-explorer && viewItem =~ /^database/",
           "group": "second@6"
+        },
+        {
+          "command": "firebird.schemaDiff.filter",
+          "when": "view == firebird-explorer && viewItem =~ /^database/",
+          "group": "second@6a"
         },
         {
           "command": "firebird.schemaDiff.knexMigration",
