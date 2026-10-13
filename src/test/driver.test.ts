@@ -20,7 +20,8 @@ import {
 } from '../shared/driver';
 import { ConnectionOptions, Options } from '../interfaces';
 import { CredentialStore } from '../shared/credential-store';
-import { createMockContext } from './mocks/vscode';
+import { createMockContext, CancellationTokenSource } from './mocks/vscode';
+import { QueryExecutionManager } from '../shared/query-execution-status';
 
 // ── Driver.constructResponse ──────────────────────────────────────────────────
 
@@ -806,6 +807,46 @@ suite('Driver.runBatch() (fake client, no live database)', function () {
     assert.ok(results[0].message?.includes('Create'));
     assert.deepStrictEqual(results[1].rows, [{ RESULT: 42 }]);
   });
+
+  test('aborts execution when CancellationToken is already cancelled', async function () {
+    const fake = new FakeClient(() => [{ RESULT: 1 }]);
+    Driver.client = fake;
+    const cts = new CancellationTokenSource();
+    cts.cancel();
+
+    await assert.rejects(
+      Driver.runBatch('SELECT 1;', baseConnectionOptions(), cts.token as any),
+      (err: any) => {
+        assert.strictEqual(err.cancelled, true);
+        assert.strictEqual(err.notify, false);
+        return true;
+      }
+    );
+    assert.strictEqual(fake.createConnectionCalls, 0, 'should not create connection if already cancelled');
+  });
+
+  test('cancels in-flight batch execution when CancellationToken is triggered', async function () {
+    const cts = new CancellationTokenSource();
+    let queryStarted = false;
+    const fake = new FakeClient(async () => {
+      queryStarted = true;
+      cts.cancel();
+      // Simulate delay during query
+      await new Promise(r => setTimeout(r, 10));
+      return [{ ONE: 1 }];
+    });
+    Driver.client = fake;
+
+    await assert.rejects(
+      Driver.runBatch('SELECT 1; SELECT 2;', baseConnectionOptions(), cts.token as any),
+      (err: any) => {
+        assert.strictEqual(err.cancelled, true);
+        return true;
+      }
+    );
+    assert.ok(queryStarted);
+    assert.strictEqual(fake.detachCalls, 1, 'connection should be detached upon cancellation');
+  });
 });
 
 // ── Driver.runBatch() statement positions ────────────────────────────────────
@@ -965,6 +1006,45 @@ suite('Driver.runQuery() (fake client, no live database)', function () {
     const fake = new FakeClient(() => { throw new Error('boom'); });
     Driver.client = fake;
     await Driver.runQuery('SELECT 1', baseConnectionOptions()).catch(() => { /* expected */ });
+    assert.strictEqual(fake.detachCalls, 1);
+  });
+
+  test('aborts runQuery when CancellationToken is already cancelled', async function () {
+    const fake = new FakeClient(() => [{ ONE: 1 }]);
+    Driver.client = fake;
+    const cts = new CancellationTokenSource();
+    cts.cancel();
+
+    await assert.rejects(
+      Driver.runQuery('SELECT 1', baseConnectionOptions(), undefined, cts.token as any),
+      (err: any) => {
+        assert.strictEqual(err.cancelled, true);
+        assert.strictEqual(err.notify, false);
+        return true;
+      }
+    );
+    assert.strictEqual(fake.createConnectionCalls, 0);
+  });
+
+  test('cancels in-flight runQuery when CancellationToken fires', async function () {
+    const cts = new CancellationTokenSource();
+    let queryStarted = false;
+    const fake = new FakeClient(async () => {
+      queryStarted = true;
+      cts.cancel();
+      await new Promise(r => setTimeout(r, 10));
+      return [{ ONE: 1 }];
+    });
+    Driver.client = fake;
+
+    await assert.rejects(
+      Driver.runQuery('SELECT 1', baseConnectionOptions(), undefined, cts.token as any),
+      (err: any) => {
+        assert.strictEqual(err.cancelled, true);
+        return true;
+      }
+    );
+    assert.ok(queryStarted);
     assert.strictEqual(fake.detachCalls, 1);
   });
 });

@@ -103,18 +103,49 @@ export class EventEmitter<T> {
   get event() {
     return (listener: (e: T) => void) => {
       this._listeners.push(listener);
-      return { dispose: () => { /* no-op */ } };
+      return { dispose: () => {
+        const idx = this._listeners.indexOf(listener);
+        if (idx !== -1) {
+          this._listeners.splice(idx, 1);
+        }
+      } };
     };
   }
 
   fire(data: T) {
-    for (const l of this._listeners) {
+    for (const l of [...this._listeners]) {
       l(data);
     }
   }
 
   dispose() {
     this._listeners = [];
+  }
+}
+
+// ── CancellationTokenSource ──────────────────────────────────────────────────
+export class CancellationTokenSource {
+  private _emitter = new EventEmitter<void>();
+  private _isCancellationRequested = false;
+
+  get token() {
+    return {
+      isCancellationRequested: this._isCancellationRequested,
+      onCancellationRequested: (listener: () => void) => {
+        return this._emitter.event(listener);
+      }
+    };
+  }
+
+  cancel(): void {
+    if (!this._isCancellationRequested) {
+      this._isCancellationRequested = true;
+      this._emitter.fire();
+    }
+  }
+
+  dispose(): void {
+    this._emitter.dispose();
   }
 }
 

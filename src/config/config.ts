@@ -36,7 +36,8 @@ export function getOptions() {
     messagesIncludeTimestamps: _messagesIncludeTimestamps(),
     resultsFontSize: _resultsFontSize(),
     resultsFontFamily: _resultsFontFamily(),
-    quickQueries: _quickQueries()
+    quickQueries: _quickQueries(),
+    showQueryExecutionStatus: _showQueryExecutionStatus()
   } as Options;
 }
 
@@ -333,6 +334,11 @@ function _resultsFontFamily(): string {
  */
 function _quickQueries(): QuickQuerySlot[] {
   return parseQuickQueries(getConfig().get("quickQueries"));
+}
+
+function _showQueryExecutionStatus(): boolean {
+  const conf: any = getConfig().get("showQueryExecutionStatus");
+  return typeof conf === "boolean" ? conf : (properties["firebird.showQueryExecutionStatus"]?.["default"] ?? true);
 }
 
 function _recordsPerPage(): string {

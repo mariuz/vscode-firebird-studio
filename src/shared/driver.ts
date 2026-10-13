@@ -1,4 +1,4 @@
-import {TextDocument, TextEditor, workspace, window, ViewColumn, ExtensionContext, commands} from "vscode";
+import {TextDocument, TextEditor, workspace, window, ViewColumn, ExtensionContext, commands, CancellationToken} from "vscode";
 import * as Firebird from "node-firebird";
 import {Global} from "./global";
 import {ConnectionOptions, Options} from "../interfaces";
@@ -14,6 +14,7 @@ import {PooledClient, ConnectionPoolOptions} from './connection-pool';
 import {connectionSearchPath} from './schema-support';
 import {SshTunnelClient} from './ssh-tunnel';
 import {getOptions} from '../config';
+import {QueryExecutionManager} from './query-execution-status';
 import {
   ActualPlanNode, buildActualPlanTree, parseEngineMajorVersion, isProfilerSupported, profilerSchemaPrefix,
   startProfilerSessionQuery, flushProfilerQuery, finishProfilerSessionQuery, profiledStatementIdQuery,
@@ -321,7 +322,12 @@ export class Driver {
     return { ...connectionOptions, password: stored ?? "" };
   }
 
-  public static async runQuery(sql?: string, connectionOptions?: ConnectionOptions, params?: any[]): Promise<any> {
+  public static async runQuery(
+    sql?: string,
+    connectionOptions?: ConnectionOptions,
+    params?: any[],
+    cancellationToken?: CancellationToken
+  ): Promise<any> {
     logger.debug("Run Query start...");
 
     if (!sql && !window.activeTextEditor) {
@@ -373,52 +379,110 @@ export class Driver {
     }
     connectionOptions = await this.resolvePassword(connectionOptions);
 
+    if (cancellationToken?.isCancellationRequested) {
+      throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+    }
+
     logger.info("Executing Firebird query...");
 
     const start = Date.now();
-    let connection;
-    try {
-      connection = await this.client.createConnection(connectionOptions);
-    } catch (err: any) {
-      Global.reportConnectionOutcome(connectionOptions.id, err);
-      throw err;
-    }
-    const txOptions = buildTransactionOptions(getOptions());
-    try {
-      const result = await this.client.queryPromise(connection, sql, params, txOptions);
-      Global.reportConnectionOutcome(connectionOptions.id, undefined);
-      const durationMs = Date.now() - start;
+    let connection: any;
+    let cancelled = false;
 
-      if (result !== undefined) {
-        //convert blob
-        result.forEach(resultRow => {
-          const row = resultRow as Record<string, any>;
-          Object.keys(row).forEach(field => {
-            if (row[field] instanceof Function) {
-              row[field]((_err: any, _name: any, e: any) => {
-                e.on("data", (chunk: any) => {
-                  row[field] = chunk;
-                });
-              });
-            }
-          });
-        });
-        logger.info("Finished Firebird query, displaying results... ");
-        this.logHistory(sql, connectionOptions, durationMs, result.length);
-        return result;
-      } else {
-        // because node-firebird plugin doesn't have callback on successfull ddl statements (test further)
-        logger.info("Finished Firebird query.");
-        const ddl = this.constructResponse(sql);
-        this.logHistory(sql, connectionOptions, durationMs);
-        return ([{message: `${ddl} command executed successfully!`}]);
+    const doCancel = async () => {
+      cancelled = true;
+      if (connection) {
+        try {
+          if (typeof connection.cancel === "function") {
+            connection.cancel();
+          } else if (typeof connection.cancelOperation === "function") {
+            await connection.cancelOperation(true);
+          }
+        } catch {
+          // ignore error during cancel request
+        }
+        try {
+          await this.client.detach(connection);
+        } catch {
+          // already closing
+        }
       }
-    } catch (err: any) {
-      Global.reportConnectionOutcome(connectionOptions.id, err);
-      this.logHistory(sql, connectionOptions, Date.now() - start, undefined, err?.message ?? String(err));
-      throw err;
+    };
+
+    const cancelReg = cancellationToken?.onCancellationRequested(() => {
+      void doCancel();
+    });
+
+    const executionId = `${Date.now()}-${Math.random()}`;
+    const statusReg = QueryExecutionManager.getInstance().registerExecution({
+      id: executionId,
+      sql: sql,
+      startedAt: start,
+      connectionOptions: { host: connectionOptions.host, database: connectionOptions.database },
+      cancel: doCancel
+    });
+
+    try {
+      try {
+        connection = await this.client.createConnection(connectionOptions);
+      } catch (err: any) {
+        Global.reportConnectionOutcome(connectionOptions.id, err);
+        throw err;
+      }
+      if (cancelled || cancellationToken?.isCancellationRequested) {
+        throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+      }
+      const txOptions = buildTransactionOptions(getOptions());
+      try {
+        const result = await this.client.queryPromise(connection, sql, params, txOptions);
+        if (cancelled || cancellationToken?.isCancellationRequested) {
+          throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+        }
+        Global.reportConnectionOutcome(connectionOptions.id, undefined);
+        const durationMs = Date.now() - start;
+
+        if (result !== undefined) {
+          //convert blob
+          result.forEach(resultRow => {
+            const row = resultRow as Record<string, any>;
+            Object.keys(row).forEach(field => {
+              if (row[field] instanceof Function) {
+                row[field]((_err: any, _name: any, e: any) => {
+                  e.on("data", (chunk: any) => {
+                    row[field] = chunk;
+                  });
+                });
+              }
+            });
+          });
+          logger.info("Finished Firebird query, displaying results... ");
+          this.logHistory(sql, connectionOptions, durationMs, result.length);
+          return result;
+        } else {
+          // because node-firebird plugin doesn't have callback on successfull ddl statements (test further)
+          logger.info("Finished Firebird query.");
+          const ddl = this.constructResponse(sql);
+          this.logHistory(sql, connectionOptions, durationMs);
+          return ([{message: `${ddl} command executed successfully!`}]);
+        }
+      } catch (err: any) {
+        if (cancelled || cancellationToken?.isCancellationRequested) {
+          throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+        }
+        Global.reportConnectionOutcome(connectionOptions.id, err);
+        this.logHistory(sql, connectionOptions, Date.now() - start, undefined, err?.message ?? String(err));
+        throw err;
+      }
     } finally {
-      this.client.detach(connection);
+      statusReg.dispose();
+      cancelReg?.dispose();
+      if (connection && !cancelled) {
+        try {
+          await this.client.detach(connection);
+        } catch {
+          // detach on already-cancelled connection
+        }
+      }
     }
   }
 
@@ -459,7 +523,8 @@ export class Driver {
    */
   public static async runBatch(
     sql?: string,
-    connectionOptions?: ConnectionOptions
+    connectionOptions?: ConnectionOptions,
+    cancellationToken?: CancellationToken
   ): Promise<BatchResult[]> {
     logger.debug("runBatch start...");
 
@@ -483,20 +548,66 @@ export class Driver {
       };
     }
 
+    if (cancellationToken?.isCancellationRequested) {
+      throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+    }
+
     logger.info(`Batch: executing ${statements.length} statement(s)...`);
 
-    let connection;
-    try {
-      connection = await this.client.createConnection(resolved.connectionOptions);
-    } catch (err: any) {
-      Global.reportConnectionOutcome(resolved.connectionOptions.id, err);
-      throw err;
-    }
-    const txOptions = buildTransactionOptions(getOptions());
-    const results: BatchResult[] = [];
+    const startOverall = Date.now();
+    let connection: any;
+    let cancelled = false;
+
+    const doCancel = async () => {
+      cancelled = true;
+      if (connection) {
+        try {
+          if (typeof connection.cancel === "function") {
+            connection.cancel();
+          } else if (typeof connection.cancelOperation === "function") {
+            await connection.cancelOperation(true);
+          }
+        } catch {
+          // ignore error during cancel request
+        }
+        try {
+          await this.client.detach(connection);
+        } catch {
+          // already closing
+        }
+      }
+    };
+
+    const cancelReg = cancellationToken?.onCancellationRequested(() => {
+      void doCancel();
+    });
+
+    const executionId = `${Date.now()}-${Math.random()}`;
+    const statusReg = QueryExecutionManager.getInstance().registerExecution({
+      id: executionId,
+      sql: resolved.sql,
+      startedAt: startOverall,
+      connectionOptions: { host: resolved.connectionOptions.host, database: resolved.connectionOptions.database },
+      cancel: doCancel
+    });
 
     try {
+      try {
+        connection = await this.client.createConnection(resolved.connectionOptions);
+      } catch (err: any) {
+        Global.reportConnectionOutcome(resolved.connectionOptions.id, err);
+        throw err;
+      }
+      if (cancelled || cancellationToken?.isCancellationRequested) {
+        throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+      }
+      const txOptions = buildTransactionOptions(getOptions());
+      const results: BatchResult[] = [];
+
       for (const statement of statements) {
+        if (cancelled || cancellationToken?.isCancellationRequested) {
+          throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+        }
         const stmt = statement.text;
         const range = { start: statement.start, end: statement.end };
         const position = positionAt(resolved.sql, statement.start);
@@ -533,6 +644,9 @@ export class Driver {
             this.logHistory(stmt, resolved.connectionOptions, durationMs);
           }
         } catch (err: any) {
+          if (cancelled || cancellationToken?.isCancellationRequested) {
+            throw { notify: false, cancelled: true, message: "Query was cancelled by user." };
+          }
           Global.reportConnectionOutcome(resolved.connectionOptions.id, err);
           const durationMs = Date.now() - start;
           const message = err?.message ?? String(err);
@@ -547,12 +661,20 @@ export class Driver {
           this.logHistory(stmt, resolved.connectionOptions, durationMs, undefined, err?.message ?? String(err));
         }
       }
-    } finally {
-      this.client.detach(connection);
-    }
 
-    logger.info(`Batch completed. ${results.length} result(s) ready.`);
-    return results;
+      logger.info(`Batch completed. ${results.length} result(s) ready.`);
+      return results;
+    } finally {
+      statusReg.dispose();
+      cancelReg?.dispose();
+      if (connection && !cancelled) {
+        try {
+          await this.client.detach(connection);
+        } catch {
+          // detach on already-cancelled connection
+        }
+      }
+    }
   }
 
   /**

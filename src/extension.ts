@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import {Global} from "./shared/global";
 import {CredentialStore} from "./shared/credential-store";
 import {logger} from "./logger/logger";
+import {QueryExecutionManager, truncateSql} from "./shared/query-execution-status";
 import {KeywordsDb} from "./language-server/db-words.provider";
 import QueryResultsView, {AnalyzeResultsRequest, AnalyzePlanRequest, ViewTableDiagramRequest, RevealStatementRequest} from "./result-view";
 import {SchemaDesigner} from "./schema-designer";
@@ -185,11 +186,13 @@ export function activate(context: ExtensionContext) {
   /* load configuration and reload every time it's changed */
   logger.info(`Loading configuration...`);
   let config: Options = getOptions();
+  QueryExecutionManager.getInstance().setEnabled(config.showQueryExecutionStatus);
   Driver.clientReady = Driver.setClient(config.useNativeDriver, context, poolingOptions(config));
   context.subscriptions.push(
     workspace.onDidChangeConfiguration(() => {
       logger.debug("Configuration changed. Reloading configuration...");
       config = getOptions();
+      QueryExecutionManager.getInstance().setEnabled(config.showQueryExecutionStatus);
       Driver.clientReady = Driver.setClient(config.useNativeDriver, context, poolingOptions(config));
       commands.executeCommand("firebird.explorer.refresh");
     })
@@ -987,8 +990,14 @@ export function activate(context: ExtensionContext) {
     const source = origin ?? (sql === undefined ? activeEditorSql() : undefined);
     lastBatchDocument = source?.document;
 
+    const taskTitle = source?.sql
+      ? `Query: ${truncateSql(source.sql, 40)}`
+      : (sql ? `Query: ${truncateSql(sql, 40)}` : "Executing Firebird query");
+    const taskHandle = taskTracker.start(taskTitle);
+
     Driver.runBatch(sql)
       .then(rawResults => {
+        taskHandle.complete();
         // Driver.runBatch() already logged each statement to session history
         // via the historyLogger registered above.
 
@@ -1012,6 +1021,12 @@ export function activate(context: ExtensionContext) {
       })
       .catch(error => {
         logger.error(error.message ?? error);
+        if (error.cancelled) {
+          taskHandle.fail("Cancelled by user");
+          logger.showInfo("Query execution cancelled.");
+          return;
+        }
+        taskHandle.fail(error.message ?? String(error));
         if (error.empty) {
           // Not a failure: there was simply nothing to run. Reported as a warning rather than an
           // error, and phrased for whichever of a selection or the whole file was actually empty
@@ -1044,6 +1059,16 @@ export function activate(context: ExtensionContext) {
         }
       });
   };
+
+  /* COMMAND: cancel in-flight query execution */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.cancelQuery", async () => {
+      const cancelled = await QueryExecutionManager.getInstance().cancelLatest();
+      if (!cancelled) {
+        logger.showInfo("No query is currently executing.");
+      }
+    })
+  );
 
   /* COMMAND: run document query (batch-aware) */
   context.subscriptions.push(
@@ -1205,12 +1230,22 @@ export function activate(context: ExtensionContext) {
       const {sql: positionalSql, paramNames: bindOrder} = rewriteNamedParametersToPositional(sql);
       const params = bindOrder.map(name => valuesByName.get(name));
 
+      const taskTitle = `Query: ${truncateSql(positionalSql, 40)}`;
+      const taskHandle = taskTracker.start(taskTitle);
+
       Driver.runQuery(positionalSql, Global.activeConnection, params)
         .then(result => {
+          taskHandle.complete();
           firebirdQueryResults.display(result, config.recordsPerPage);
         })
         .catch((err: any) => {
           logger.error(err?.message ?? err);
+          if (err?.cancelled) {
+            taskHandle.fail("Cancelled by user");
+            logger.showInfo("Query execution cancelled.");
+            return;
+          }
+          taskHandle.fail(err?.message ?? String(err));
           logger.showError(`Query failed: ${err?.message ?? err}`);
         });
     })

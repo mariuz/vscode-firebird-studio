@@ -56,8 +56,8 @@ export class PooledClient<K extends Firebird.Database | Attachment> implements C
     return this.inner;
   }
 
-  public queryPromise<T extends object>(connection: K, sql: string): Promise<T[]> {
-    return this.inner.queryPromise(connection, sql);
+  public queryPromise<T extends object>(connection: K, sql: string, args?: any[], txOptions?: any): Promise<T[]> {
+    return this.inner.queryPromise(connection, sql, args, txOptions);
   }
 
   public async createConnection(connectionOptions: ConnectionOptions): Promise<K> {

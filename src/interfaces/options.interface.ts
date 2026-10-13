@@ -56,4 +56,6 @@ export interface Options {
    * was unusable (kept so later slots don't shift — see `QuickQuerySlot`).
    */
   quickQueries: QuickQuerySlot[];
+  /** Show real-time query execution status indicator and timer in the status bar. */
+  showQueryExecutionStatus: boolean;
 }

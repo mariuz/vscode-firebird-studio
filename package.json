@@ -241,6 +241,12 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.cancelQuery",
+        "title": "Cancel Executing Query",
+        "icon": "$(x)",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.quickQuery.1",
         "title": "Run Quick Query 1",
         "category": "Firebird"
@@ -1168,6 +1174,11 @@
             },
             "additionalProperties": false
           }
+        },
+        "firebird.showQueryExecutionStatus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show query execution timer and status indicator in the status bar with cancellation support."
         }
       }
     },
@@ -1182,6 +1193,11 @@
         "key": "ctrl+shift+enter",
         "mac": "cmd+shift+enter",
         "when": "editorTextFocus && editorLangId == sql"
+      },
+      {
+        "command": "firebird.cancelQuery",
+        "key": "alt+pause",
+        "mac": "alt+pause"
       },
       {
         "command": "firebird.runParameterizedQuery",
