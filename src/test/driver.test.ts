@@ -1136,3 +1136,70 @@ suite('Driver – automatic history logging', function () {
     assert.strictEqual(logged.length, 0, 'nothing was actually executed, so nothing should be logged');
   });
 });
+
+suite('Driver.getTableIndexMetadata()', function () {
+  let originalClient: any;
+
+  setup(function () {
+    originalClient = Driver.client;
+  });
+
+  teardown(function () {
+    Driver.client = originalClient;
+  });
+
+  test('returns an empty array when table list is empty', async function () {
+    const res = await Driver.getTableIndexMetadata([]);
+    assert.deepStrictEqual(res, []);
+  });
+
+  test('queries index metadata and maps rows with trimming and boolean uniqueness', async function () {
+    const fake = new FakeClient(() => [
+      {
+        TABLE_NAME: 'EMP   ',
+        INDEX_NAME: 'PK_EMP   ',
+        FIELD_NAME: 'EMP_NO   ',
+        IS_UNIQUE: 1,
+      },
+      {
+        TABLE_NAME: 'EMP   ',
+        INDEX_NAME: 'IDX_NAME ',
+        FIELD_NAME: 'LAST_NAME',
+        IS_UNIQUE: 0,
+      },
+    ]);
+    Driver.client = fake;
+
+    const rows = await Driver.getTableIndexMetadata(['EMP'], baseConnectionOptions());
+
+    assert.strictEqual(fake.createConnectionCalls, 1);
+    assert.strictEqual(fake.detachCalls, 1);
+    assert.strictEqual(rows.length, 2);
+    assert.deepStrictEqual(rows[0], {
+      tableName: 'EMP',
+      indexName: 'PK_EMP',
+      fieldName: 'EMP_NO',
+      isUnique: true,
+    });
+    assert.deepStrictEqual(rows[1], {
+      tableName: 'EMP',
+      indexName: 'IDX_NAME',
+      fieldName: 'LAST_NAME',
+      isUnique: false,
+    });
+  });
+
+  test('detaches connection even when the query throws', async function () {
+    const fake = new FakeClient(() => {
+      throw new Error('connection lost');
+    });
+    Driver.client = fake;
+
+    await assert.rejects(
+      Driver.getTableIndexMetadata(['EMP'], baseConnectionOptions()),
+      /connection lost/
+    );
+    assert.strictEqual(fake.createConnectionCalls, 1);
+    assert.strictEqual(fake.detachCalls, 1);
+  });
+});

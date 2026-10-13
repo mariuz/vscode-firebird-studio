@@ -116,5 +116,42 @@ suite('result-view plan-view.js – instance isolation + pure-function parity (v
       const sorted = hooks.sortActualRows(rows, 'label', 'asc');
       assert.strictEqual(sorted.length, 1);
     });
+
+    test('findScanNodeByTable() finds matching scan node in plan tree', function () {
+      const scanNode = scan({ table: 'INVOICES' });
+      const found = hooks.findScanNodeByTable([scanNode], 'invoices');
+      assert.strictEqual(found, scanNode);
+    });
+  });
+
+  suite('missing-index hints banner', function () {
+    test('renders hints banner when hints are provided and clears on next empty show', function () {
+      const container = makeContainer();
+      const instance = FirebirdPlanView.create(container, {});
+
+      instance.show({
+        blocks: [scan({ table: 'EMP' })],
+        hints: [
+          {
+            table: 'EMP',
+            message: 'Suggestion (heuristic): Table EMP was scanned sequentially (NATURAL).',
+            existingIndexes: [],
+            hasNoIndexes: true,
+          },
+        ],
+      });
+
+      const banner = instance.__test__.dom.hintsBanner;
+      assert.ok(banner, 'expected hintsBanner in dom');
+      assert.strictEqual(banner.style.display, 'block');
+      assert.ok(banner.innerHTML.includes('Missing-Index Suggestion (heuristic)'));
+      assert.ok(banner.innerHTML.includes('EMP'));
+
+      // Showing a new plan without hints clears and hides the banner
+      instance.show({
+        blocks: [scan({ table: 'DEPT', method: 'INDEX', indexes: ['PK_DEPT'] })],
+      });
+      assert.strictEqual(banner.style.display, 'none');
+    });
   });
 });

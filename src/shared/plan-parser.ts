@@ -210,8 +210,145 @@ export const PLAN_FALLBACK_PREFIXES = [
   "-- No index information found",
 ];
 
+export interface IndexMetadataRow {
+  tableName: string;
+  indexName: string;
+  fieldName: string;
+  isUnique?: boolean;
+}
+
+export interface PlanIndexHint {
+  table: string;
+  message: string;
+  existingIndexes: string[];
+  hasNoIndexes: boolean;
+}
+
+/**
+ * Recursively extracts table names from plan nodes, distinguishing between all scanned tables
+ * and those scanned using NATURAL (unindexed sequential scan).
+ */
+export function extractScanTables(nodes: PlanNode[]): { all: string[]; natural: string[] } {
+  const allSet = new Set<string>();
+  const naturalSet = new Set<string>();
+
+  function walk(node: PlanNode): void {
+    if (node.kind === "scan") {
+      const name = node.table.toUpperCase();
+      allSet.add(name);
+      if (node.method === "NATURAL") {
+        naturalSet.add(name);
+      }
+    } else if (node.children) {
+      for (const child of node.children) {
+        walk(child);
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    walk(node);
+  }
+
+  return {
+    all: Array.from(allSet),
+    natural: Array.from(naturalSet),
+  };
+}
+
+/** Convenience helper returning uppercase table names that undergo a NATURAL scan. */
+export function extractNaturalScanTables(nodes: PlanNode[]): string[] {
+  return extractScanTables(nodes).natural;
+}
+
+/**
+ * Generates heuristic missing-index hints for tables scanned NATURAL in an execution plan.
+ *
+ * SQL Server surfaces missing-index DMVs directly within its plan XML; Firebird provides no
+ * such engine advice. Instead, this is an inference pairing two catalogue facts:
+ *   1. The plan chose NATURAL (sequential table scan) on table T.
+ *   2. The indexes table T currently carries in RDB$INDICES / RDB$INDEX_SEGMENTS.
+ *
+ * As such, this advice is explicitly labelled as a heuristic suggestion.
+ */
+export function generateIndexHints(
+  blocks: PlanNode[],
+  indexMetadata?: IndexMetadataRow[]
+): PlanIndexHint[] {
+  const naturalTables = extractNaturalScanTables(blocks);
+  if (naturalTables.length === 0) {
+    return [];
+  }
+
+  // If indexMetadata is not provided (e.g. offline plan file import or metadata query failure),
+  // emit a baseline heuristic suggestion noting the sequential scan.
+  if (!indexMetadata) {
+    return naturalTables.map(table => ({
+      table,
+      message: `Suggestion (heuristic): Table ${table} was scanned sequentially (NATURAL). Consider adding an index on columns used in WHERE or JOIN clauses if this table is large.`,
+      existingIndexes: [],
+      hasNoIndexes: false,
+    }));
+  }
+
+  // Index metadata is grouped by uppercase table name -> index name -> fields & uniqueness.
+  const tableMap = new Map<string, Map<string, { fields: string[]; isUnique: boolean }>>();
+  for (const row of indexMetadata) {
+    const tbl = (row.tableName ?? "").trim().toUpperCase();
+    if (!tbl) {
+      continue;
+    }
+    let idxMap = tableMap.get(tbl);
+    if (!idxMap) {
+      idxMap = new Map();
+      tableMap.set(tbl, idxMap);
+    }
+    const idxName = (row.indexName ?? "").trim();
+    if (!idxName) {
+      continue;
+    }
+    let entry = idxMap.get(idxName);
+    if (!entry) {
+      entry = { fields: [], isUnique: Boolean(row.isUnique) };
+      idxMap.set(idxName, entry);
+    }
+    const field = (row.fieldName ?? "").trim();
+    if (field && !entry.fields.includes(field)) {
+      entry.fields.push(field);
+    }
+  }
+
+  const hints: PlanIndexHint[] = [];
+  for (const table of naturalTables) {
+    const idxMap = tableMap.get(table);
+    if (!idxMap || idxMap.size === 0) {
+      hints.push({
+        table,
+        message: `Suggestion (heuristic): Table ${table} was scanned sequentially (NATURAL) and has no indexes in the database catalogue. If this table contains many rows, consider creating an index on columns used in WHERE or JOIN clauses.`,
+        existingIndexes: [],
+        hasNoIndexes: true,
+      });
+    } else {
+      const descriptions: string[] = [];
+      for (const [idxName, info] of idxMap) {
+        const fieldList = info.fields.join(", ");
+        const uniqSuffix = info.isUnique ? " [UNIQUE]" : "";
+        descriptions.push(`${idxName} (${fieldList})${uniqSuffix}`);
+      }
+      hints.push({
+        table,
+        message: `Suggestion (heuristic): Table ${table} was scanned sequentially (NATURAL). Existing index(es): ${descriptions.join(", ")}. If this table contains many rows, consider adding an index matching your query predicates, or verify why existing indexes were not selected.`,
+        existingIndexes: descriptions,
+        hasNoIndexes: false,
+      });
+    }
+  }
+
+  return hints;
+}
+
 export type PlanInterpretation =
-  | { blocks: PlanNode[]; raw: string }
+  | { blocks: PlanNode[]; raw: string; hints?: PlanIndexHint[] }
   | { error: string; raw: string };
 
 /**
@@ -222,7 +359,10 @@ export type PlanInterpretation =
  * result-view tab), so both surface identical errors for identical inputs instead of two
  * independently-drifting copies of the same three checks.
  */
-export function interpretPlanText(planText: string): PlanInterpretation {
+export function interpretPlanText(
+  planText: string,
+  indexMetadata?: IndexMetadataRow[]
+): PlanInterpretation {
   if (PLAN_FALLBACK_PREFIXES.some(prefix => planText.startsWith(prefix))) {
     return {
       error: 'Graphical plans need the native driver. Enable "firebird.useNativeDriver" in settings, then try again.',
@@ -230,7 +370,9 @@ export function interpretPlanText(planText: string): PlanInterpretation {
     };
   }
   try {
-    return { blocks: parsePlan(planText), raw: planText };
+    const blocks = parsePlan(planText);
+    const hints = generateIndexHints(blocks, indexMetadata);
+    return { blocks, raw: planText, hints };
   } catch (err: any) {
     return { error: `Couldn't parse the plan: ${err?.message ?? err}`, raw: planText };
   }

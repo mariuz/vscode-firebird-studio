@@ -239,4 +239,26 @@ suite('query-plan-view app.js – helpers (via __test__ hook)', function () {
       assert.deepStrictEqual(sorted.map((r: any) => r.openCount), [3, 2, 1]);
     });
   });
+
+  suite('findScanNodeByTable()', function () {
+    test('finds scan node by table name case-insensitively', function () {
+      const scanNode = scan({ table: 'CUSTOMERS' });
+      const found = hooks.findScanNodeByTable([scanNode], 'customers');
+      assert.strictEqual(found, scanNode);
+    });
+
+    test('recursively traverses children across joins', function () {
+      const nodeA = scan({ table: 'A' });
+      const nodeB = scan({ table: 'B' });
+      const join = { kind: 'JOIN', children: [nodeA, nodeB] };
+      const found = hooks.findScanNodeByTable([join], 'B');
+      assert.strictEqual(found, nodeB);
+    });
+
+    test('returns null when table is not found', function () {
+      const scanNode = scan({ table: 'CUSTOMERS' });
+      const found = hooks.findScanNodeByTable([scanNode], 'ORDERS');
+      assert.strictEqual(found, null);
+    });
+  });
 });

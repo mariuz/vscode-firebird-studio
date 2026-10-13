@@ -7,7 +7,15 @@
 
 import { renderIndexMetadataPlan } from '../shared/sql-analysis';
 import * as assert from 'assert';
-import { parsePlan, PlanNode, interpretPlanText } from '../shared/plan-parser';
+import {
+  parsePlan,
+  PlanNode,
+  interpretPlanText,
+  extractScanTables,
+  extractNaturalScanTables,
+  generateIndexHints,
+  IndexMetadataRow,
+} from '../shared/plan-parser';
 
 suite('parsePlan()', function () {
 
@@ -169,3 +177,98 @@ suite('interpretPlanText() — every pure-JS fallback shape is recognised', func
     });
   }
 });
+
+suite('extractScanTables() & extractNaturalScanTables()', function () {
+  test('returns empty lists for empty plan nodes', function () {
+    const res = extractScanTables([]);
+    assert.deepStrictEqual(res, { all: [], natural: [] });
+    assert.deepStrictEqual(extractNaturalScanTables([]), []);
+  });
+
+  test('extracts single natural scan table', function () {
+    const nodes = parsePlan('PLAN (EMP NATURAL)');
+    assert.deepStrictEqual(extractScanTables(nodes), { all: ['EMP'], natural: ['EMP'] });
+    assert.deepStrictEqual(extractNaturalScanTables(nodes), ['EMP']);
+  });
+
+  test('extracts index scan table and does not include in natural', function () {
+    const nodes = parsePlan('PLAN (EMP INDEX (PK_EMP))');
+    assert.deepStrictEqual(extractScanTables(nodes), { all: ['EMP'], natural: [] });
+    assert.deepStrictEqual(extractNaturalScanTables(nodes), []);
+  });
+
+  test('distinguishes natural and index scans across joins', function () {
+    const nodes = parsePlan('PLAN JOIN (D NATURAL, E INDEX (FK_EMP_DEPT))');
+    const res = extractScanTables(nodes);
+    assert.deepStrictEqual(res.all.sort(), ['D', 'E'].sort());
+    assert.deepStrictEqual(res.natural, ['D']);
+    assert.deepStrictEqual(extractNaturalScanTables(nodes), ['D']);
+  });
+
+  test('deduplicates tables referenced multiple times', function () {
+    const nodes = parsePlan('PLAN JOIN (D NATURAL, D NATURAL)');
+    assert.deepStrictEqual(extractNaturalScanTables(nodes), ['D']);
+  });
+});
+
+suite('generateIndexHints() & interpretPlanText() hints', function () {
+  test('returns empty array when plan has no natural scans', function () {
+    const nodes = parsePlan('PLAN (EMP INDEX (PK_EMP))');
+    const hints = generateIndexHints(nodes);
+    assert.deepStrictEqual(hints, []);
+  });
+
+  test('generates fallback heuristic message when index metadata is undefined (e.g. offline import)', function () {
+    const nodes = parsePlan('PLAN (EMP NATURAL)');
+    const hints = generateIndexHints(nodes);
+    assert.strictEqual(hints.length, 1);
+    assert.strictEqual(hints[0].table, 'EMP');
+    assert.ok(hints[0].message.includes('Suggestion (heuristic)'));
+    assert.ok(hints[0].message.includes('EMP was scanned sequentially (NATURAL)'));
+    assert.strictEqual(hints[0].hasNoIndexes, false);
+    assert.deepStrictEqual(hints[0].existingIndexes, []);
+  });
+
+  test('reports table has no indexes in catalogue when metadata has no entries for table', function () {
+    const nodes = parsePlan('PLAN (EMP NATURAL)');
+    const metadata: IndexMetadataRow[] = [];
+    const hints = generateIndexHints(nodes, metadata);
+    assert.strictEqual(hints.length, 1);
+    assert.strictEqual(hints[0].table, 'EMP');
+    assert.strictEqual(hints[0].hasNoIndexes, true);
+    assert.ok(hints[0].message.includes('has no indexes in the database catalogue'));
+    assert.deepStrictEqual(hints[0].existingIndexes, []);
+  });
+
+  test('summarizes existing indexes and fields when catalogue metadata is present', function () {
+    const nodes = parsePlan('PLAN (EMP NATURAL)');
+    const metadata: IndexMetadataRow[] = [
+      { tableName: 'EMP', indexName: 'PK_EMP', fieldName: 'EMP_NO', isUnique: true },
+      { tableName: 'EMP', indexName: 'IDX_EMP_NAME', fieldName: 'LAST_NAME', isUnique: false },
+      { tableName: 'EMP', indexName: 'IDX_EMP_NAME', fieldName: 'FIRST_NAME', isUnique: false },
+    ];
+    const hints = generateIndexHints(nodes, metadata);
+    assert.strictEqual(hints.length, 1);
+    assert.strictEqual(hints[0].table, 'EMP');
+    assert.strictEqual(hints[0].hasNoIndexes, false);
+    assert.strictEqual(hints[0].existingIndexes.length, 2);
+    assert.ok(hints[0].existingIndexes.includes('PK_EMP (EMP_NO) [UNIQUE]'));
+    assert.ok(hints[0].existingIndexes.includes('IDX_EMP_NAME (LAST_NAME, FIRST_NAME)'));
+    assert.ok(hints[0].message.includes('Existing index(es):'));
+    assert.ok(hints[0].message.includes('PK_EMP (EMP_NO) [UNIQUE]'));
+  });
+
+  test('interpretPlanText() includes hints in returned result', function () {
+    const metadata: IndexMetadataRow[] = [
+      { tableName: 'EMP', indexName: 'PK_EMP', fieldName: 'EMP_NO', isUnique: true },
+    ];
+    const result = interpretPlanText('PLAN (EMP NATURAL)', metadata);
+    assert.ok(!('error' in result));
+    if (!('error' in result)) {
+      assert.ok(result.hints);
+      assert.strictEqual(result.hints.length, 1);
+      assert.strictEqual(result.hints[0].table, 'EMP');
+    }
+  });
+});
+

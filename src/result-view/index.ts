@@ -9,7 +9,7 @@ import { getEngineMajorVersion } from "../shared/engine-version";
 import { Global } from "../shared/global";
 import { getPrimaryKeyColumnsQuery, buildFilteredTableQuery, ColumnFilter, ColumnSort } from "../shared/queries";
 import { RowChange, buildStatementForChange } from "../shared/row-edit";
-import { interpretPlanText, PlanInterpretation } from "../shared/plan-parser";
+import { interpretPlanText, PlanInterpretation, extractNaturalScanTables, IndexMetadataRow } from "../shared/plan-parser";
 import { ActualPlanNode } from "../shared/actual-plan";
 import { logger } from "../logger/logger";
 import { getOptions } from "../config";
@@ -418,7 +418,19 @@ export default class ResultView extends QueryResultsView implements Disposable {
     if (!result) {
       try {
         const planText = await Driver.getQueryPlan(sql);
-        result = interpretPlanText(planText);
+        let indexMetadata: IndexMetadataRow[] | undefined;
+        try {
+          const preliminary = interpretPlanText(planText);
+          if (!("error" in preliminary) && preliminary.blocks) {
+            const naturalTables = extractNaturalScanTables(preliminary.blocks);
+            if (naturalTables.length > 0) {
+              indexMetadata = await Driver.getTableIndexMetadata(naturalTables);
+            }
+          }
+        } catch {
+          // ignore metadata failure, fallback to heuristic hint without catalogue details
+        }
+        result = interpretPlanText(planText, indexMetadata);
       } catch (err: any) {
         result = { error: err?.message ?? String(err), raw: "" };
       }

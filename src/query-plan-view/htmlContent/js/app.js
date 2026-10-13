@@ -35,6 +35,7 @@
     detailHeading: document.getElementById("detail-heading"),
     detailBody: document.getElementById("detail-body"),
     rawOutput: document.getElementById("raw-output"),
+    hintsBanner: document.getElementById("hints-banner"),
   };
 
   const NODE_WIDTH = 170;
@@ -45,6 +46,7 @@
   const MAX_SCALE = 3;
 
   let blocks = [];
+  let hints = [];
   let rawText = "";
   let importedFrom = null;
   /** The underlying PlanNode currently selected -- stable across re-renders (unlike a layout-tree
@@ -122,6 +124,8 @@
       el.planTableBody.innerHTML = "";
       el.icicleChart.innerHTML = "";
       el.btnAnalyze.disabled = true;
+      hints = [];
+      renderHintsBanner([]);
       setStatus("");
       return;
     }
@@ -134,16 +138,68 @@
       el.planTableBody.innerHTML = "";
       el.icicleChart.innerHTML = "";
       el.btnAnalyze.disabled = true;
+      hints = [];
+      renderHintsBanner([]);
       setStatus("");
       return;
     }
     el.emptyBanner.style.display = "none";
+    hints = data.hints || [];
+    renderHintsBanner(hints);
     selectedNode = null;
     el.detailPanel.style.display = "none";
     el.btnAnalyze.disabled = false;
     applyViewMode();
     setStatus(`${blocks.length} plan block${blocks.length === 1 ? '' : 's'}` +
       (importedFrom ? ` — imported from ${fileBaseName(importedFrom)}` : ''));
+  }
+
+  function renderHintsBanner(hintsList) {
+    if (!el.hintsBanner) { return; }
+    if (!hintsList || hintsList.length === 0) {
+      el.hintsBanner.style.display = "none";
+      el.hintsBanner.innerHTML = "";
+      return;
+    }
+    el.hintsBanner.style.display = "block";
+    const title = hintsList.length === 1 ? "Missing-Index Suggestion (heuristic):" : "Missing-Index Suggestions (heuristic):";
+    let html = `<div class="hints-title"><span class="hints-icon">💡</span><span>${escapeHtml(title)}</span></div><ul class="hints-list">`;
+    for (const hint of hintsList) {
+      html += `<li class="hints-item" data-table="${escapeHtml(hint.table)}">`;
+      html += `<span class="hint-table">${escapeHtml(hint.table)}</span>: ${escapeHtml(hint.message)}`;
+      html += `</li>`;
+    }
+    html += `</ul>`;
+    el.hintsBanner.innerHTML = html;
+
+    const items = el.hintsBanner.querySelectorAll(".hints-item");
+    items.forEach(item => {
+      item.addEventListener("click", () => {
+        const tbl = item.dataset.table;
+        const matchingNode = findScanNodeByTable(blocks, tbl);
+        if (matchingNode) {
+          selectedNode = matchingNode;
+          showDetail(matchingNode);
+          if (viewMode === "diagram") { render(); }
+          else if (viewMode === "table") { renderTableView(); }
+          else if (viewMode === "icicle") { renderIcicleView(); }
+        }
+      });
+    });
+  }
+
+  function findScanNodeByTable(nodes, tableName) {
+    const target = String(tableName).toUpperCase();
+    for (const node of nodes) {
+      if (node.kind === "scan" && String(node.table).toUpperCase() === target) {
+        return node;
+      }
+      if (node.children) {
+        const found = findScanNodeByTable(node.children, target);
+        if (found) { return found; }
+      }
+    }
+    return null;
   }
 
   // ── Diagram / table / icicle view switching ──────────────────────────────
@@ -309,7 +365,17 @@
       const rows = [["Access method", node.method]];
       if (node.method === "INDEX") { rows.push(["Index(es)", node.indexes.join(", ")]); }
       if (node.method === "ORDER") { rows.push(["Ordered via", node.index]); }
-      if (node.method === "NATURAL") { rows.push(["Note", "Full table scan — consider adding an index if this table is large."]); }
+      if (node.method === "NATURAL") {
+        const hint = (hints || []).find(h => String(h.table).toUpperCase() === String(node.table).toUpperCase());
+        if (hint) {
+          rows.push(["Suggestion (heuristic)", hint.message]);
+          if (hint.existingIndexes && hint.existingIndexes.length > 0) {
+            rows.push(["Existing indexes", hint.existingIndexes.join(", ")]);
+          }
+        } else {
+          rows.push(["Note", "Full table scan — consider adding an index if this table is large."]);
+        }
+      }
       el.detailBody.innerHTML = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
     } else {
       el.detailHeading.textContent = node.kind;
@@ -753,6 +819,7 @@
       layoutForest, countLeaves, nodeLabel, scanMethodLabel,
       flattenBlocks, sortRows, icicleLayout,
       flattenActualPlan, sortActualRows,
+      findScanNodeByTable,
     };
   }
 })();

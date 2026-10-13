@@ -166,10 +166,13 @@ window.FirebirdPlanView = (function () {
     const rawOutput = el("pre", "fb-plan-raw-output");
     rawOutput.style.display = "none";
 
-    container.append(toolbar, main, rawOutput);
+    const hintsBanner = el("div", "fb-plan-hints-banner");
+    hintsBanner.style.display = "none";
+
+    container.append(toolbar, hintsBanner, main, rawOutput);
 
     return {
-      markerId, toolbar, btnFit, btnZoomOut, btnZoomIn, viewModeBtns, btnToggleRaw, btnAnalyze, status,
+      markerId, toolbar, hintsBanner, btnFit, btnZoomOut, btnZoomIn, viewModeBtns, btnToggleRaw, btnAnalyze, status,
       canvasWrapper, svg, viewport, edgesLayer, nodesLayer,
       tableWrapper, tbody, headerCells,
       icicleWrapper, icicleChart,
@@ -185,6 +188,7 @@ window.FirebirdPlanView = (function () {
 
     // ── Per-instance state ────────────────────────────────────────────────────
     let blocks = [];
+    let hints = [];
     let rawText = "";
     let selectedNode = null;
     let viewMode = "diagram"; // "diagram" | "table" | "icicle" | "actual"
@@ -354,7 +358,17 @@ window.FirebirdPlanView = (function () {
         const rows = [["Access method", node.method]];
         if (node.method === "INDEX") { rows.push(["Index(es)", node.indexes.join(", ")]); }
         if (node.method === "ORDER") { rows.push(["Ordered via", node.index]); }
-        if (node.method === "NATURAL") { rows.push(["Note", "Full table scan — consider adding an index if this table is large."]); }
+        if (node.method === "NATURAL") {
+          const hint = (hints || []).find(h => String(h.table).toUpperCase() === String(node.table).toUpperCase());
+          if (hint) {
+            rows.push(["Suggestion (heuristic)", hint.message]);
+            if (hint.existingIndexes && hint.existingIndexes.length > 0) {
+              rows.push(["Existing indexes", hint.existingIndexes.join(", ")]);
+            }
+          } else {
+            rows.push(["Note", "Full table scan — consider adding an index if this table is large."]);
+          }
+        }
         dom.detailBody.innerHTML = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join("");
       } else {
         dom.detailHeading.textContent = node.kind;
@@ -796,9 +810,59 @@ window.FirebirdPlanView = (function () {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
+    function renderHintsBanner(hintsList) {
+      if (!dom.hintsBanner) { return; }
+      if (!hintsList || hintsList.length === 0) {
+        dom.hintsBanner.style.display = "none";
+        dom.hintsBanner.innerHTML = "";
+        return;
+      }
+      dom.hintsBanner.style.display = "block";
+      const title = hintsList.length === 1 ? "Missing-Index Suggestion (heuristic):" : "Missing-Index Suggestions (heuristic):";
+      let html = `<div class="fb-plan-hints-title"><span class="fb-plan-hints-icon">💡</span><span>${escapeHtml(title)}</span></div><ul class="fb-plan-hints-list">`;
+      for (const hint of hintsList) {
+        html += `<li class="fb-plan-hints-item" data-table="${escapeHtml(hint.table)}">`;
+        html += `<span class="fb-plan-hint-table">${escapeHtml(hint.table)}</span>: ${escapeHtml(hint.message)}`;
+        html += `</li>`;
+      }
+      html += `</ul>`;
+      dom.hintsBanner.innerHTML = html;
+
+      const items = dom.hintsBanner.querySelectorAll(".fb-plan-hints-item");
+      items.forEach(item => {
+        item.addEventListener("click", () => {
+          const tbl = item.dataset.table;
+          const matchingNode = findScanNodeByTable(blocks, tbl);
+          if (matchingNode) {
+            selectedNode = matchingNode;
+            showDetail(matchingNode);
+            if (viewMode === "diagram") { render(); }
+            else if (viewMode === "table") { renderTableView(); }
+            else if (viewMode === "icicle") { renderIcicleView(); }
+          }
+        });
+      });
+    }
+
+    function findScanNodeByTable(nodes, tableName) {
+      const target = String(tableName).toUpperCase();
+      for (const node of nodes) {
+        if (node.kind === "scan" && String(node.table).toUpperCase() === target) {
+          return node;
+        }
+        if (node.children) {
+          const found = findScanNodeByTable(node.children, target);
+          if (found) { return found; }
+        }
+      }
+      return null;
+    }
+
     function showLoading() {
       dom.errorBanner.style.display = "none";
       dom.emptyBanner.style.display = "none";
+      dom.hintsBanner.style.display = "none";
+      dom.hintsBanner.innerHTML = "";
       clearDiagram();
       dom.tbody.innerHTML = "";
       dom.icicleChart.innerHTML = "";
@@ -813,6 +877,8 @@ window.FirebirdPlanView = (function () {
         dom.errorBanner.textContent = data.error;
         dom.errorBanner.style.display = "block";
         dom.emptyBanner.style.display = "none";
+        dom.hintsBanner.style.display = "none";
+        dom.hintsBanner.innerHTML = "";
         clearDiagram();
         dom.tbody.innerHTML = "";
         dom.icicleChart.innerHTML = "";
@@ -825,6 +891,8 @@ window.FirebirdPlanView = (function () {
       blocks = data.blocks || [];
       if (blocks.length === 0) {
         dom.emptyBanner.style.display = "block";
+        dom.hintsBanner.style.display = "none";
+        dom.hintsBanner.innerHTML = "";
         clearDiagram();
         dom.tbody.innerHTML = "";
         dom.icicleChart.innerHTML = "";
@@ -833,6 +901,8 @@ window.FirebirdPlanView = (function () {
         return;
       }
       dom.emptyBanner.style.display = "none";
+      hints = data.hints || [];
+      renderHintsBanner(hints);
       selectedNode = null;
       dom.detailPanel.style.display = "none";
       dom.btnAnalyze.disabled = false;
@@ -844,7 +914,7 @@ window.FirebirdPlanView = (function () {
       show, showLoading,
       __test__: {
         flattenBlocks, sortRows, layoutForest, countLeaves, nodeLabel, scanMethodLabel, icicleLayout,
-        flattenActualPlan, sortActualRows,
+        flattenActualPlan, sortActualRows, findScanNodeByTable, dom,
       },
     };
   }

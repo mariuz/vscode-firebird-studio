@@ -4,7 +4,7 @@ import { readFile } from "fs/promises";
 import { QueryResultsView, Message } from "../result-view/queryResultsView";
 import { ConnectionOptions } from "../interfaces";
 import { Driver } from "../shared/driver";
-import { interpretPlanText } from "../shared/plan-parser";
+import { interpretPlanText, extractNaturalScanTables, IndexMetadataRow } from "../shared/plan-parser";
 import { logger } from "../logger/logger";
 
 /**
@@ -78,7 +78,19 @@ export class QueryPlanView extends QueryResultsView implements vscode.Disposable
       this.send({ command: "planData", data: { error: message } });
       return;
     }
-    this.parseAndSend(planText);
+    let indexMetadata: IndexMetadataRow[] | undefined;
+    try {
+      const parsed = interpretPlanText(planText);
+      if (!("error" in parsed) && parsed.blocks) {
+        const naturalTables = extractNaturalScanTables(parsed.blocks);
+        if (naturalTables.length > 0) {
+          indexMetadata = await Driver.getTableIndexMetadata(naturalTables, this.dbDetails);
+        }
+      }
+    } catch (err: any) {
+      logger.warn(`Failed to fetch index metadata for plan hints: ${err?.message ?? err}`);
+    }
+    this.parseAndSend(planText, undefined, indexMetadata);
   }
 
   /**
@@ -107,7 +119,21 @@ export class QueryPlanView extends QueryResultsView implements vscode.Disposable
       this.send({ command: "planData", data: { error: `Couldn't read the file: ${message}` } });
       return;
     }
-    this.parseAndSend(planText, filePath);
+    let indexMetadata: IndexMetadataRow[] | undefined;
+    if (this.dbDetails) {
+      try {
+        const parsed = interpretPlanText(planText);
+        if (!("error" in parsed) && parsed.blocks) {
+          const naturalTables = extractNaturalScanTables(parsed.blocks);
+          if (naturalTables.length > 0) {
+            indexMetadata = await Driver.getTableIndexMetadata(naturalTables, this.dbDetails);
+          }
+        }
+      } catch (err: any) {
+        logger.warn(`Failed to fetch index metadata for imported plan: ${err?.message ?? err}`);
+      }
+    }
+    this.parseAndSend(planText, filePath, indexMetadata);
   }
 
   /**
@@ -128,14 +154,14 @@ export class QueryPlanView extends QueryResultsView implements vscode.Disposable
   }
 
   /** Shared by both a live fetch and a file import: fallback-text detection, parsing, and error reporting. */
-  private parseAndSend(planText: string, importedFrom?: string): void {
-    const result = interpretPlanText(planText);
+  private parseAndSend(planText: string, importedFrom?: string, indexMetadata?: IndexMetadataRow[]): void {
+    const result = interpretPlanText(planText, indexMetadata);
     if ("error" in result) {
       this.lastRawPlan = undefined;
       this.send({ command: "planData", data: { error: result.error, raw: result.raw } });
       return;
     }
     this.lastRawPlan = result.raw;
-    this.send({ command: "planData", data: { blocks: result.blocks, raw: result.raw, importedFrom } });
+    this.send({ command: "planData", data: { blocks: result.blocks, raw: result.raw, hints: result.hints, importedFrom } });
   }
 }

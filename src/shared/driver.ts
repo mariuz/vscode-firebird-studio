@@ -20,6 +20,7 @@ import {
   startProfilerSessionQuery, flushProfilerQuery, finishProfilerSessionQuery, profiledStatementIdQuery,
   profilerRecordSourcesQuery, profilerRecordSourceStatsQuery, cleanupProfilerSessionQuery,
 } from './actual-plan';
+import { IndexMetadataRow } from './plan-parser';
 import * as fs from 'fs';
 import path = require('path');
 
@@ -712,6 +713,37 @@ export class Driver {
       return renderIndexMetadataPlan(stmt, tables, rows);
     } finally {
       this.client.detach(connection);
+    }
+  }
+
+  /**
+   * Fetches index definitions from RDB$INDICES and RDB$INDEX_SEGMENTS for the given table names,
+   * returning segment rows ordered by table, index, and field position.
+   */
+  public static async getTableIndexMetadata(
+    tables: string[],
+    connectionOptions?: ConnectionOptions
+  ): Promise<IndexMetadataRow[]> {
+    if (!tables || tables.length === 0) {
+      return [];
+    }
+    const upperTables = Array.from(new Set(tables.map(t => (t ?? "").trim().toUpperCase()))).filter(Boolean);
+    if (upperTables.length === 0) {
+      return [];
+    }
+    const resolved = await this.resolveSqlAndConnection("SELECT 1 FROM RDB$DATABASE", connectionOptions);
+    const metaSql = buildIndexMetadataQuery(upperTables);
+    const connection = await this.client.createConnection(resolved.connectionOptions);
+    try {
+      const rows: any[] = await this.client.queryPromise(connection, metaSql, upperTables);
+      return (rows || []).map(r => ({
+        tableName: (r.TABLE_NAME ?? "").trim(),
+        indexName: (r.INDEX_NAME ?? "").trim(),
+        fieldName: (r.FIELD_NAME ?? "").trim(),
+        isUnique: Boolean(r.IS_UNIQUE),
+      }));
+    } finally {
+      await this.client.detach(connection);
     }
   }
 
