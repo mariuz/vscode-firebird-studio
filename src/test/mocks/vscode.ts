@@ -13,6 +13,13 @@ export enum DiagnosticSeverity {
   Hint = 3,
 }
 
+// ── ProgressLocation ──────────────────────────────────────────────────────────
+export enum ProgressLocation {
+  SourceControl = 1,
+  Window = 10,
+  Notification = 15,
+}
+
 // ── Position ──────────────────────────────────────────────────────────────────
 export class Position {
   constructor(public readonly line: number, public readonly character: number) {}
@@ -133,6 +140,10 @@ export const workspace = {
   }),
   workspaceFolders: undefined as { name: string; uri: { fsPath: string } }[] | undefined,
   textDocuments: [] as any[],
+  openTextDocument: (options?: any) => Promise.resolve({
+    uri: { fsPath: "untitled:mock.md", toString: () => "untitled:mock.md" },
+    getText: () => typeof options === "object" && options.content ? options.content : "",
+  }),
   getConfiguration: (_section?: string) => ({
     get: (_key: string, defaultValue?: any) => defaultValue,
     has: (_key: string) => false,
@@ -159,6 +170,10 @@ export const window = {
   showInformationMessage: (_msg: string, ..._rest: any[]) => Promise.resolve(undefined),
   showWarningMessage: (_msg: string, ..._rest: any[]) => Promise.resolve(undefined),
   showErrorMessage: (_msg: string, ..._rest: any[]) => Promise.resolve(undefined),
+  showTextDocument: (_doc: any, ..._rest: any[]) => Promise.resolve(undefined),
+  withProgress: <R>(_options: any, task: (progress: { report: (val: any) => void }, token: any) => Promise<R>): Promise<R> => {
+    return task({ report: () => {} }, { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) });
+  },
   createStatusBarItem: (_alignment?: any, _priority?: number) => ({
     text: '',
     tooltip: '',

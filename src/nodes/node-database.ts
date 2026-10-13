@@ -14,6 +14,7 @@ import {logger} from "../logger/logger";
 import {getDatabaseFileName} from "../shared/utils";
 import {getObjectFilter, matchesObjectFilter} from "../shared/object-explorer-filter";
 import {buildConnectionString, ConnectionStringFormat} from "../shared/connection-string";
+import {showConnectionDiagnostics} from "../shared/connection-diagnostics";
 import {connectionWizard} from "../shared/connection-wizard";
 import {TaskTracker} from "../task-panel/task-tracker";
 import {buildBackupFlags, BackupFlagChoices, buildRestoreArgs, renderGbakCommand, RestoreFlagChoices, RestoreMode, RESTORE_PAGE_SIZES, buildParallelFlag, parseMaxParallelWorkers, buildMultiFileTargets, isValidVolumeSize} from "../shared/gbak-options";
@@ -786,6 +787,16 @@ export class NodeDatabase implements FirebirdTree {
     const text = buildConnectionString(this.dbDetails, chosenFormat);
     await env.clipboard.writeText(text);
     logger.showInfo(`Connection string (${chosenFormat}) copied to clipboard (password not included).`);
+  }
+
+  /**
+   * "Diagnose Connection" (docs/roadmap/connection-diagnostics.md).
+   * Runs a step-by-step latency breakdown probe (DNS, TCP, wire protocol, query ping)
+   * and displays a visual report.
+   */
+  public async diagnoseConnection(): Promise<void> {
+    const resolved = await this.resolvedDetails();
+    await showConnectionDiagnostics(resolved);
   }
 
   /**

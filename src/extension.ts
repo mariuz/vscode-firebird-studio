@@ -799,6 +799,23 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* DB ITEM: run connection diagnostics & latency breakdown */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.connection.diagnose", async (arg?: NodeDatabase | ConnectionOptions) => {
+      let node: NodeDatabase | undefined;
+      if (arg && "diagnoseConnection" in arg) {
+        node = arg as NodeDatabase;
+      } else if (arg && "database" in arg) {
+        node = new NodeDatabase(arg as ConnectionOptions);
+      } else {
+        node = await resolveDatabaseNode(arg as NodeDatabase);
+      }
+      if (node) {
+        await node.diagnoseConnection().catch((err: any) => logger.error(err));
+      }
+    })
+  );
+
   /* DB ITEM: choose active database */
   context.subscriptions.push(
     commands.registerCommand("firebird.chooseActive", () => {

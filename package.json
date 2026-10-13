@@ -576,6 +576,11 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.connection.diagnose",
+        "title": "Diagnose Connection...",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.database.setSshTunnelPassword",
         "title": "Set SSH Tunnel Password",
         "category": "Firebird"
@@ -1631,6 +1636,11 @@
           "command": "firebird.database.copyConnectionString",
           "when": "view == firebird-explorer && viewItem =~ /^database/",
           "group": "manage@8"
+        },
+        {
+          "command": "firebird.connection.diagnose",
+          "when": "view == firebird-explorer && viewItem =~ /^database/",
+          "group": "manage@9"
         },
         {
           "command": "firebird.database.visualBackupRestoreWizard",

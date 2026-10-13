@@ -66,6 +66,7 @@ suite('Extension Host – roadmap feature commands', function () {
   this.timeout(10000);
 
   const roadmapCommands: Record<string, string[]> = {
+    'connection-diagnostics.md': ['firebird.connection.diagnose'],
     'connection-management-enhancements.md': ['firebird.database.copyConnectionString', 'firebird.database.editConnection', 'firebird.tasks.clearCompleted'],
     'cross-extension-connection-api.md': [
       'firebird.connectionSharing.listConnections', 'firebird.connectionSharing.getActiveConnection',

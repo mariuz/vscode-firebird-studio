@@ -21,6 +21,7 @@
     "src/shared/sql-analysis.ts",
     "src/shared/sql-formatter.ts",
     "src/shared/changelog-notice.ts",
+    "src/shared/connection-diagnostics.ts",
     "src/shared/object-explorer-filter.ts",
     "src/shared/parameterized-query.ts",
     "src/shared/sql-linter.ts",
