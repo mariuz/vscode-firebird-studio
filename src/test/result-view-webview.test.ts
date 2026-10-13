@@ -132,12 +132,25 @@ suite('result-view app.js – pure helpers (via __test__ hook)', function () {
       assert.strictEqual(hooks.parseShortcut('cmd+k').meta, true);
       assert.strictEqual(hooks.parseShortcut('win+k').meta, true);
     });
+
+    test('parses ctrl+insert and ctrlcmd+insert as alternative copy combos', function () {
+      assert.deepStrictEqual(hooks.parseShortcut('ctrl+insert'), { key: 'insert', ctrl: true, alt: false, shift: false, meta: false });
+      const parsed = hooks.parseShortcut('ctrlcmd+insert');
+      assert.strictEqual(parsed.key, 'insert');
+      assert.strictEqual(parsed.ctrl, true);
+    });
   });
 
   suite('matchesShortcut()', function () {
     test('matches an event whose key/modifiers exactly match the parsed combo', function () {
       const parsed = hooks.parseShortcut('ctrl+alt+g');
       const event = { key: 'g', ctrlKey: true, altKey: true, shiftKey: false, metaKey: false };
+      assert.strictEqual(hooks.matchesShortcut(event, parsed), true);
+    });
+
+    test('matches Ctrl+Insert event for alternative copy', function () {
+      const parsed = hooks.parseShortcut('ctrl+insert');
+      const event = { key: 'Insert', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false };
       assert.strictEqual(hooks.matchesShortcut(event, parsed), true);
     });
 
@@ -415,6 +428,20 @@ suite('result-view app.js – pure helpers (via __test__ hook)', function () {
         { error: 'boom', durationMs: 1, position: { line: 3, column: 1 }, errorPosition: { line: 5, column: 9 } },
       ]);
       assert.deepStrictEqual(rows[0].position, { line: 5, column: 9 });
+    });
+
+    test('quiets successful statements when showBatch is false (firebird.results.showBatchMessages)', function () {
+      const allRows = hooks.buildMessageRows(results, true);
+      assert.strictEqual(allRows.length, 3);
+      const quietRows = hooks.buildMessageRows(results, false);
+      assert.strictEqual(quietRows.length, 1);
+      assert.strictEqual(quietRows[0].failed, true);
+      assert.strictEqual(quietRows[0].statement, 3);
+    });
+
+    test('returns empty array when showBatch is false on a batch with no errors', function () {
+      const quietRows = hooks.buildMessageRows(results.slice(0, 2), false);
+      assert.deepStrictEqual(quietRows, []);
     });
 
     test('summarizes the run, naming failures rather than leaving them to be counted', function () {

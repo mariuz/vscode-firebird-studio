@@ -56,6 +56,11 @@ export interface Options {
    * was unusable (kept so later slots don't shift — see `QuickQuerySlot`).
    */
   quickQueries: QuickQuerySlot[];
+  /** Freeze the first column by default in query result grids. */
+  freezeFirstColumnByDefault: boolean;
+  /** Show per-statement lifecycle messages in the Messages pane after a batch run. */
+  showBatchMessages: boolean;
   /** Show real-time query execution status indicator and timer in the status bar. */
   showQueryExecutionStatus: boolean;
 }
+

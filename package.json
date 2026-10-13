@@ -930,10 +930,20 @@
           "default": "",
           "markdownDescription": "Font family for the **Query Results** grid, mirroring vscode-mssql's `mssql.resultsFontFamily`. Empty uses the webview's own default font."
         },
+        "firebird.resultsGrid.freezeFirstColumnByDefault": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Freeze the first column by default in query result grids, mirroring vscode-mssql's `mssql.resultsGrid.freezeFirstColumnByDefault`. The first column stays pinned to the left when scrolling horizontally."
+        },
+        "firebird.results.showBatchMessages": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show per-statement lifecycle messages in the **Messages** pane after running a batch, mirroring vscode-mssql's `mssql.results.showBatchMessages`. When disabled, successful statement notices are quieted and only errors/failures are listed."
+        },
         "firebird.shortcuts": {
           "type": "object",
           "default": {},
-          "markdownDescription": "Keyboard shortcuts for actions inside the **Query Results** webview (grid editing, freeze column, copy selection as SQL) — mirroring vscode-mssql's `mssql.shortcuts`. These only take effect while a result grid has focus, and use `ctrlcmd`/`+`-joined combo syntax (e.g. `\"ctrlcmd+alt+i\"`, where `ctrlcmd` means Ctrl on Windows/Linux and Cmd on macOS), not VS Code's own keybindings.json syntax. Omitted keys keep their default combo; set a key to `\"\"` to disable it. Available keys and their defaults:\n- `event.toggleEditing`: `ctrlcmd+alt+g`\n- `event.addRow`: `ctrlcmd+alt+n`\n- `event.applyChanges`: `ctrlcmd+alt+s`\n- `event.toggleFreezeColumn`: `ctrlcmd+alt+z`\n- `event.copyAsInsert`: `ctrlcmd+alt+i`\n- `event.copyAsInClause`: `ctrlcmd+alt+k`\n- `event.copyAsMarkdown`: `ctrlcmd+alt+m`",
+          "markdownDescription": "Keyboard shortcuts for actions inside the **Query Results** webview (grid editing, freeze column, copy selection as SQL) — mirroring vscode-mssql's `mssql.shortcuts`. These only take effect while a result grid has focus, and use `ctrlcmd`/`+`-joined combo syntax (e.g. `\"ctrlcmd+alt+i\"`, where `ctrlcmd` means Ctrl on Windows/Linux and Cmd on macOS), not VS Code's own keybindings.json syntax. Omitted keys keep their default combo; set a key to `\"\"` to disable it. Available keys and their defaults:\n- `event.toggleEditing`: `ctrlcmd+alt+g`\n- `event.addRow`: `ctrlcmd+alt+n`\n- `event.applyChanges`: `ctrlcmd+alt+s`\n- `event.toggleFreezeColumn`: `ctrlcmd+alt+z`\n- `event.copySelection`: `ctrlcmd+c` (with `Ctrl+Insert` supported as an alternative Copy)\n- `event.copyAsInsert`: `ctrlcmd+alt+i`\n- `event.copyAsInClause`: `ctrlcmd+alt+k`\n- `event.copyAsMarkdown`: `ctrlcmd+alt+m`",
           "additionalProperties": {
             "type": "string"
           }

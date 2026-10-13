@@ -36,6 +36,8 @@ export function getOptions() {
     messagesIncludeTimestamps: _messagesIncludeTimestamps(),
     resultsFontSize: _resultsFontSize(),
     resultsFontFamily: _resultsFontFamily(),
+    freezeFirstColumnByDefault: _freezeFirstColumnByDefault(),
+    showBatchMessages: _showBatchMessages(),
     quickQueries: _quickQueries(),
     showQueryExecutionStatus: _showQueryExecutionStatus()
   } as Options;
@@ -53,6 +55,7 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
   "event.addRow": "ctrlcmd+alt+n",
   "event.applyChanges": "ctrlcmd+alt+s",
   "event.toggleFreezeColumn": "ctrlcmd+alt+z",
+  "event.copySelection": "ctrlcmd+c",
   "event.copyAsInsert": "ctrlcmd+alt+i",
   "event.copyAsInClause": "ctrlcmd+alt+k",
   "event.copyAsMarkdown": "ctrlcmd+alt+m",
@@ -325,6 +328,16 @@ function _resultsFontSize(): number {
 function _resultsFontFamily(): string {
   const conf: any = getConfig().get("resultsFontFamily");
   return typeof conf === "string" ? conf : "";
+}
+
+function _freezeFirstColumnByDefault(): boolean {
+  const conf: any = getConfig().get("resultsGrid.freezeFirstColumnByDefault");
+  return typeof conf === "boolean" ? conf : properties["firebird.resultsGrid.freezeFirstColumnByDefault"]["default"];
+}
+
+function _showBatchMessages(): boolean {
+  const conf: any = getConfig().get("results.showBatchMessages");
+  return typeof conf === "boolean" ? conf : properties["firebird.results.showBatchMessages"]["default"];
 }
 
 /**

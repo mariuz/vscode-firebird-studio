@@ -40,7 +40,9 @@ $(() => {
   // toggling either takes effect on the next run rather than on the next window.
   let messagesDefaultOpen = false;
   let messagesIncludeTimestamps = true;
-  const tableActions = {}; // tableId -> { toggleEdit, addRow, apply, freeze, copyInsert, copyIn }
+  let showBatchMessages = true;
+  let freezeFirstColumnByDefault = false;
+  const tableActions = {}; // tableId -> { toggleEdit, addRow, apply, freeze, copySelection, copyInsert, copyIn, copyMarkdown }
 
   // ── Grid font customization (firebird.resultsFontSize/resultsFontFamily, mirroring
   // vscode-mssql's mssql.resultsFontSize/resultsFontFamily) ──────────────────────────────
@@ -56,12 +58,27 @@ $(() => {
 
   $(document).on("keydown", event => {
     if (!activeTableId || !tableActions[activeTableId]) { return; }
+    const target = event.target;
+    const isEditingText = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+    if (isEditingText) { return; }
+
     const actions = tableActions[activeTableId];
+
+    // Ctrl+Insert as an alternative Copy (mirroring vscode-mssql #22795)
+    const copyShortcut = shortcuts["event.copySelection"];
+    const isCtrlInsert = (event.key || "").toLowerCase() === "insert" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    if (isCtrlInsert && copyShortcut !== "") {
+      event.preventDefault();
+      actions.copySelection();
+      return;
+    }
+
     const bindings = [
       ["event.toggleEditing", actions.toggleEdit],
       ["event.addRow", actions.addRow],
       ["event.applyChanges", actions.apply],
       ["event.toggleFreezeColumn", actions.freeze],
+      ["event.copySelection", actions.copySelection],
       ["event.copyAsInsert", actions.copyInsert],
       ["event.copyAsInClause", actions.copyIn],
       ["event.copyAsMarkdown", actions.copyMarkdown],
@@ -85,6 +102,8 @@ $(() => {
       revealable = msg.data.revealable === true;
       messagesDefaultOpen = msg.data.messagesDefaultOpen === true;
       messagesIncludeTimestamps = msg.data.messagesIncludeTimestamps !== false;
+      showBatchMessages = msg.data.showBatchMessages !== false;
+      freezeFirstColumnByDefault = msg.data.freezeFirstColumnByDefault === true;
       renderBatch(msg.data.results, msg.data.recordsPerPage);
       $("body").addClass("loaded");
       return;
@@ -95,6 +114,7 @@ $(() => {
       shortcuts = data.shortcuts || {};
       applyResultsFont(data.resultsFontSize, data.resultsFontFamily);
       activeTableId = null;
+      freezeFirstColumnByDefault = data.freezeFirstColumnByDefault === true;
       if (data.tableBody && data.tableBody.length) {
         $("#zero-results").hide();
         showData(data);
@@ -156,8 +176,8 @@ $(() => {
   }
 
   /** One row per statement, in the order they ran — the model behind both the pane and Copy All. */
-  function buildMessageRows(results) {
-    return (results || []).map((r, i) => ({
+  function buildMessageRows(results, showBatch = true) {
+    const rows = (results || []).map((r, i) => ({
       index: i,
       time: formatMessageTime(r.startedAt),
       statement: i + 1,
@@ -167,6 +187,10 @@ $(() => {
       failed: !!r.error,
       position: r.errorPosition || r.position || null,
     }));
+    if (showBatch === false) {
+      return rows.filter(r => r.failed);
+    }
+    return rows;
   }
 
   /**
@@ -243,7 +267,8 @@ $(() => {
 
   /** The Messages panel: a summary line, a Copy All button, and one row per statement. */
   function buildMessagesPanel(results) {
-    const rows = buildMessageRows(results);
+    const allRows = buildMessageRows(results, true);
+    const rows = showBatchMessages ? allRows : buildMessageRows(results, false);
     const $panel = $("<div>").addClass("batch-panel").attr("id", "panel-messages");
 
     const $toolbar = $("<div>").addClass("messages-toolbar");
@@ -253,8 +278,13 @@ $(() => {
       copyToClipboard(buildMessagesText(rows, messagesIncludeTimestamps));
       $status.text(`Copied ${rows.length} message(s) to the clipboard.`);
     });
-    $toolbar.append($("<span>").addClass("messages-summary").text(summarizeMessages(rows)), $copyAll, $status);
+    $toolbar.append($("<span>").addClass("messages-summary").text(summarizeMessages(allRows)), $copyAll, $status);
     $panel.append($toolbar);
+
+    if (!showBatchMessages && allRows.length > 0 && rows.length === 0) {
+      $panel.append($("<div>").addClass("result-message").text("Per-statement messages quieted — all statements completed without errors."));
+      return $panel;
+    }
 
     const $list = $("<table>").addClass("messages-list");
     rows.forEach(row => {
@@ -425,6 +455,11 @@ $(() => {
     const $selectionStats = $("<span>").addClass("selection-stats");
     const $status       = $("<span>").addClass("edit-status");
     $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $viewDiagram, $copyInsert, $copyInClause, $copyMarkdown, $chartToggle, $textViewToggle, $selectionStats);
+
+    if (freezeFirstColumnByDefault) {
+      $wrapper.addClass("fb-frozen");
+      $freezeToggle.addClass("active").text("❄ Unfreeze Column");
+    }
 
     // "🤖 Analyze" and "🧭 Query Plan" only make sense when we actually know the SQL that produced
     // this result set (the single/legacy display() path — predefined actions like Show Table Info
@@ -818,6 +853,7 @@ $(() => {
         $menu.append($item);
       };
 
+      addMenuItem("📋 Copy (TSV)", () => copyGridSelection());
       addMenuItem("📋 Copy as Markdown Table", () => $copyMarkdown.trigger("click"));
       addMenuItem("📋 Copy as INSERT", () => $copyInsert.trigger("click"));
       addMenuItem("📋 Copy as IN (...)", () => $copyInClause.trigger("click"));
@@ -1005,6 +1041,18 @@ $(() => {
 
     // ── Freeze column / copy selection ────────────────────────────────────────
 
+    function copyGridSelection() {
+      const sel = getSelectedGrid();
+      if (!sel || !sel.rows || sel.rows.length === 0) {
+        $status.text("Select one or more cells first.");
+        return false;
+      }
+      const tsv = sel.rows.map(row => row.join("\t")).join("\n");
+      copyToClipboard(tsv);
+      $status.text(`Copied ${sel.rows.length} row(s) to the clipboard.`);
+      return true;
+    }
+
     $freezeToggle.on("click", () => {
       const frozen = $wrapper.toggleClass("fb-frozen").hasClass("fb-frozen");
       $freezeToggle.toggleClass("active", frozen);
@@ -1124,6 +1172,7 @@ $(() => {
       addRow: () => { if (editing) { $addRow.trigger("click"); } },
       apply: () => { if (editing) { $apply.trigger("click"); } },
       freeze: () => $freezeToggle.trigger("click"),
+      copySelection: () => copyGridSelection(),
       copyInsert: () => $copyInsert.trigger("click"),
       copyIn: () => $copyInClause.trigger("click"),
       copyMarkdown: () => $copyMarkdown.trigger("click"),

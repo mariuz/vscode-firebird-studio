@@ -298,6 +298,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
     const {
       shortcuts, resultsFontSize, resultsFontFamily, maxResultRows,
       messagesDefaultOpen, messagesIncludeTimestamps,
+      freezeFirstColumnByDefault, showBatchMessages,
     } = getOptions();
     const engineMajor = await this.engineMajorVersion();
 
@@ -311,6 +312,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
         data: {
           results, recordsPerPage: this.recordsPerPage, shortcuts, resultsFontSize, resultsFontFamily,
           revealable: this.revealable, messagesDefaultOpen, messagesIncludeTimestamps,
+          freezeFirstColumnByDefault, showBatchMessages,
         },
       });
       return;
@@ -319,7 +321,10 @@ export default class ResultView extends QueryResultsView implements Disposable {
     if (!this.resultSet) {
       this.send({
         command: "message",
-        data: { tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage, shortcuts, resultsFontSize, resultsFontFamily },
+        data: {
+          tableHeader: [], tableBody: [], recordsPerPage: this.recordsPerPage, shortcuts,
+          resultsFontSize, resultsFontFamily, freezeFirstColumnByDefault,
+        },
       });
       return;
     }
@@ -334,6 +339,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
         shortcuts,
         resultsFontSize,
         resultsFontFamily,
+        freezeFirstColumnByDefault,
         paging: buildPagingInfo(
           this.resultSql,
           engineMajor,
