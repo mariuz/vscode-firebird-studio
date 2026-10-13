@@ -89,6 +89,24 @@ suite("SQL formatting provider (extension host)", function () {
     assert.deepStrictEqual(prop.enum, ["upper", "lower", "preserve"]);
     assert.strictEqual(prop.default, "upper");
   });
+
+  test("the commaPlacement setting is contributed with trailing and leading options", function () {
+    const extension = vscode.extensions.getExtension("AdrianMariusPopa.vscode-firebird-studio");
+    assert.ok(extension, "extension should be found by id");
+    const prop = extension!.packageJSON.contributes.configuration.properties["firebird.format.commaPlacement"];
+    assert.ok(prop, "firebird.format.commaPlacement is not contributed");
+    assert.deepStrictEqual(prop.enum, ["trailing", "leading"]);
+    assert.strictEqual(prop.default, "trailing");
+  });
+
+  test("the clauseIndentation setting is contributed with none and subclauses options", function () {
+    const extension = vscode.extensions.getExtension("AdrianMariusPopa.vscode-firebird-studio");
+    assert.ok(extension, "extension should be found by id");
+    const prop = extension!.packageJSON.contributes.configuration.properties["firebird.format.clauseIndentation"];
+    assert.ok(prop, "firebird.format.clauseIndentation is not contributed");
+    assert.deepStrictEqual(prop.enum, ["none", "subclauses"]);
+    assert.strictEqual(prop.default, "none");
+  });
 });
 
 /**

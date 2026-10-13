@@ -36,6 +36,12 @@ const SORTED_KEYWORDS = [...new Set([...ALL_KEYWORDS])].sort((a, b) => b.length 
 /** How keywords are cased. `preserve` leaves whatever the author typed alone. */
 export type KeywordCase = "upper" | "lower" | "preserve";
 
+/** Where commas are placed in multi-line column lists. */
+export type CommaPlacement = "trailing" | "leading";
+
+/** How subordinate clauses (JOIN, ON, AND, OR) are indented. */
+export type ClauseIndentation = "none" | "subclauses";
+
 export interface FormatOptions {
   /** Default `upper`, which is what this formatter has always done. */
   keywordCase?: KeywordCase;
@@ -46,9 +52,26 @@ export interface FormatOptions {
    * spaces this formatter hardcoded before it took options at all.
    */
   indent?: string;
+  /**
+   * Where commas are placed in multi-line column lists.
+   * - `trailing` (default): at the end of each column line (`col1,\n    col2`)
+   * - `leading`: at the start of subsequent column lines (`col1\n    , col2`)
+   */
+  commaPlacement?: CommaPlacement;
+  /**
+   * How subordinate clauses (JOIN, ON, AND, OR) are indented.
+   * - `none` (default): all clauses start at the margin.
+   * - `subclauses`: subordinate clauses are indented under their parent clause.
+   */
+  clauseIndentation?: ClauseIndentation;
 }
 
-const DEFAULT_OPTIONS: Required<FormatOptions> = { keywordCase: "upper", indent: "    " };
+const DEFAULT_OPTIONS: Required<FormatOptions> = {
+  keywordCase: "upper",
+  indent: "    ",
+  commaPlacement: "trailing",
+  clauseIndentation: "none",
+};
 
 /** Applies the configured casing to a keyword this formatter recognises. */
 function caseKeyword(keyword: string, keywordCase: KeywordCase): string {
@@ -57,17 +80,81 @@ function caseKeyword(keyword: string, keywordCase: KeywordCase): string {
   return keyword;
 }
 
+/** Splits a comma-separated list of columns, respecting parenthesis depth. */
+function splitColumnList(cols: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let parenDepth = 0;
+
+  for (let i = 0; i < cols.length; i++) {
+    const char = cols[i];
+    if (char === '(') {
+      parenDepth++;
+      current += char;
+    } else if (char === ')') {
+      if (parenDepth > 0) { parenDepth--; }
+      current += char;
+    } else if (char === ',' && parenDepth === 0) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) {
+    result.push(current.trim());
+  }
+  return result;
+}
+
+/** Formats columns with either trailing or leading comma placement. */
+function formatColumnList(columns: string[], indent: string, commaPlacement: CommaPlacement): string {
+  if (columns.length === 0) {
+    return '';
+  }
+  if (commaPlacement === 'leading') {
+    return columns.map((col, idx) => {
+      if (idx === 0) {
+        return `${indent}${col}`;
+      }
+      return `${indent}, ${col}`;
+    }).join('\n');
+  }
+  return columns.map((col, idx) => {
+    if (idx === columns.length - 1) {
+      return `${indent}${col}`;
+    }
+    return `${indent}${col},`;
+  }).join('\n');
+}
+
+/** Computes subordinate clause indentation for NEWLINE_KEYWORDS. */
+function getClauseIndent(kw: string, clauseIndentation: ClauseIndentation, indent: string): string {
+  if (clauseIndentation === "none") {
+    return "";
+  }
+  const upper = kw.toUpperCase();
+  if (upper === "ON") {
+    return `${indent}${indent}`;
+  }
+  if (upper === "AND" || upper === "OR" || upper.endsWith("JOIN")) {
+    return indent;
+  }
+  return "";
+}
+
 /**
  * Formats a SQL string:
  * - Cases SQL keywords per `options.keywordCase`
  * - Places major clauses on new lines
- * - Indents column lists after SELECT by `options.indent`
+ * - Indents column lists after SELECT by `options.indent` with `options.commaPlacement`
+ * - Optionally indents subordinate clauses with `options.clauseIndentation`
  *
  * Called with no options it behaves exactly as it always has, which is what keeps the
  * `firebird.formatSql` command and every existing test unchanged.
  */
 export function formatSQL(sql: string, options: FormatOptions = {}): string {
-  const { keywordCase, indent } = { ...DEFAULT_OPTIONS, ...options };
+  const { keywordCase, indent, commaPlacement, clauseIndentation } = { ...DEFAULT_OPTIONS, ...options };
   if (!sql || !sql.trim()) {
     return sql;
   }
@@ -109,7 +196,10 @@ export function formatSQL(sql: string, options: FormatOptions = {}): string {
   // Insert newlines before major clauses
   for (const kw of NEWLINE_KEYWORDS) {
     const pattern = new RegExp(`(?<![\\x00])(\\s*)\\b(${kw.replace(/\s+/g, '\\s+')})\\b`, 'gi');
-    processed = processed.replace(pattern, (_match, _space, keyword) => `\n${caseKeyword(keyword, keywordCase)}`);
+    processed = processed.replace(pattern, (_match, _space, keyword) => {
+      const pfx = getClauseIndent(kw, clauseIndentation, indent);
+      return `\n${pfx}${caseKeyword(keyword, keywordCase)}`;
+    });
   }
 
   // Indent SELECT column list: columns separated by commas on their own lines
@@ -122,8 +212,9 @@ export function formatSQL(sql: string, options: FormatOptions = {}): string {
     if (!trimmed || trimmed === '*') {
       return `${SELECT} ${trimmed}\n${FROM}`;
     }
-    const columns = trimmed.split(',').map((c: string) => `${indent}${c.trim()}`).join(',\n');
-    return `${SELECT}\n${columns}\n${FROM}`;
+    const columns = splitColumnList(trimmed);
+    const formattedCols = formatColumnList(columns, indent, commaPlacement);
+    return `${SELECT}\n${formattedCols}\n${FROM}`;
   });
 
   // Clean up excessive blank lines and normalize line endings

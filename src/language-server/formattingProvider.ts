@@ -19,7 +19,11 @@ import { buildFormatOptions } from "./format-model";
  */
 export class SqlFormattingProvider
 implements DocumentFormattingEditProvider, DocumentRangeFormattingEditProvider {
-  constructor(private readonly getKeywordCase: () => unknown) {}
+  constructor(
+    private readonly getKeywordCase: () => unknown,
+    private readonly getCommaPlacement?: () => unknown,
+    private readonly getClauseIndentation?: () => unknown
+  ) {}
 
   provideDocumentFormattingEdits(document: TextDocument, options: FormattingOptions): TextEdit[] {
     const whole = new Range(
@@ -44,7 +48,12 @@ implements DocumentFormattingEditProvider, DocumentRangeFormattingEditProvider {
 
   private editsFor(document: TextDocument, range: Range, options: FormattingOptions): TextEdit[] {
     const text = document.getText(range);
-    const formatted = formatSQL(text, buildFormatOptions(options, this.getKeywordCase()));
+    const formatted = formatSQL(text, buildFormatOptions(
+      options,
+      this.getKeywordCase(),
+      this.getCommaPlacement ? this.getCommaPlacement() : undefined,
+      this.getClauseIndentation ? this.getClauseIndentation() : undefined
+    ));
     // Returning no edit when nothing changed matters: an edit that replaces a range with its own
     // text still dirties the document and still pushes an undo step, so format-on-save would mark
     // every SQL file modified on every save.

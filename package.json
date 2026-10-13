@@ -1072,6 +1072,32 @@
           "default": "upper",
           "description": "How SQL keywords are cased when a .sql file or notebook cell is formatted. Indentation is not set here -- formatting follows the editor's own indentation (editor.tabSize / editor.insertSpaces) so that a formatted file matches what the editor is already showing."
         },
+        "firebird.format.commaPlacement": {
+          "type": "string",
+          "enum": [
+            "trailing",
+            "leading"
+          ],
+          "enumDescriptions": [
+            "Place commas at the end of each column line (e.g. `col1,\\n    col2`).",
+            "Place commas at the start of subsequent lines (e.g. `col1\\n    , col2`)."
+          ],
+          "default": "trailing",
+          "description": "Where commas are placed in multi-line column lists."
+        },
+        "firebird.format.clauseIndentation": {
+          "type": "string",
+          "enum": [
+            "none",
+            "subclauses"
+          ],
+          "enumDescriptions": [
+            "No extra indentation; all major and minor clauses (SELECT, FROM, JOIN, ON, WHERE, AND, OR) start at the left margin.",
+            "Indent subordinate clauses (JOIN, ON, AND, OR) under their parent clauses (FROM, WHERE, HAVING)."
+          ],
+          "default": "none",
+          "description": "Indentation style for subordinate SQL clauses (such as JOIN, ON, AND, OR)."
+        },
         "firebird.intelliSense.completionTimeoutMs": {
           "type": "number",
           "minimum": 0,

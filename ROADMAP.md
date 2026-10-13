@@ -243,7 +243,7 @@ Reviewed against [vscode-mssql](https://github.com/microsoft/vscode-mssql)'s act
 - [x] **Schema Compare Object Type & Category Filtering** — toggle tables, views, procedures, triggers in schema diffs and migration generation (`firebird.schemaDiff.filterObjectTypes`, `firebird.schemaDiff.filterChangeTypes`, `firebird.schemaDiff.filter`).
 - [x] **Connection Diagnostics & Latency Breakdown (`firebird.connection.diagnose`)** — step-by-step latency and connectivity probe (DNS, TCP, SRP handshake, query ping, embedded file verification, and markdown report).
 - [x] **Result Grid & Notebook "Copy as Markdown Table"** — instant export of selected query rows to GitHub-flavored markdown table in both Query Results grid and SQL Notebook renderer.
-- [ ] **SQL Formatter Granular Options** — configurable comma placement (`leading` | `trailing`) and clause indentation for Firebird SQL.
+- [x] **SQL Formatter Granular Options** — configurable comma placement (`leading` | `trailing`) via `firebird.format.commaPlacement` and subordinate clause indentation via `firebird.format.clauseIndentation` for Firebird SQL.
 - [ ] **Query Execution Status Indicator & Cancellation Support** — real-time progress indicator in the status bar with query cancellation plumbing via task tracking.
 
 ---

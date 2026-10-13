@@ -1,4 +1,4 @@
-import { FormatOptions, KeywordCase } from "../shared/sql-formatter";
+import { ClauseIndentation, CommaPlacement, FormatOptions, KeywordCase } from "../shared/sql-formatter";
 
 /**
  * The parts of VS Code's `FormattingOptions` this formatter cares about. Declared structurally so
@@ -36,13 +36,38 @@ export function resolveKeywordCase(configured: unknown): KeywordCase {
   return KEYWORD_CASES.includes(configured as KeywordCase) ? (configured as KeywordCase) : "upper";
 }
 
-/** Assembles the formatter's options from the editor's own and the user's setting. */
+/** Valid values of `firebird.format.commaPlacement`; anything else falls back to the default. */
+const COMMA_PLACEMENTS: CommaPlacement[] = ["trailing", "leading"];
+
+export function resolveCommaPlacement(configured: unknown): CommaPlacement {
+  return COMMA_PLACEMENTS.includes(configured as CommaPlacement)
+    ? (configured as CommaPlacement)
+    : "trailing";
+}
+
+/** Valid values of `firebird.format.clauseIndentation`; anything else falls back to the default. */
+const CLAUSE_INDENTATIONS: ClauseIndentation[] = ["none", "subclauses"];
+
+export function resolveClauseIndentation(configured: unknown): ClauseIndentation {
+  if (configured === true || configured === "subclauses" || configured === "indented") {
+    return "subclauses";
+  }
+  return CLAUSE_INDENTATIONS.includes(configured as ClauseIndentation)
+    ? (configured as ClauseIndentation)
+    : "none";
+}
+
+/** Assembles the formatter's options from the editor's own and the user's settings. */
 export function buildFormatOptions(
   editorOptions: EditorFormattingOptions,
-  keywordCase: unknown
+  keywordCase: unknown,
+  commaPlacement?: unknown,
+  clauseIndentation?: unknown
 ): FormatOptions {
   return {
     indent: indentFromEditor(editorOptions),
     keywordCase: resolveKeywordCase(keywordCase),
+    commaPlacement: resolveCommaPlacement(commaPlacement),
+    clauseIndentation: resolveClauseIndentation(clauseIndentation),
   };
 }

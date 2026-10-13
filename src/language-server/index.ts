@@ -60,7 +60,9 @@ export default class LanguageServer implements Disposable {
     // format-on-type all work; the notebook-cell selector in the list above means a .fbnb cell
     // formats too, which the firebird.formatSql command could never do.
     const formattingProvider = new SqlFormattingProvider(
-      () => workspace.getConfiguration("firebird").get("format.keywordCase")
+      () => workspace.getConfiguration("firebird").get("format.keywordCase"),
+      () => workspace.getConfiguration("firebird").get("format.commaPlacement"),
+      () => workspace.getConfiguration("firebird").get("format.clauseIndentation")
     );
     this.subscriptions.push(languages.registerDocumentFormattingEditProvider(documentSelector, formattingProvider));
     this.subscriptions.push(languages.registerDocumentRangeFormattingEditProvider(documentSelector, formattingProvider));

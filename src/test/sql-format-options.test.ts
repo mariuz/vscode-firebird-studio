@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { formatSQL } from "../shared/sql-formatter";
 import {
-  indentFromEditor, resolveKeywordCase, buildFormatOptions
+  indentFromEditor, resolveKeywordCase, resolveCommaPlacement, resolveClauseIndentation, buildFormatOptions
 } from "../language-server/format-model";
 
 /**
@@ -79,6 +79,90 @@ suite("formatSQL() – options", function () {
       assert.ok(out.includes("\n\ta,"), JSON.stringify(out));
     });
   });
+
+  suite("commaPlacement", function () {
+    test("defaults to trailing, comma at the end of each column line", function () {
+      const out = formatSQL("select id, name, email from customers");
+      assert.strictEqual(
+        out,
+        "SELECT\n    id,\n    name,\n    email\nFROM customers"
+      );
+    });
+
+    test("leading comma places comma at the start of subsequent column lines", function () {
+      const out = formatSQL("select id, name, email from customers", { commaPlacement: "leading" });
+      assert.strictEqual(
+        out,
+        "SELECT\n    id\n    , name\n    , email\nFROM customers"
+      );
+    });
+
+    test("a single column has no comma under either trailing or leading", function () {
+      const trailing = formatSQL("select id from customers", { commaPlacement: "trailing" });
+      const leading = formatSQL("select id from customers", { commaPlacement: "leading" });
+      assert.strictEqual(trailing, "SELECT\n    id\nFROM customers");
+      assert.strictEqual(leading, "SELECT\n    id\nFROM customers");
+    });
+
+    test("preserves parenthesized functions with internal commas intact", function () {
+      const out = formatSQL("select id, coalesce(name, 'N/A'), email from customers", { commaPlacement: "leading" });
+      assert.ok(out.includes("    , COALESCE(name, 'N/A')"), out);
+      assert.ok(out.includes("    , email"), out);
+    });
+  });
+
+  suite("clauseIndentation", function () {
+    test("defaults to none with clauses aligned to margin", function () {
+      const sql = "select a from b left join c on b.id = c.id where a = 1 and b = 2 or c = 3 order by a";
+      const out = formatSQL(sql);
+      assert.ok(out.includes("\nLEFT\nJOIN c"), out);
+      assert.ok(out.includes("\nON b.id = c.id"), out);
+      assert.ok(out.includes("\nWHERE a = 1"), out);
+      assert.ok(out.includes("\nAND b = 2"), out);
+      assert.ok(out.includes("\nOR c = 3"), out);
+    });
+
+    test("subclauses indents JOIN, ON, AND, OR under their parent clauses", function () {
+      const sql = "select a, b from t1 left join t2 on t1.id = t2.id where a = 1 and b = 2 or c = 3 order by a";
+      const out = formatSQL(sql, { clauseIndentation: "subclauses" });
+      assert.ok(out.includes("\n    LEFT\n    JOIN t2"), out);
+      assert.ok(out.includes("\n        ON t1.id = t2.id"), out);
+      assert.ok(out.includes("\nWHERE a = 1"), out);
+      assert.ok(out.includes("\n    AND b = 2"), out);
+      assert.ok(out.includes("\n    OR c = 3"), out);
+      assert.ok(out.includes("\nORDER BY a"), out);
+    });
+
+    test("clauseIndentation honors custom indent string", function () {
+      const sql = "select a from t where a = 1 and b = 2";
+      const out = formatSQL(sql, { indent: "  ", clauseIndentation: "subclauses" });
+      assert.ok(out.includes("\n  AND b = 2"), out);
+    });
+  });
+
+  suite("combined granular options", function () {
+    test("leading commas + subclauses + uppercase + 2 spaces indent", function () {
+      const sql = "select id, name, email from customers left join orders on customers.id = orders.customer_id where id = 1 and active = 1";
+      const out = formatSQL(sql, {
+        indent: "  ",
+        keywordCase: "upper",
+        commaPlacement: "leading",
+        clauseIndentation: "subclauses",
+      });
+      const expected =
+        "SELECT\n" +
+        "  id\n" +
+        "  , name\n" +
+        "  , email\n" +
+        "FROM customers\n" +
+        "  LEFT\n" +
+        "  JOIN orders\n" +
+        "    ON customers.id = orders.customer_id\n" +
+        "WHERE id = 1\n" +
+        "  AND active = 1";
+      assert.strictEqual(out, expected);
+    });
+  });
 });
 
 suite("Formatting provider – indentFromEditor()", function () {
@@ -120,24 +204,61 @@ suite("Formatting provider – resolveKeywordCase()", function () {
   });
 });
 
+suite("Formatting provider – resolveCommaPlacement()", function () {
+  test("accepts trailing and leading values", function () {
+    assert.strictEqual(resolveCommaPlacement("trailing"), "trailing");
+    assert.strictEqual(resolveCommaPlacement("leading"), "leading");
+  });
+
+  test("falls back to trailing on invalid or missing values", function () {
+    assert.strictEqual(resolveCommaPlacement(undefined), "trailing");
+    assert.strictEqual(resolveCommaPlacement(null), "trailing");
+    assert.strictEqual(resolveCommaPlacement("invalid"), "trailing");
+    assert.strictEqual(resolveCommaPlacement(123), "trailing");
+  });
+});
+
+suite("Formatting provider – resolveClauseIndentation()", function () {
+  test("accepts none and subclauses values", function () {
+    assert.strictEqual(resolveClauseIndentation("none"), "none");
+    assert.strictEqual(resolveClauseIndentation("subclauses"), "subclauses");
+  });
+
+  test("accepts boolean true or indented as subclauses", function () {
+    assert.strictEqual(resolveClauseIndentation(true), "subclauses");
+    assert.strictEqual(resolveClauseIndentation("indented"), "subclauses");
+    assert.strictEqual(resolveClauseIndentation(false), "none");
+  });
+
+  test("falls back to none on invalid or missing values", function () {
+    assert.strictEqual(resolveClauseIndentation(undefined), "none");
+    assert.strictEqual(resolveClauseIndentation(null), "none");
+    assert.strictEqual(resolveClauseIndentation("bogus"), "none");
+  });
+});
+
 suite("Formatting provider – buildFormatOptions()", function () {
-  test("combines the editor's indentation with the user's casing setting", function () {
+  test("combines the editor's indentation with the user's settings", function () {
     assert.deepStrictEqual(
-      buildFormatOptions({ tabSize: 2, insertSpaces: true }, "lower"),
-      { indent: "  ", keywordCase: "lower" }
+      buildFormatOptions({ tabSize: 2, insertSpaces: true }, "lower", "leading", "subclauses"),
+      { indent: "  ", keywordCase: "lower", commaPlacement: "leading", clauseIndentation: "subclauses" }
     );
   });
 
-  test("survives a garbage setting without losing the editor's indentation", function () {
+  test("survives garbage settings without losing the editor's indentation", function () {
     assert.deepStrictEqual(
-      buildFormatOptions({ tabSize: 4, insertSpaces: false }, {}),
-      { indent: "\t", keywordCase: "upper" }
+      buildFormatOptions({ tabSize: 4, insertSpaces: false }, {}, {}, {}),
+      { indent: "\t", keywordCase: "upper", commaPlacement: "trailing", clauseIndentation: "none" }
     );
   });
 
   test("what it returns actually drives formatSQL", function () {
-    const out = formatSQL("select a, b from t", buildFormatOptions({ tabSize: 2, insertSpaces: true }, "lower"));
+    const out = formatSQL(
+      "select a, b from t where a = 1 and b = 2",
+      buildFormatOptions({ tabSize: 2, insertSpaces: true }, "lower", "leading", "subclauses")
+    );
     assert.ok(out.startsWith("select"), out);
-    assert.ok(out.includes("\n  a,"), JSON.stringify(out));
+    assert.ok(out.includes("\n  a\n  , b"), JSON.stringify(out));
+    assert.ok(out.includes("\n  and b = 2"), JSON.stringify(out));
   });
 });
