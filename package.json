@@ -1189,6 +1189,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show query execution timer and status indicator in the status bar with cancellation support."
+        },
+        "firebird.query.playCompletionSound": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Play an audio notification (chime) when a query completes execution, mirroring vscode-mssql's `mssql.query.playCompletionSound`. Uses an in-process synthetic Web Audio chime directly inside the results webview without spawning external processes."
+        },
+        "firebird.query.completionSoundFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to a custom audio file (.wav, .mp3, .ogg) to play when a query finishes, mirroring vscode-mssql's `mssql.query.completionSoundFile`. Leave empty (or set to `\"default\"`) to use the built-in synthetic Web Audio chime."
         }
       }
     },

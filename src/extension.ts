@@ -1021,6 +1021,7 @@ export function activate(context: ExtensionContext) {
           logger.info(batchResults[0].message);
           logger.showInfo(batchResults[0].message);
           commands.executeCommand("firebird.explorer.refresh");
+          firebirdQueryResults.triggerCompletionSound(false);
         } else {
           firebirdQueryResults.displayBatch(batchResults, config.recordsPerPage, source !== undefined);
         }
@@ -1042,6 +1043,7 @@ export function activate(context: ExtensionContext) {
           logger.showWarn(describeEmptyBatch(error.sql ?? "", origin));
           return;
         }
+        firebirdQueryResults.triggerCompletionSound(true);
         if (error.notify) {
           logger.showError(error.message, error.options || []).then(selected => {
             if (selected === "New SQL Document") {
@@ -2705,11 +2707,13 @@ export function activate(context: ExtensionContext) {
           if (allMessages && batchResults.length === 1 && batchResults[0].message) {
             logger.showInfo(batchResults[0].message);
             commands.executeCommand("firebird.explorer.refresh");
+            firebirdQueryResults.triggerCompletionSound(false);
           } else {
             firebirdQueryResults.displayBatch(batchResults, config.recordsPerPage);
           }
         })
         .catch(err => {
+          firebirdQueryResults.triggerCompletionSound(true);
           logger.error(err?.message ?? err);
           logger.showError("Query failed. Check logs for details.", ["Show Logs"]).then(sel => {
             if (sel === "Show Logs") { logger.showOutput(); }

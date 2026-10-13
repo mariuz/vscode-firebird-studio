@@ -125,6 +125,11 @@ $(() => {
       return;
     }
 
+    if (msg.command === "playCompletionSound") {
+      playCompletionChime(msg.data?.hasError === true, msg.data?.soundFileData);
+      return;
+    }
+
     if (msg.command === "primaryKey" || msg.command === "applyResult" || msg.command === "queryPlanResult" || msg.command === "actualPlanResult" || msg.command === "pageResult") {
       resolveRequest(msg.data.requestId, msg.data);
       return;
@@ -1569,6 +1574,79 @@ $(() => {
     return "This query has no ORDER BY, so Firebird may return its rows in a different order each time — pages can overlap or skip rows. Add an ORDER BY for a stable window.";
   }
 
+  /**
+   * Synthesizes an audio chime directly via Web Audio API without spawning any external process.
+   * If `hasError` is true, plays a descending 2-tone chime (A4 440Hz -> E4 329.63Hz).
+   * If `hasError` is false, plays an ascending 2-tone bright chime (D5 587.33Hz -> A5 880Hz).
+   */
+  function playSyntheticChime(hasError) {
+    try {
+      const win = typeof window !== "undefined" ? window : (typeof global !== "undefined" ? global : null);
+      if (!win) { return false; }
+      const AudioCtx = win.AudioContext || win.webkitAudioContext;
+      if (!AudioCtx) { return false; }
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime || 0;
+
+      // Note 1
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(hasError ? 440 : 587.33, now);
+      gain1.gain.setValueAtTime(0.15, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.18);
+
+      // Note 2
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = "sine";
+      osc2.frequency.setValueAtTime(hasError ? 329.63 : 880, now + 0.12);
+      gain2.gain.setValueAtTime(0.15, now + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.35);
+
+      setTimeout(() => {
+        try { ctx.close(); } catch { /* ignore */ }
+      }, 500);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Plays a completion sound. If custom `soundFileData` (base64 data URI) is provided,
+   * plays that through HTML5 Audio; otherwise falls back to the in-process synthetic Web Audio chime.
+   */
+  function playCompletionChime(hasError, soundFileData) {
+    if (soundFileData && typeof soundFileData === "string") {
+      try {
+        const AudioConstructor = (typeof Audio !== "undefined") ? Audio : (typeof window !== "undefined" ? window.Audio : null);
+        if (AudioConstructor) {
+          const audio = new AudioConstructor(soundFileData);
+          audio.volume = 0.5;
+          const playPromise = audio.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {
+              playSyntheticChime(hasError);
+            });
+          }
+          return true;
+        }
+      } catch {
+        // Fall back to synthetic chime
+      }
+    }
+    return playSyntheticChime(hasError);
+  }
+
   // Test-only hook: no-op in a real webview (there is no `module` global there).
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.__test__ = {
@@ -1580,6 +1658,7 @@ $(() => {
       formatMessageTime, messageOutcome, buildMessageRows, summarizeMessages, buildMessagesText,
       computeSelectionStats, formatSelectionStats,
       resultsFontProperties,
+      playSyntheticChime, playCompletionChime,
     };
   }
 });

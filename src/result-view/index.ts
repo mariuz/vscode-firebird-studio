@@ -1,6 +1,8 @@
 import { Disposable, window } from "vscode";
 import { TextDecoder } from "util";
 import { join } from "path";
+import * as fs from "fs";
+import * as path from "path";
 
 import { QueryResultsView, Message, WebviewLocation } from "./queryResultsView";
 import { BatchResult, Driver, extractTableNames } from "../shared/driver";
@@ -143,6 +145,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
   /** Same idea as planCache, for the "Actual Plan" tab (phase 3) — also avoids re-running the
    *  query (a real re-execution, not just a re-fetch) every time the user switches back to it. */
   private actualPlanCache = new Map<string, ActualPlanResult>();
+  private pendingCompletionSound?: { hasError: boolean; soundFileData?: string };
 
   constructor(private extensionPath: string) {
     super("resultview", "Firebird Query Results", "table");
@@ -150,6 +153,50 @@ export default class ResultView extends QueryResultsView implements Disposable {
     // itself is `when`-gated on the same setting read below, so a user on the default never sees an
     // extra Panel tab; this only says which id to reveal if they do turn it on.
     this.panelViewId = "firebird.queryResultsPanel";
+  }
+
+  /**
+   * Triggers an in-process query completion audio cue when `firebird.query.playCompletionSound` is enabled.
+   * If a custom audio file is specified via `firebird.query.completionSoundFile`, it is read and transferred
+   * as base64 data; otherwise the results webview synthesizes a Web Audio chime directly.
+   */
+  public triggerCompletionSound(hasError = false): void {
+    const { playCompletionSound, completionSoundFile } = getOptions();
+    if (!playCompletionSound) {
+      return;
+    }
+
+    try {
+      if (typeof (window as any).playAudioCue === "function") {
+        (window as any).playAudioCue(hasError ? "error" : "taskCompleted");
+      }
+    } catch {
+      // ignore
+    }
+
+    let soundFileData: string | undefined;
+    const soundFile = completionSoundFile?.trim();
+    if (soundFile && soundFile !== "default") {
+      try {
+        if (fs.existsSync(soundFile)) {
+          const buffer = fs.readFileSync(soundFile);
+          const ext = path.extname(soundFile).toLowerCase();
+          const mime = ext === ".mp3" ? "audio/mpeg" : (ext === ".ogg" ? "audio/ogg" : "audio/wav");
+          soundFileData = `data:${mime};base64,${buffer.toString("base64")}`;
+        }
+      } catch (err: any) {
+        logger.warn(`Failed to read completionSoundFile "${soundFile}": ${err?.message ?? err}`);
+      }
+    }
+
+    if (this.webview) {
+      this.send({
+        command: "playCompletionSound",
+        data: { hasError, soundFileData }
+      });
+    } else {
+      this.pendingCompletionSound = { hasError, soundFileData };
+    }
   }
 
   /**
@@ -184,6 +231,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
     this.autoEdit = false;
     this.planCache.clear();
     this.actualPlanCache.clear();
+    this.triggerCompletionSound(false);
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
   }
 
@@ -219,6 +267,8 @@ export default class ResultView extends QueryResultsView implements Disposable {
     this.recordsPerPage = recordsPerPage;
     this.planCache.clear();
     this.actualPlanCache.clear();
+    const hasError = batchResults.some(r => !!r.error);
+    this.triggerCompletionSound(hasError);
     this.show(join(this.extensionPath, "src", "result-view", "htmlContent", "index.html"));
   }
 
@@ -315,10 +365,7 @@ export default class ResultView extends QueryResultsView implements Disposable {
           freezeFirstColumnByDefault, showBatchMessages,
         },
       });
-      return;
-    }
-
-    if (!this.resultSet) {
+    } else if (!this.resultSet) {
       this.send({
         command: "message",
         data: {
@@ -326,28 +373,35 @@ export default class ResultView extends QueryResultsView implements Disposable {
           resultsFontSize, resultsFontFamily, freezeFirstColumnByDefault,
         },
       });
-      return;
+    } else {
+      const prepared = this.getPreparedResults();
+      this.send({
+        command: "message",
+        data: {
+          ...prepared,
+          editableTable: this.resultTableName,
+          autoEdit: this.autoEdit,
+          shortcuts,
+          resultsFontSize,
+          resultsFontFamily,
+          freezeFirstColumnByDefault,
+          paging: buildPagingInfo(
+            this.resultSql,
+            engineMajor,
+            maxResultRows,
+            prepared.truncatedFrom != null || prepared.moreRows === true
+          ),
+        },
+      });
     }
 
-    const prepared = this.getPreparedResults();
-    this.send({
-      command: "message",
-      data: {
-        ...prepared,
-        editableTable: this.resultTableName,
-        autoEdit: this.autoEdit,
-        shortcuts,
-        resultsFontSize,
-        resultsFontFamily,
-        freezeFirstColumnByDefault,
-        paging: buildPagingInfo(
-          this.resultSql,
-          engineMajor,
-          maxResultRows,
-          prepared.truncatedFrom != null || prepared.moreRows === true
-        ),
-      },
-    });
+    if (this.pendingCompletionSound) {
+      this.send({
+        command: "playCompletionSound",
+        data: this.pendingCompletionSound,
+      });
+      this.pendingCompletionSound = undefined;
+    }
   }
 
   private async engineMajorVersion(): Promise<number> {

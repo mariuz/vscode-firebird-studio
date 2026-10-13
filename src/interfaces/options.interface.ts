@@ -62,5 +62,9 @@ export interface Options {
   showBatchMessages: boolean;
   /** Show real-time query execution status indicator and timer in the status bar. */
   showQueryExecutionStatus: boolean;
+  /** Play an audio notification (chime) when query execution completes. Off by default. */
+  playCompletionSound: boolean;
+  /** Optional custom audio file path (.wav, .mp3, .ogg) for query completion. */
+  completionSoundFile: string;
 }
 

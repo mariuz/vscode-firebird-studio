@@ -39,7 +39,9 @@ export function getOptions() {
     freezeFirstColumnByDefault: _freezeFirstColumnByDefault(),
     showBatchMessages: _showBatchMessages(),
     quickQueries: _quickQueries(),
-    showQueryExecutionStatus: _showQueryExecutionStatus()
+    showQueryExecutionStatus: _showQueryExecutionStatus(),
+    playCompletionSound: _playCompletionSound(),
+    completionSoundFile: _completionSoundFile()
   } as Options;
 }
 
@@ -352,6 +354,16 @@ function _quickQueries(): QuickQuerySlot[] {
 function _showQueryExecutionStatus(): boolean {
   const conf: any = getConfig().get("showQueryExecutionStatus");
   return typeof conf === "boolean" ? conf : (properties["firebird.showQueryExecutionStatus"]?.["default"] ?? true);
+}
+
+function _playCompletionSound(): boolean {
+  const conf: any = getConfig().get("query.playCompletionSound");
+  return typeof conf === "boolean" ? conf : (properties["firebird.query.playCompletionSound"]?.["default"] ?? false);
+}
+
+function _completionSoundFile(): string {
+  const conf: any = getConfig().get("query.completionSoundFile");
+  return typeof conf === "string" ? conf : (properties["firebird.query.completionSoundFile"]?.["default"] ?? "");
 }
 
 function _recordsPerPage(): string {
