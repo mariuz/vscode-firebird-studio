@@ -3,7 +3,7 @@ import {join} from "path";
 import {ConnectionOptions, FirebirdTree} from "../interfaces";
 import {NodeInfo} from "./node-info";
 import {logger} from "../logger/logger";
-import {getObjectFilter, setObjectFilter, clearObjectFilter} from "../shared/object-explorer-filter";
+import {getObjectFilter, setObjectFilter, clearObjectFilter, showFilterPicker, promptSaveFilterPreset, promptManageFilterPresets, getAllFilterPresets} from "../shared/object-explorer-filter";
 import {Global} from "../shared/global";
 
 export class NodeCategoryFolder implements FirebirdTree {
@@ -17,11 +17,20 @@ export class NodeCategoryFolder implements FirebirdTree {
   public getTreeItem(context: ExtensionContext): TreeItem {
     const filter = getObjectFilter(this.dbDetails.id, this.category);
     const label = filter ? `${this.label} (filtered: "${filter}")` : this.label;
+    let tooltip = this.label;
+    if (filter) {
+      const matchingPreset = getAllFilterPresets(this.category, this.dbDetails.id).find(
+        p => p.filter.toLowerCase() === filter.toLowerCase()
+      );
+      tooltip = matchingPreset
+        ? `${this.label}\nFiltered: "${filter}" (preset: ${matchingPreset.name})`
+        : `${this.label}\nFiltered: "${filter}"`;
+    }
     return {
       label,
       collapsibleState: TreeItemCollapsibleState.Collapsed,
       contextValue: `folder.${this.category}`,
-      tooltip: filter ? `${this.label}\nFiltered: "${filter}"` : this.label,
+      tooltip,
       iconPath: {
         dark: Uri.file(join(context.extensionPath, "resources", "icons", "dark", "folder-dark.svg")),
         light: Uri.file(join(context.extensionPath, "resources", "icons", "light", "folder-light.svg"))
@@ -29,18 +38,21 @@ export class NodeCategoryFolder implements FirebirdTree {
     };
   }
 
-  /** Prompts for a substring to narrow this folder's children by name (case-insensitive); an empty input clears the filter. */
+  /**
+   * Prompts to select a saved preset, enter a custom filter substring, clear the filter,
+   * or save/manage filter presets.
+   */
   public async setFilter(): Promise<void> {
-    const current = getObjectFilter(this.dbDetails.id, this.category) ?? "";
-    const input = await window.showInputBox({
-      title: `Filter ${this.label}`,
-      prompt: "Show only objects whose name contains this text (case-insensitive). Leave empty to clear the filter.",
-      value: current,
-      ignoreFocusOut: true,
-    });
-    if (input === undefined) { return; }
-    setObjectFilter(this.dbDetails.id, this.category, input);
-    commands.executeCommand("firebird.explorer.refresh");
+    await showFilterPicker(this.dbDetails.id, this.category, this.label);
+  }
+
+  public async savePreset(): Promise<void> {
+    const current = getObjectFilter(this.dbDetails.id, this.category);
+    await promptSaveFilterPreset(current, this.category, this.dbDetails.id);
+  }
+
+  public async managePresets(): Promise<void> {
+    await promptManageFilterPresets(this.category, this.dbDetails.id);
   }
 
   public async clearFilter(): Promise<void> {

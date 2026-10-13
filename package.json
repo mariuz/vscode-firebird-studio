@@ -762,6 +762,18 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.folder.savePreset",
+        "title": "Save Filter as Preset...",
+        "icon": "$(bookmark)",
+        "category": "Firebird"
+      },
+      {
+        "command": "firebird.folder.managePresets",
+        "title": "Manage Filter Presets...",
+        "icon": "$(gear)",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.history.clear",
         "title": "Clear All History",
         "category": "Firebird"
@@ -1098,6 +1110,33 @@
             "modified"
           ],
           "markdownDescription": "Change actions included by default in Schema Diff comparisons (added, removed, modified)."
+        },
+        "firebird.explorer.filterPresets": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Preset filter definitions for Object Explorer category folders (Tables, Views, Procedures, ...).",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "filter"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Display name of the filter preset (e.g. 'Sales Module')."
+              },
+              "filter": {
+                "type": "string",
+                "description": "Substring to match against object names."
+              },
+              "category": {
+                "type": "string",
+                "description": "Optional object category (tables, views, procedures, triggers, generators, domains, roles, exceptions, users)."
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -1862,6 +1901,16 @@
           "command": "firebird.folder.clearFilter",
           "when": "view == firebird-explorer && viewItem == folder.systemTables",
           "group": "filter@1"
+        },
+        {
+          "command": "firebird.folder.savePreset",
+          "when": "view == firebird-explorer && viewItem =~ /^folder\\./",
+          "group": "filter@2"
+        },
+        {
+          "command": "firebird.folder.managePresets",
+          "when": "view == firebird-explorer && viewItem =~ /^folder\\./",
+          "group": "filter@3"
         },
         {
           "command": "firebird.database.createSchema",

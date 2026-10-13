@@ -77,6 +77,7 @@ suite('Extension Host – roadmap feature commands', function () {
     'flat-file-import-wizard.md': ['firebird.database.importFlatFile'],
     'live-profiler.md': ['firebird.database.monitorDatabase'],
     'mcp-server.md': ['firebird.database.toggleMcpExposure', 'firebird.database.toggleMcpWriteAccess', 'firebird.mcp.showWriteAuditLog'],
+    'object-explorer-filter-presets.md': ['firebird.folder.setFilter', 'firebird.folder.clearFilter', 'firebird.folder.savePreset', 'firebird.folder.managePresets'],
     'query-plan-visualizer.md': ['firebird.showEstimatedPlan', 'firebird.explainPlan'],
     // First and last slot plus the bookmark binding — the loop that registers them is numeric, so
     // checking both ends catches an off-by-one in QUICK_QUERY_SLOT_COUNT as well as a broken loop.

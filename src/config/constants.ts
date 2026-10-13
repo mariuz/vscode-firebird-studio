@@ -8,6 +8,7 @@ export namespace Constants {
   export const ConectionsKey: string = "firebird.connections";
   export const LastShownVersionKey: string = "firebird.lastShownVersion";
   export const RecentConnectionsKey: string = "firebird.recentConnections";
+  export const ObjectFilterPresetsKey: string = "firebird.objectFilterPresets";
 
   /* output channel */
   export const OutputChannel: string = DisplayName;

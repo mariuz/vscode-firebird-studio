@@ -62,6 +62,7 @@ import {editConnectionSharingPermissions} from "./connection-sharing/permissions
 import {runBuildProject, runPublishProject, runGenerateMigrationScript, runMoveToSchema} from "./database-projects";
 import {runContainerProvisionWizard} from "./container-provisioning";
 import {runObjectSearch} from "./object-search";
+import {initObjectFilterPresets} from "./shared/object-explorer-filter";
 
 /**
  * Inline input-box validation for names the user is *creating* (a new index, a new column, ...).
@@ -163,6 +164,7 @@ export function activate(context: ExtensionContext) {
   /* initialise credential store with extension context for SecretStorage access */
   CredentialStore.setContext(context);
   Global.context = context;
+  initObjectFilterPresets(context);
 
   /**
    * Drop stored passwords whose connection no longer exists.
@@ -2716,6 +2718,16 @@ export function activate(context: ExtensionContext) {
   context.subscriptions.push(
     commands.registerCommand("firebird.folder.clearFilter", (node: NodeCategoryFolder) => {
       node.clearFilter().catch((err: any) => logger.error(err?.message ?? err));
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand("firebird.folder.savePreset", (node: NodeCategoryFolder) => {
+      node.savePreset().catch((err: any) => logger.error(err?.message ?? err));
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand("firebird.folder.managePresets", (node: NodeCategoryFolder) => {
+      node.managePresets().catch((err: any) => logger.error(err?.message ?? err));
     })
   );
 
