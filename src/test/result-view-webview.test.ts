@@ -64,6 +64,34 @@ suite('result-view app.js – pure helpers (via __test__ hook)', function () {
     });
   });
 
+  suite('escapeMarkdownCell()', function () {
+    test('null and undefined become empty string', function () {
+      assert.strictEqual(hooks.escapeMarkdownCell(null), '');
+      assert.strictEqual(hooks.escapeMarkdownCell(undefined), '');
+    });
+
+    test('pipes are escaped with backslash', function () {
+      assert.strictEqual(hooks.escapeMarkdownCell('a|b'), 'a\\|b');
+    });
+
+    test('newlines are replaced with spaces', function () {
+      assert.strictEqual(hooks.escapeMarkdownCell('hello\nworld'), 'hello world');
+      assert.strictEqual(hooks.escapeMarkdownCell('hello\r\nworld'), 'hello world');
+    });
+  });
+
+  suite('buildMarkdownTable()', function () {
+    test('formats headers and rows into markdown table', function () {
+      const md = hooks.buildMarkdownTable(['ID', 'NAME'], [['1', 'Alice'], ['2', 'Bob']]);
+      assert.strictEqual(md, '| ID | NAME |\n| --- | --- |\n| 1 | Alice |\n| 2 | Bob |');
+    });
+
+    test('escapes pipes and handles null cells', function () {
+      const md = hooks.buildMarkdownTable(['A', 'B'], [['val | 1', null]]);
+      assert.strictEqual(md, '| A | B |\n| --- | --- |\n| val \\| 1 |  |');
+    });
+  });
+
   suite('selectionRange()', function () {
     test('normalizes an anchor/end pair regardless of drag direction', function () {
       const range = hooks.selectionRange({ row: 3, col: 1 }, { row: 1, col: 4 });

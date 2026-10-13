@@ -17,7 +17,7 @@
  */
 
 import * as assert from 'assert';
-import { resultTableToCsv, resultTableToJson } from '../shared/notebook-render';
+import { resultTableToCsv, resultTableToJson, resultTableToMarkdown } from '../shared/notebook-render';
 import * as path from 'path';
 
 const RENDERER_PATH = path.join(__dirname, '..', '..', 'src', 'sql-notebook', 'renderer', 'resultRenderer.js');
@@ -103,6 +103,18 @@ suite('sql-notebook renderer – pure data helpers (via __test__ hook)', functio
     });
   });
 
+  suite('toMarkdown() and escapeMarkdownCell()', function () {
+    test('formats rows and headers into a markdown table', function () {
+      const md = hooks.toMarkdown([['1', 'Alice'], ['2', 'Bob']], ['ID', 'NAME']);
+      assert.strictEqual(md, '| ID | NAME |\n| --- | --- |\n| 1 | Alice |\n| 2 | Bob |');
+    });
+
+    test('escapes pipes and handles null', function () {
+      const md = hooks.toMarkdown([['1', 'a|b'], ['2', null]], ['ID', 'VAL']);
+      assert.strictEqual(md, '| ID | VAL |\n| --- | --- |\n| 1 | a\\|b |\n| 2 |  |');
+    });
+  });
+
   suite('computeSelectionStats()', function () {
     test('counts non-numeric cells correctly and skips them in numeric stats', function () {
       const stats = hooks.computeSelectionStats([['1', 'apple', '3']]);
@@ -164,6 +176,8 @@ class FakeElement {
   disabled = false;
   value = '';
   dataset: Record<string, string> = {};
+  parent: FakeElement | null = null;
+  style: Record<string, string> = {};
 
   constructor(tag: string) { this.tagName = tag; }
   set className(c: string) { this.classList.set = new Set(c.split(' ').filter(Boolean)); }
@@ -173,15 +187,31 @@ class FakeElement {
     if (this.children.length === 0) { return this._text; }
     return this.children.map(c => c.textContent).join('');
   }
-  appendChild(child: FakeElement) { this.children.push(child); return child; }
+  appendChild(child: FakeElement) { child.parent = this; this.children.push(child); return child; }
   append(...nodes: FakeElement[]) { nodes.forEach(n => this.appendChild(n)); }
   replaceChildren(...nodes: FakeElement[]) { this.children = []; nodes.forEach(n => this.appendChild(n)); }
+  remove() {
+    if (this.parent) {
+      const idx = this.parent.children.indexOf(this);
+      if (idx !== -1) { this.parent.children.splice(idx, 1); }
+      this.parent = null;
+    }
+  }
+  contains(child: FakeElement): boolean {
+    if (this === child) { return true; }
+    return this.children.some(c => c.contains(child));
+  }
   addEventListener(type: string, fn: (e: any) => void) { (this._listeners[type] ??= []).push(fn); }
   dispatch(type: string, eventProps: any = {}) { (this._listeners[type] ?? []).forEach(fn => fn({ target: this, preventDefault() {}, ...eventProps })); }
+  querySelector(selector: string): FakeElement | null {
+    return this.querySelectorAll(selector)[0] || null;
+  }
   querySelectorAll(selector: string): FakeElement[] {
     const results: FakeElement[] = [];
     const visit = (el: FakeElement) => {
       if (selector === 'tbody td' && el.tagName.toLowerCase() === 'td') {
+        results.push(el);
+      } else if (selector.startsWith('.') && el.classList.contains(selector.slice(1))) {
         results.push(el);
       } else if (el.tagName.toLowerCase() === selector.toLowerCase()) {
         results.push(el);
@@ -206,8 +236,8 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
       value: {
         createElement: (tag: string) => new FakeElement(tag),
         head: new FakeElement('head'),
-        addEventListener: (type: string, fn: any) => {},
-        removeEventListener: (type: string, fn: any) => {},
+        addEventListener: (_type: string, _fn: any) => {},
+        removeEventListener: (_type: string, _fn: any) => {},
       },
       configurable: true, writable: true,
     });
@@ -271,7 +301,7 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
   test('pagination caps the first page at the default page size and moves to the next page correctly', function () {
     const rows = Array.from({ length: 30 }, (_, i) => [String(i)]);
     const root = render({ headers: ['N'], rows, truncated: false, totalRowCount: 30 });
-    const [, , , , prevBtn, pageLabel, nextBtn] = toolbarOf(root).children;
+    const [, , , , , prevBtn, pageLabel, nextBtn] = toolbarOf(root).children;
 
     assert.strictEqual(prevBtn.disabled, true);
     assert.strictEqual(pageLabel.textContent, '1–25 of 30');
@@ -296,6 +326,27 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
     const [, , , copyJsonBtn] = toolbarOf(root).children;
     copyJsonBtn.dispatch('click');
     assert.deepStrictEqual(JSON.parse(clipboardText as unknown as string), [{ ID: '1', NAME: 'Alice' }]);
+  });
+
+  test('Copy as Markdown copies the current data formatted as a markdown table', function () {
+    const root = render({ headers: ['ID', 'NAME'], rows: [['1', 'Alice'], ['2', 'Bob']], truncated: false, totalRowCount: 2 });
+    const [, , , , copyMarkdownBtn] = toolbarOf(root).children;
+    copyMarkdownBtn.dispatch('click');
+    assert.strictEqual(clipboardText, '| ID | NAME |\n| --- | --- |\n| 1 | Alice |\n| 2 | Bob |');
+  });
+
+  test('right-clicking a cell opens context menu and allows copying cell value', function () {
+    const root = render({ headers: ['ID', 'NAME'], rows: [['1', 'Alice']], truncated: false, totalRowCount: 1 });
+    const td = tbodyOf(root).children[0].children[1];
+    td.dispatch('contextmenu', { clientX: 100, clientY: 100 });
+    const menu = root.querySelector('.fb-nb-context-menu');
+    assert.ok(menu, 'context menu should be rendered');
+    const items = menu.querySelectorAll('.fb-nb-context-menu-item');
+    assert.strictEqual(items.length, 4);
+    assert.ok(items[0].textContent.includes('Copy as Markdown Table'));
+    assert.ok(items[3].textContent.includes('Copy Cell Value'));
+    items[3].dispatch('click');
+    assert.strictEqual(clipboardText, 'Alice');
   });
 
   test('a truncated result shows a note with the shown/total counts', function () {
@@ -346,7 +397,7 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
 
 suite('renderer/host serializer parity (docs/roadmap/sql-notebooks.md, phase 4)', function () {
 
-  test('the renderer\'s toCsv/toJson and the host\'s resultTableToCsv/resultTableToJson agree exactly', async function () {
+  test('the renderer\'s toCsv/toJson/toMarkdown and the host\'s resultTableToCsv/resultTableToJson/resultTableToMarkdown agree exactly', async function () {
     // Two implementations exist by necessity, not choice: this test file loads the renderer's raw
     // .js through Node's own import(), so that file cannot import a .ts module, and the renderer
     // bundle is browser ESM while notebook-render.ts is Node CommonJS. This test is what keeps the
@@ -362,6 +413,7 @@ suite('renderer/host serializer parity (docs/roadmap/sql-notebooks.md, phase 4)'
 
     assert.strictEqual(__test__.toCsv(rows, headers), resultTableToCsv(headers, rows));
     assert.strictEqual(__test__.toJson(rows, headers), resultTableToJson(headers, rows));
+    assert.strictEqual(__test__.toMarkdown(rows, headers), resultTableToMarkdown(headers, rows));
   });
 
   test('both serializers keep a SQL NULL distinct from an empty string', async function () {
@@ -378,5 +430,6 @@ suite('renderer/host serializer parity (docs/roadmap/sql-notebooks.md, phase 4)'
     assert.strictEqual(parsed[0].A, null);
     assert.strictEqual(parsed[0].B, '');
     assert.strictEqual(__test__.toJson(rows, headers), resultTableToJson(headers, rows));
+    assert.strictEqual(__test__.toMarkdown(rows, headers), resultTableToMarkdown(headers, rows));
   });
 });

@@ -73,8 +73,37 @@ function renderTable(table, messaging) {
   const aggregates = document.createElement('span');
   aggregates.className = 'fb-nb-aggregates';
 
-  const copyCsvBtn = button('Copy as CSV', () => copyToClipboard(toCsv(filteredSortedRows(), table.headers), status, 'CSV'));
-  const copyJsonBtn = button('Copy as JSON', () => copyToClipboard(toJson(filteredSortedRows(), table.headers), status, 'JSON'));
+  function getCopyData() {
+    if (selectionAnchor && selectionEnd) {
+      const rStart = Math.min(selectionAnchor.row, selectionEnd.row);
+      const rEnd = Math.max(selectionAnchor.row, selectionEnd.row);
+      const cStart = Math.min(selectionAnchor.col, selectionEnd.col);
+      const cEnd = Math.max(selectionAnchor.col, selectionEnd.col);
+
+      const subHeaders = table.headers.slice(cStart, cEnd + 1);
+      const subRows = [];
+      for (let r = rStart; r <= rEnd; r++) {
+        if (pageRows[r]) {
+          subRows.push(pageRows[r].slice(cStart, cEnd + 1));
+        }
+      }
+      return { rows: subRows, headers: subHeaders };
+    }
+    return { rows: filteredSortedRows(), headers: table.headers };
+  }
+
+  const copyCsvBtn = button('Copy as CSV', () => {
+    const data = getCopyData();
+    copyToClipboard(toCsv(data.rows, data.headers), status, 'CSV');
+  });
+  const copyJsonBtn = button('Copy as JSON', () => {
+    const data = getCopyData();
+    copyToClipboard(toJson(data.rows, data.headers), status, 'JSON');
+  });
+  const copyMarkdownBtn = button('Copy as Markdown', () => {
+    const data = getCopyData();
+    copyToClipboard(toMarkdown(data.rows, data.headers), status, 'Markdown');
+  });
 
   // Export to a file goes through the extension host: a notebook renderer runs in a sandboxed
   // iframe where triggering a download isn't reliable, and only the host can show a save dialog.
@@ -99,7 +128,7 @@ function renderTable(table, messaging) {
 
   const toolbar = document.createElement('div');
   toolbar.className = 'fb-nb-toolbar';
-  toolbar.append(filterInput, pageSizeSelect, copyCsvBtn, copyJsonBtn);
+  toolbar.append(filterInput, pageSizeSelect, copyCsvBtn, copyJsonBtn, copyMarkdownBtn);
   if (exportBtn) { toolbar.append(exportBtn); }
   toolbar.append(prevBtn, pageLabel, nextBtn, status, aggregates);
 
@@ -263,10 +292,91 @@ function renderTable(table, messaging) {
           }
         });
 
+        td.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const inSelection = selectionAnchor && selectionEnd &&
+            rowIndex >= Math.min(selectionAnchor.row, selectionEnd.row) &&
+            rowIndex <= Math.max(selectionAnchor.row, selectionEnd.row) &&
+            colIndex >= Math.min(selectionAnchor.col, selectionEnd.col) &&
+            colIndex <= Math.max(selectionAnchor.col, selectionEnd.col);
+
+          if (!inSelection) {
+            selectionAnchor = { row: rowIndex, col: colIndex };
+            selectionEnd = { row: rowIndex, col: colIndex };
+            updateSelectionVisuals();
+          }
+
+          showContextMenu(e, cell);
+        });
+
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
     });
+  }
+
+  function showContextMenu(e, rawCellValue) {
+    const existing = root.querySelector('.fb-nb-context-menu');
+    if (existing) { existing.remove(); }
+
+    const menu = document.createElement('div');
+    menu.className = 'fb-nb-context-menu';
+    menu.style.left = `${e.clientX || 0}px`;
+    menu.style.top = `${e.clientY || 0}px`;
+
+    const addItem = (label, onClick) => {
+      const item = document.createElement('div');
+      item.className = 'fb-nb-context-menu-item';
+      item.textContent = label;
+      item.addEventListener('click', () => {
+        menu.remove();
+        onClick();
+      });
+      menu.appendChild(item);
+    };
+
+    addItem('📋 Copy as Markdown Table', () => {
+      const data = getCopyData();
+      copyToClipboard(toMarkdown(data.rows, data.headers), status, 'Markdown');
+    });
+    addItem('📋 Copy as CSV', () => {
+      const data = getCopyData();
+      copyToClipboard(toCsv(data.rows, data.headers), status, 'CSV');
+    });
+    addItem('📋 Copy as JSON', () => {
+      const data = getCopyData();
+      copyToClipboard(toJson(data.rows, data.headers), status, 'JSON');
+    });
+
+    const sep = document.createElement('div');
+    sep.className = 'fb-nb-context-menu-separator';
+    menu.appendChild(sep);
+
+    addItem('📄 Copy Cell Value', () => {
+      const valStr = rawCellValue === null || rawCellValue === undefined ? '' : String(rawCellValue);
+      copyToClipboard(valStr, status, 'Cell Value');
+    });
+
+    root.appendChild(menu);
+
+    const onDismiss = (ev) => {
+      if (!menu.contains(ev.target)) {
+        menu.remove();
+        document.removeEventListener('click', onDismiss);
+        document.removeEventListener('keydown', onKey);
+      }
+    };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') {
+        menu.remove();
+        document.removeEventListener('click', onDismiss);
+        document.removeEventListener('keydown', onKey);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('click', onDismiss);
+      document.addEventListener('keydown', onKey);
+    }, 0);
   }
 
   render();
@@ -315,6 +425,18 @@ function toJson(rows, headers) {
   }), null, 2);
 }
 
+function escapeMarkdownCell(value) {
+  if (value === null || value === undefined) { return ''; }
+  return String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+function toMarkdown(rows, headers) {
+  const headerLine = `| ${headers.map(escapeMarkdownCell).join(' | ')} |`;
+  const separatorLine = `| ${headers.map(() => '---').join(' | ')} |`;
+  const bodyLines = rows.map(row => `| ${headers.map((_, i) => escapeMarkdownCell(row[i] !== undefined ? row[i] : null)).join(' | ')} |`);
+  return [headerLine, separatorLine, ...bodyLines].join('\n');
+}
+
 function computeSelectionStats(rows) {
   const numericRe = /^-?\d+(\.\d+)?$/;
   let count = 0;
@@ -354,7 +476,7 @@ function formatSelectionStats(stats) {
 // ever imports `activate`) — lets a Node-based test load this module's pure helpers directly via
 // dynamic import(), the ESM equivalent of the CommonJS `module.exports.__test__` hook the other
 // three webview app.js files use (see src/test/webview-harness.ts's doc comment for why).
-export const __test__ = { compareCells, csvCell, toCsv, toJson, computeSelectionStats, formatSelectionStats };
+export const __test__ = { compareCells, csvCell, toCsv, toJson, toMarkdown, escapeMarkdownCell, computeSelectionStats, formatSelectionStats };
 
 function copyToClipboard(text, statusEl, label) {
   const ok = () => { statusEl.textContent = `Copied as ${label}.`; setTimeout(() => { statusEl.textContent = ''; }, 2000); };
@@ -388,6 +510,10 @@ function injectStylesOnce() {
     .fb-nb-null { font-style: italic; color: var(--vscode-descriptionForeground); }
     .fb-nb-empty { text-align: center; color: var(--vscode-descriptionForeground); padding: 8px; }
     .fb-nb-truncation { color: var(--vscode-descriptionForeground); font-size: 0.9em; margin-top: 4px; }
+    .fb-nb-context-menu { position: fixed; z-index: 1000; background: var(--vscode-menu-background, #252526); color: var(--vscode-menu-foreground, #cccccc); border: 1px solid var(--vscode-menu-border, #454545); box-shadow: 0 2px 8px rgba(0,0,0,0.35); border-radius: 4px; padding: 4px 0; min-width: 170px; font-family: var(--vscode-font-family); font-size: var(--vscode-font-size, 13px); }
+    .fb-nb-context-menu-item { padding: 4px 12px; cursor: pointer; user-select: none; }
+    .fb-nb-context-menu-item:hover { background-color: var(--vscode-menu-selectionBackground, #04395e); color: var(--vscode-menu-selectionForeground, #ffffff); }
+    .fb-nb-context-menu-separator { height: 1px; background: var(--vscode-menu-separatorBackground, #454545); margin: 4px 0; }
   `;
   document.head.appendChild(style);
 }

@@ -219,7 +219,7 @@ suite('SQL Notebook result export – renderer messaging (extension host)', func
     second.dispose();
   });
 
-  test('serializeExport() produces the file contents for both formats', function () {
+  test('serializeExport() produces the file contents for all supported formats', function () {
     const message = {
       type: 'exportResult' as const,
       headers: ['ID', 'NAME'],
@@ -230,5 +230,9 @@ suite('SQL Notebook result export – renderer messaging (extension host)', func
       { ID: '1', NAME: 'Widget, A' },
       { ID: '2', NAME: null },
     ]);
+    assert.strictEqual(
+      serializeExport(message, 'markdown'),
+      '| ID | NAME |\n| --- | --- |\n| 1 | Widget, A |\n| 2 |  |'
+    );
   });
 });

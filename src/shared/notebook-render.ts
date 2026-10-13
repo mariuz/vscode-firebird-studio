@@ -5,7 +5,7 @@
  * notebook renderer yet; that's Phase 2's "swap in the custom renderer" step.
  */
 
-function escapeMarkdownCell(value: any): string {
+export function escapeMarkdownCell(value: any): string {
   if (value === null || value === undefined) {
     return "";
   }
@@ -135,6 +135,13 @@ export function resultTableToJson(headers: string[], rows: (string | null)[][]):
     null,
     2
   );
+}
+
+export function resultTableToMarkdown(headers: string[], rows: (string | null)[][]): string {
+  const headerLine = `| ${headers.map(escapeMarkdownCell).join(" | ")} |`;
+  const separatorLine = `| ${headers.map(() => "---").join(" | ")} |`;
+  const bodyLines = rows.map(row => `| ${headers.map((_, i) => escapeMarkdownCell(row[i] !== undefined ? row[i] : null)).join(" | ")} |`);
+  return [headerLine, separatorLine, ...bodyLines].join("\n");
 }
 
 function cellToDisplayValue(v: any): string | null {

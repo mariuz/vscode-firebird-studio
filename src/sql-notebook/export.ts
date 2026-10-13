@@ -1,6 +1,6 @@
 import { Disposable, notebooks, window, workspace } from "vscode";
 import { logger } from "../logger/logger";
-import { resultTableToCsv, resultTableToJson, resultTableToExcel } from "../shared/notebook-render";
+import { resultTableToCsv, resultTableToJson, resultTableToExcel, resultTableToMarkdown } from "../shared/notebook-render";
 
 /**
  * SQL Notebook result export (docs/roadmap/sql-notebooks.md, phase 4).
@@ -39,12 +39,15 @@ function isExportResultMessage(message: any): message is ExportResultMessage {
 }
 
 /** Exposed for tests: turns a message into the file contents, without touching any dialog or disk. */
-export function serializeExport(message: ExportResultMessage, format: "csv" | "json" | "excel"): string {
+export function serializeExport(message: ExportResultMessage, format: "csv" | "json" | "excel" | "markdown"): string {
   if (format === "csv") {
     return resultTableToCsv(message.headers, message.rows);
   }
   if (format === "json") {
     return resultTableToJson(message.headers, message.rows);
+  }
+  if (format === "markdown") {
+    return resultTableToMarkdown(message.headers, message.rows);
   }
   return resultTableToExcel(message.headers, message.rows);
 }
@@ -86,6 +89,7 @@ async function exportResult(message: ExportResultMessage): Promise<void> {
       { label: "CSV", description: "Comma-separated values (.csv)", format: "csv" as const },
       { label: "Excel", description: "Excel spreadsheet (.xlsx / .tsv)", format: "excel" as const },
       { label: "JSON", description: "One object per row (.json)", format: "json" as const },
+      { label: "Markdown", description: "GitHub-flavored markdown table (.md)", format: "markdown" as const },
     ],
     { placeHolder: `Export ${message.rows.length} row(s) as…` }
   );
@@ -95,6 +99,7 @@ async function exportResult(message: ExportResultMessage): Promise<void> {
     csv: { "CSV": ["csv"], "All files": ["*"] },
     excel: { "Excel Spreadsheet": ["xlsx", "xls", "tsv"], "All files": ["*"] },
     json: { "JSON": ["json"], "All files": ["*"] },
+    markdown: { "Markdown": ["md", "markdown"], "All files": ["*"] },
   };
 
   const target = await window.showSaveDialog({

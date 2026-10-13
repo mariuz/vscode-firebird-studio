@@ -54,6 +54,7 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
   "event.toggleFreezeColumn": "ctrlcmd+alt+z",
   "event.copyAsInsert": "ctrlcmd+alt+i",
   "event.copyAsInClause": "ctrlcmd+alt+k",
+  "event.copyAsMarkdown": "ctrlcmd+alt+m",
 };
 
 function getConfig(): WorkspaceConfiguration {

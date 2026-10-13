@@ -64,6 +64,7 @@ $(() => {
       ["event.toggleFreezeColumn", actions.freeze],
       ["event.copyAsInsert", actions.copyInsert],
       ["event.copyAsInClause", actions.copyIn],
+      ["event.copyAsMarkdown", actions.copyMarkdown],
     ];
     for (const [name, fn] of bindings) {
       if (matchesShortcut(event, parseShortcut(shortcuts[name]))) {
@@ -418,11 +419,12 @@ $(() => {
     const $viewDiagram  = $("<button>").addClass("btn-grid-action btn-view-diagram").text("🗺 View Table Diagram");
     const $copyInsert    = $("<button>").addClass("btn-grid-action btn-copy-insert").text("Copy as INSERT");
     const $copyInClause  = $("<button>").addClass("btn-grid-action btn-copy-in").text("Copy as IN (...)");
+    const $copyMarkdown  = $("<button>").addClass("btn-grid-action btn-copy-markdown").text("Copy as Markdown");
     const $chartToggle  = $("<button>").addClass("btn-grid-action btn-chart-toggle").text("📊 Chart");
     const $textViewToggle = $("<button>").addClass("btn-grid-action btn-text-view-toggle").text("📄 Text View");
     const $selectionStats = $("<span>").addClass("selection-stats");
     const $status       = $("<span>").addClass("edit-status");
-    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $viewDiagram, $copyInsert, $copyInClause, $chartToggle, $textViewToggle, $selectionStats);
+    $editToolbar.append($tableNameInput, $toggleEdit, $addRow, $apply, $freezeToggle, $viewDiagram, $copyInsert, $copyInClause, $copyMarkdown, $chartToggle, $textViewToggle, $selectionStats);
 
     // "🤖 Analyze" and "🧭 Query Plan" only make sense when we actually know the SQL that produced
     // this result set (the single/legacy display() path — predefined actions like Show Table Info
@@ -776,6 +778,78 @@ $(() => {
       highlightSelection();
     });
 
+    $(`#${tableId} tbody`).on("contextmenu", "td:not(.fb-row-actions)", function (e) {
+      if (editing) { return; }
+      e.preventDefault();
+      const tr = $(this).closest("tr")[0];
+      const colIndex = cellColIndex($(this));
+      const $rows = $(`#${tableId} tbody tr`);
+      const rowIndex = $rows.index(tr);
+
+      let isInSelection = false;
+      if (selAnchor && selEnd) {
+        const range = selectionRange(
+          { row: $rows.index(selAnchor.tr), col: selAnchor.colIndex },
+          { row: $rows.index(selEnd.tr), col: selEnd.colIndex }
+        );
+        isInSelection = rowIndex >= range.rowStart && rowIndex <= range.rowEnd &&
+                        colIndex >= range.colStart && colIndex <= range.colEnd;
+      }
+
+      if (!isInSelection) {
+        selAnchor = { tr, colIndex };
+        selEnd = { tr, colIndex };
+        highlightSelection();
+      }
+
+      $(".fb-grid-context-menu").remove();
+
+      const $menu = $("<div>").addClass("fb-grid-context-menu");
+      const posX = Math.max(0, Math.min(e.clientX, $(window).width() - 210));
+      const posY = Math.max(0, Math.min(e.clientY, $(window).height() - 170));
+      $menu.css({ left: posX + "px", top: posY + "px" });
+
+      const addMenuItem = (text, onClick) => {
+        const $item = $("<div>").addClass("fb-grid-context-menu-item").text(text);
+        $item.on("click", () => {
+          $menu.remove();
+          onClick();
+        });
+        $menu.append($item);
+      };
+
+      addMenuItem("📋 Copy as Markdown Table", () => $copyMarkdown.trigger("click"));
+      addMenuItem("📋 Copy as INSERT", () => $copyInsert.trigger("click"));
+      addMenuItem("📋 Copy as IN (...)", () => $copyInClause.trigger("click"));
+      $menu.append($("<div>").addClass("fb-grid-context-menu-separator"));
+      const cellText = $(this).text();
+      addMenuItem("📄 Copy Cell Value", () => {
+        copyToClipboard(cellText);
+        $status.text("Copied cell value to the clipboard.");
+      });
+
+      $("body").append($menu);
+
+      const closeHandler = ev => {
+        if (!$menu.is(ev.target) && $menu.has(ev.target).length === 0) {
+          $menu.remove();
+          $(document).off("click scroll", closeHandler);
+          $(document).off("keydown", keyHandler);
+        }
+      };
+      const keyHandler = ev => {
+        if (ev.key === "Escape") {
+          $menu.remove();
+          $(document).off("click scroll", closeHandler);
+          $(document).off("keydown", keyHandler);
+        }
+      };
+      setTimeout(() => {
+        $(document).on("click scroll", closeHandler);
+        $(document).on("keydown", keyHandler);
+      }, 0);
+    });
+
     // Namespaced + re-bound (rather than a bare document-level .on()) so
     // repeated buildEditableTable() calls for the same tableId (a batch panel
     // re-rendered on every query run) don't pile up duplicate handlers.
@@ -966,6 +1040,21 @@ $(() => {
       $status.text(`Copied an IN (...) clause with ${values.length} value(s) to the clipboard.`);
     });
 
+    $copyMarkdown.on("click", () => {
+      const sel = getSelectedGrid();
+      let cols, rows;
+      if (sel && sel.rows.length > 0) {
+        cols = headers.slice(sel.colStart, sel.colEnd + 1).map(h => h.title);
+        rows = sel.rows;
+      } else {
+        cols = headers.map(h => h.title);
+        rows = tableBody;
+      }
+      const md = buildMarkdownTable(cols, rows);
+      copyToClipboard(md);
+      $status.text(`Copied ${rows.length} row(s) as a Markdown table to the clipboard.`);
+    });
+
     // ── Chart panel ──────────────────────────────────────────────────────────
     // Renders straight from the original tableBody/headers (not DataTables' current
     // sort/filter/page state) — a deliberate scope cut for a first pass; capped to the
@@ -1037,6 +1126,7 @@ $(() => {
       freeze: () => $freezeToggle.trigger("click"),
       copyInsert: () => $copyInsert.trigger("click"),
       copyIn: () => $copyInClause.trigger("click"),
+      copyMarkdown: () => $copyMarkdown.trigger("click"),
     };
     if (!activeTableId) { activeTableId = tableId; }
     if (autoEdit) { $toggleEdit.trigger("click"); }
@@ -1100,6 +1190,18 @@ $(() => {
 
   function buildInClause(values) {
     return `IN (${values.map(sqlLiteral).join(", ")})`;
+  }
+
+  function escapeMarkdownCell(value) {
+    if (value === null || value === undefined) { return ""; }
+    return String(value).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  }
+
+  function buildMarkdownTable(columns, rows) {
+    const headerLine = `| ${columns.map(escapeMarkdownCell).join(" | ")} |`;
+    const separatorLine = `| ${columns.map(() => "---").join(" | ")} |`;
+    const bodyLines = rows.map(row => `| ${columns.map((_, i) => escapeMarkdownCell(row[i] !== undefined ? row[i] : null)).join(" | ")} |`);
+    return [headerLine, separatorLine, ...bodyLines].join("\n");
   }
 
   // ── Text View (plain-text rendering of a result set) ───────────────────────
@@ -1421,7 +1523,7 @@ $(() => {
   // Test-only hook: no-op in a real webview (there is no `module` global there).
   if (typeof module !== 'undefined' && module.exports) {
     module.exports.__test__ = {
-      sqlLiteral, buildInsertStatement, buildInClause, selectionRange,
+      sqlLiteral, buildInsertStatement, buildInClause, buildMarkdownTable, escapeMarkdownCell, selectionRange,
       parseShortcut, matchesShortcut,
       detectNumericColumns, buildBarChartSvg, buildLineChartSvg, buildPieChartSvg, buildScatterChartSvg,
       buildTextView, truncationNote, pageRangeLabel, pagingOrderWarning, FILTER_OPERATOR_CHOICES,
