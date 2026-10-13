@@ -35,9 +35,16 @@ export interface Message {
  * query plan, a schema diagram or the profiler — all four read-heavy panels where looking for a
  * name is the obvious thing to want, and all four share this class.
  *
+ * `retainContextWhenHidden` keeps the webview iframe and renderer alive when switching tabs or
+ * panels, preserving in-memory DOM state: active sort, column filters, page offset, and crucially
+ * staged Edit Data changes (which live in the webview's pending array until "Apply" is clicked).
+ * Without this, switching to another editor tab or glancing at the terminal discards staged edits
+ * silently.
+ *
  * Two limits worth knowing, neither fixable here. It is a `WebviewPanelOptions` flag, so it does
  * **not** reach the bottom-Panel host (`firebird.queryResultsLocation: "panel"`) — a `WebviewView`
- * has no equivalent in the API as of 1.134. And it searches the *rendered DOM*, so it finds what
+ * uses `registerWebviewViewProvider(..., { webviewOptions: { retainContextWhenHidden: true } })`
+ * instead. And `enableFindWidget` searches the *rendered DOM*, so it finds what
  * the grid is currently showing: with paging on that is the page on screen, not the whole result
  * set, which is what the grid's own filter is for.
  *
@@ -47,6 +54,7 @@ export interface Message {
  */
 export const RESULTS_PANEL_OPTIONS: WebviewPanelOptions = {
   enableFindWidget: true,
+  retainContextWhenHidden: true,
 };
 
 export type WebviewLocation = "editor" | "panel";
@@ -60,6 +68,16 @@ export class QueryResultsView extends EventEmitter implements Disposable, Webvie
   /** Set only while this webview is docked in the bottom Panel — see {@link WebviewLocation}. */
   private view: WebviewView | undefined;
   private viewSubscriptions?: Disposable;
+  /**
+   * Controls if the webview panel's content (iframe) is kept around even when the panel is no
+   * longer visible.
+   *
+   * Preserves webview DOM state across tab switches: active sort, column filters, current page,
+   * chart view toggle, and staged Edit Data changes (which live in the webview's pending array
+   * until Apply is clicked). Subclasses such as ProfilerView may override to false if they
+   * intentionally rely on teardown-on-hide to suspend webview timers.
+   */
+  protected retainContextWhenHidden: boolean = true;
   /**
    * The HTML a `show()` asked for while the Panel-hosted view did not exist yet. VS Code builds
    * that view lazily, so the first run after a window opens reaches `show()` before there is any
@@ -176,7 +194,7 @@ export class QueryResultsView extends EventEmitter implements Disposable, Webvie
     const options: WebviewPanelOptions & WebviewOptions = {
       ...RESULTS_PANEL_OPTIONS,
       enableScripts: true,
-      retainContextWhenHidden: false, // we dont need to keep the state
+      retainContextWhenHidden: this.retainContextWhenHidden,
       // localResourceRoots: [Uri.parse(this.resourcesPath).with({ scheme: "vscode-resource" })]
     };
 

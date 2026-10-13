@@ -20,12 +20,13 @@ import { logger } from "../logger/logger";
  * query execution or the connection pool.
  *
  * Polling itself lives entirely in the webview (a plain `setInterval` posting "refresh"): this
- * webview, like every other one in this extension, is created with `retainContextWhenHidden:
- * false` (see `QueryResultsView`), so VS Code tears down its script the moment the panel is
+ * webview, unlike the results panel, keeps `retainContextWhenHidden: false` (overriding
+ * `QueryResultsView`'s default `true`), so VS Code tears down its script the moment the panel is
  * hidden and re-runs it from scratch when shown again — which already gives "stop polling when
  * not visible, resume when shown" for free, with no extra lifecycle wiring needed here.
  */
 export class ProfilerView extends QueryResultsView implements vscode.Disposable {
+  protected override retainContextWhenHidden = false;
   private dbDetails?: ConnectionOptions;
   private connection?: unknown;
   /** Queued for the webview's first "ready" — see the ready/init handshake other webviews in this extension use. */

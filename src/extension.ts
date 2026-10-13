@@ -440,8 +440,14 @@ export function activate(context: ExtensionContext) {
     }),
     /* The bottom-Panel host for query results (firebird.queryResultsLocation). Registered
        unconditionally — VS Code needs a provider for a contributed view whether or not the view is
-       currently shown, and the view's own `when` clause is what keeps it out of the way. */
-    window.registerWebviewViewProvider("firebird.queryResultsPanel", firebirdQueryResults),
+       currently shown, and the view's own `when` clause is what keeps it out of the way.
+       `retainContextWhenHidden: true` preserves in-memory grid state (sort, filter, current page)
+       and staged Edit Data changes when switching between the results view and other panel tabs. */
+    window.registerWebviewViewProvider("firebird.queryResultsPanel", firebirdQueryResults, {
+      webviewOptions: {
+        retainContextWhenHidden: true,
+      },
+    }),
     window.registerTreeDataProvider("firebird-bookmarks", bookmarkProvider),
     window.registerTreeDataProvider("firebird-query-history", queryHistoryProvider),
     window.registerTreeDataProvider("firebird-tasks", taskTracker),

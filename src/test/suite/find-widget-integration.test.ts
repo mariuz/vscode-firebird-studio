@@ -40,3 +40,40 @@ suite("Webview find widget (extension host)", function () {
     }
   });
 });
+
+/**
+ * `retainContextWhenHidden` keeps the webview DOM/iframe context alive when switching tabs or panels.
+ * vscode-mssql #22814 sets this on both the editor panel and the bottom-panel view provider to preserve
+ * in-memory grid state (sort, filter, page offset, chart/text view toggle) and especially staged Edit Data changes.
+ */
+suite("Webview context retention (extension host)", function () {
+  this.timeout(20000);
+
+  test("the results panels ask for retainContextWhenHidden", function () {
+    assert.strictEqual(RESULTS_PANEL_OPTIONS.retainContextWhenHidden, true);
+  });
+
+  test("this VS Code honours retainContextWhenHidden on WebviewPanel", function () {
+    const panel = vscode.window.createWebviewPanel(
+      "firebirdRetainContextProbe", "probe", vscode.ViewColumn.One, { ...RESULTS_PANEL_OPTIONS }
+    );
+    try {
+      assert.strictEqual(
+        panel.options.retainContextWhenHidden, true,
+        "VS Code did not report retainContextWhenHidden as enabled"
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("registerWebviewViewProvider accepts retainContextWhenHidden option without error", function () {
+    const disposable = vscode.window.registerWebviewViewProvider(
+      "firebird.queryResultsPanelProbe",
+      { resolveWebviewView: () => {} },
+      { webviewOptions: { retainContextWhenHidden: true } }
+    );
+    disposable.dispose();
+  });
+});
+
