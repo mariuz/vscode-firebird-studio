@@ -258,6 +258,8 @@ Run the workflow manually from the Actions tab to rehearse it: the manual trigge
 run, which packages, verifies and uploads the `.vsix` as a build artifact without publishing
 anything or creating a release.
 
+For detailed instructions on publisher account setup, Personal Access Token generation, and troubleshooting, see [PUBLISHING.md](PUBLISHING.md).
+
 ## Submitting a Pull Request
 
 1. Ensure your branch is up to date with upstream `master`:
