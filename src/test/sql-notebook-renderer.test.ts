@@ -17,7 +17,7 @@
  */
 
 import * as assert from 'assert';
-import { resultTableToCsv, resultTableToJson, resultTableToMarkdown } from '../shared/notebook-render';
+import { resultTableToCsv, resultTableToExcel, resultTableToJson, resultTableToMarkdown } from '../shared/notebook-render';
 import * as path from 'path';
 
 const RENDERER_PATH = path.join(__dirname, '..', '..', 'src', 'sql-notebook', 'renderer', 'resultRenderer.js');
@@ -84,6 +84,43 @@ suite('sql-notebook renderer – pure data helpers (via __test__ hook)', functio
     test('a null cell becomes an empty CSV field, not the literal string "null"', function () {
       const csv = hooks.toCsv([['1', null]], ['ID', 'NOTE']);
       assert.strictEqual(csv, 'ID,NOTE\n1,');
+    });
+
+    test('supports omitting header row when includeHeaders is false', function () {
+      const csv = hooks.toCsv([['1', 'Alice'], ['2', 'Bob']], ['ID', 'NAME'], false);
+      assert.strictEqual(csv, '1,Alice\n2,Bob');
+    });
+  });
+
+  suite('excelCell()', function () {
+    test('null becomes an empty field', function () {
+      assert.strictEqual(hooks.excelCell(null), '');
+    });
+
+    test('a plain value passes through unquoted', function () {
+      assert.strictEqual(hooks.excelCell('hello'), 'hello');
+    });
+
+    test('a value containing tab, newline, or carriage return is quoted', function () {
+      assert.strictEqual(hooks.excelCell('a\tb'), '"a\tb"');
+      assert.strictEqual(hooks.excelCell('a\nb'), '"a\nb"');
+      assert.strictEqual(hooks.excelCell('a\r\nb'), '"a\r\nb"');
+    });
+
+    test('a value containing double quote is quoted and doubled', function () {
+      assert.strictEqual(hooks.excelCell('say "hi"'), '"say ""hi"""');
+    });
+  });
+
+  suite('toExcel()', function () {
+    test('builds a header row plus tab-separated data rows by default', function () {
+      const tsv = hooks.toExcel([['1', 'Alice'], ['2', 'Bob']], ['ID', 'NAME']);
+      assert.strictEqual(tsv, 'ID\tNAME\n1\tAlice\n2\tBob');
+    });
+
+    test('omits header row when includeHeaders is false', function () {
+      const tsv = hooks.toExcel([['1', 'Alice'], ['2', 'Bob']], ['ID', 'NAME'], false);
+      assert.strictEqual(tsv, '1\tAlice\n2\tBob');
     });
   });
 
@@ -202,7 +239,7 @@ class FakeElement {
     return this.children.some(c => c.contains(child));
   }
   addEventListener(type: string, fn: (e: any) => void) { (this._listeners[type] ??= []).push(fn); }
-  dispatch(type: string, eventProps: any = {}) { (this._listeners[type] ?? []).forEach(fn => fn({ target: this, preventDefault() {}, ...eventProps })); }
+  dispatch(type: string, eventProps: any = {}) { (this._listeners[type] ?? []).forEach(fn => fn({ target: this, preventDefault() {}, stopPropagation() {}, ...eventProps })); }
   querySelector(selector: string): FakeElement | null {
     return this.querySelectorAll(selector)[0] || null;
   }
@@ -343,10 +380,85 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
     assert.ok(menu, 'context menu should be rendered');
     const items = menu.querySelectorAll('.fb-nb-context-menu-item');
     assert.strictEqual(items.length, 4);
-    assert.ok(items[0].textContent.includes('Copy as Markdown Table'));
+    assert.ok(items[0].textContent.includes('Copy'));
+    assert.ok(items[1].textContent.includes('Copy with Headers'));
+    assert.ok(items[2].textContent.includes('Copy As'));
     assert.ok(items[3].textContent.includes('Copy Cell Value'));
     items[3].dispatch('click');
     assert.strictEqual(clipboardText, 'Alice');
+  });
+
+  test('context menu Copy and Copy with Headers copy TSV data with or without headers', function () {
+    const root = render({ headers: ['ID', 'NAME'], rows: [['1', 'Alice'], ['2', 'Bob']], truncated: false, totalRowCount: 2 });
+    const tbody = tbodyOf(root);
+    const td00 = tbody.children[0].children[0];
+    const td11 = tbody.children[1].children[1];
+
+    // Select entire grid: 0,0 to 1,1
+    td00.dispatch('mousedown', { button: 0 });
+    td11.dispatch('mouseenter');
+    td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
+    const menu = root.querySelector('.fb-nb-context-menu');
+    assert.ok(menu);
+    const items = menu.querySelectorAll('.fb-nb-context-menu-item');
+
+    // items[0]: Copy (without headers)
+    items[0].dispatch('click');
+    assert.strictEqual(clipboardText, '1\tAlice\n2\tBob');
+
+    // Reopen menu inside selection and click Copy with Headers
+    td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
+    const menu2 = root.querySelector('.fb-nb-context-menu');
+    const items2 = menu2.querySelectorAll('.fb-nb-context-menu-item');
+    items2[1].dispatch('click');
+    assert.strictEqual(clipboardText, 'ID\tNAME\n1\tAlice\n2\tBob');
+  });
+
+  test('context menu Copy As submenu provides CSV, JSON, Markdown Table, and Excel (TSV)', function () {
+    const root = render({ headers: ['ID', 'NAME'], rows: [['1', 'Alice']], truncated: false, totalRowCount: 1 });
+    const tbody = tbodyOf(root);
+    const td00 = tbody.children[0].children[0];
+    const td01 = tbody.children[0].children[1];
+
+    // Select row: 0,0 to 0,1
+    td00.dispatch('mousedown', { button: 0 });
+    td01.dispatch('mouseenter');
+    td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
+    const menu = root.querySelector('.fb-nb-context-menu');
+    assert.ok(menu);
+    const submenu = menu.querySelector('.fb-nb-context-submenu');
+    assert.ok(submenu, 'submenu should be present');
+    const subItems = submenu.querySelectorAll('.fb-nb-context-submenu-item');
+    assert.strictEqual(subItems.length, 4);
+    assert.strictEqual(subItems[0].textContent, 'CSV');
+    assert.strictEqual(subItems[1].textContent, 'JSON');
+    assert.strictEqual(subItems[2].textContent, 'Markdown Table');
+    assert.strictEqual(subItems[3].textContent, 'Excel (TSV)');
+
+    // Test clicking CSV
+    subItems[0].dispatch('click');
+    assert.strictEqual(clipboardText, 'ID,NAME\n1,Alice');
+
+    // Reopen and test clicking JSON
+    td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
+    const menu2 = root.querySelector('.fb-nb-context-menu');
+    const sub2 = menu2.querySelector('.fb-nb-context-submenu').querySelectorAll('.fb-nb-context-submenu-item');
+    sub2[1].dispatch('click');
+    assert.deepStrictEqual(JSON.parse(clipboardText as string), [{ ID: '1', NAME: 'Alice' }]);
+
+    // Reopen and test clicking Markdown Table
+    td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
+    const menu3 = root.querySelector('.fb-nb-context-menu');
+    const sub3 = menu3.querySelector('.fb-nb-context-submenu').querySelectorAll('.fb-nb-context-submenu-item');
+    sub3[2].dispatch('click');
+    assert.strictEqual(clipboardText, '| ID | NAME |\n| --- | --- |\n| 1 | Alice |');
+
+    // Reopen and test clicking Excel (TSV)
+    td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
+    const menu4 = root.querySelector('.fb-nb-context-menu');
+    const sub4 = menu4.querySelector('.fb-nb-context-submenu').querySelectorAll('.fb-nb-context-submenu-item');
+    sub4[3].dispatch('click');
+    assert.strictEqual(clipboardText, 'ID\tNAME\n1\tAlice');
   });
 
   test('a truncated result shows a note with the shown/total counts', function () {
@@ -397,7 +509,7 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
 
 suite('renderer/host serializer parity (docs/roadmap/sql-notebooks.md, phase 4)', function () {
 
-  test('the renderer\'s toCsv/toJson/toMarkdown and the host\'s resultTableToCsv/resultTableToJson/resultTableToMarkdown agree exactly', async function () {
+  test('the renderer\'s toCsv/toExcel/toJson/toMarkdown and the host\'s resultTableToCsv/resultTableToExcel/resultTableToJson/resultTableToMarkdown agree exactly', async function () {
     // Two implementations exist by necessity, not choice: this test file loads the renderer's raw
     // .js through Node's own import(), so that file cannot import a .ts module, and the renderer
     // bundle is browser ESM while notebook-render.ts is Node CommonJS. This test is what keeps the
@@ -412,6 +524,7 @@ suite('renderer/host serializer parity (docs/roadmap/sql-notebooks.md, phase 4)'
     ];
 
     assert.strictEqual(__test__.toCsv(rows, headers), resultTableToCsv(headers, rows));
+    assert.strictEqual(__test__.toExcel(rows, headers), resultTableToExcel(headers, rows));
     assert.strictEqual(__test__.toJson(rows, headers), resultTableToJson(headers, rows));
     assert.strictEqual(__test__.toMarkdown(rows, headers), resultTableToMarkdown(headers, rows));
   });
@@ -425,6 +538,7 @@ suite('renderer/host serializer parity (docs/roadmap/sql-notebooks.md, phase 4)'
     // CSV can't distinguish them (both are an empty field) — but JSON can, and must.
     assert.strictEqual(resultTableToCsv(headers, rows), 'A,B\n,');
     assert.strictEqual(__test__.toCsv(rows, headers), resultTableToCsv(headers, rows));
+    assert.strictEqual(__test__.toExcel(rows, headers), resultTableToExcel(headers, rows));
 
     const parsed = JSON.parse(resultTableToJson(headers, rows));
     assert.strictEqual(parsed[0].A, null);

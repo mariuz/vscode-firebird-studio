@@ -333,20 +333,93 @@ function renderTable(table, messaging) {
         onClick();
       });
       menu.appendChild(item);
+      return item;
     };
 
-    addItem('📋 Copy as Markdown Table', () => {
+    const addSubmenu = (label, items) => {
+      const parentItem = document.createElement('div');
+      parentItem.className = 'fb-nb-context-menu-item fb-nb-submenu-parent';
+
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = label;
+      const arrowSpan = document.createElement('span');
+      arrowSpan.className = 'fb-nb-submenu-arrow';
+      arrowSpan.textContent = ' ▶';
+      parentItem.append(labelSpan, arrowSpan);
+
+      const submenu = document.createElement('div');
+      submenu.className = 'fb-nb-context-submenu';
+      if (typeof window !== 'undefined' && window.innerWidth && (e.clientX || 0) > window.innerWidth - 320) {
+        submenu.style.left = 'auto';
+        submenu.style.right = '100%';
+      }
+
+      items.forEach(sub => {
+        const subItem = document.createElement('div');
+        subItem.className = 'fb-nb-context-submenu-item';
+        subItem.textContent = sub.label;
+        subItem.addEventListener('click', (ev) => {
+          if (ev && typeof ev.stopPropagation === 'function') {
+            ev.stopPropagation();
+          }
+          menu.remove();
+          sub.onClick();
+        });
+        submenu.appendChild(subItem);
+      });
+
+      parentItem.addEventListener('mouseenter', () => {
+        submenu.style.display = 'block';
+      });
+      parentItem.addEventListener('mouseleave', () => {
+        submenu.style.display = '';
+      });
+
+      parentItem.appendChild(submenu);
+      menu.appendChild(parentItem);
+      return parentItem;
+    };
+
+    addItem('📋 Copy', () => {
       const data = getCopyData();
-      copyToClipboard(toMarkdown(data.rows, data.headers), status, 'Markdown');
+      copyToClipboard(toExcel(data.rows, data.headers, false), status, 'Text');
     });
-    addItem('📋 Copy as CSV', () => {
+
+    addItem('📋 Copy with Headers', () => {
       const data = getCopyData();
-      copyToClipboard(toCsv(data.rows, data.headers), status, 'CSV');
+      copyToClipboard(toExcel(data.rows, data.headers, true), status, 'Text with Headers');
     });
-    addItem('📋 Copy as JSON', () => {
-      const data = getCopyData();
-      copyToClipboard(toJson(data.rows, data.headers), status, 'JSON');
-    });
+
+    addSubmenu('📋 Copy As', [
+      {
+        label: 'CSV',
+        onClick: () => {
+          const data = getCopyData();
+          copyToClipboard(toCsv(data.rows, data.headers), status, 'CSV');
+        },
+      },
+      {
+        label: 'JSON',
+        onClick: () => {
+          const data = getCopyData();
+          copyToClipboard(toJson(data.rows, data.headers), status, 'JSON');
+        },
+      },
+      {
+        label: 'Markdown Table',
+        onClick: () => {
+          const data = getCopyData();
+          copyToClipboard(toMarkdown(data.rows, data.headers), status, 'Markdown');
+        },
+      },
+      {
+        label: 'Excel (TSV)',
+        onClick: () => {
+          const data = getCopyData();
+          copyToClipboard(toExcel(data.rows, data.headers, true), status, 'Excel (TSV)');
+        },
+      },
+    ]);
 
     const sep = document.createElement('div');
     sep.className = 'fb-nb-context-menu-separator';
@@ -411,9 +484,21 @@ function csvCell(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function toCsv(rows, headers) {
-  const lines = [headers.map(csvCell).join(',')];
+function toCsv(rows, headers, includeHeaders = true) {
+  const lines = includeHeaders && headers && headers.length > 0 ? [headers.map(csvCell).join(',')] : [];
   rows.forEach(row => lines.push(row.map(csvCell).join(',')));
+  return lines.join('\n');
+}
+
+function excelCell(value) {
+  if (value === null) { return ''; }
+  const s = String(value);
+  return /["\t\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function toExcel(rows, headers, includeHeaders = true) {
+  const lines = includeHeaders && headers && headers.length > 0 ? [headers.map(excelCell).join('\t')] : [];
+  rows.forEach(row => lines.push(row.map(excelCell).join('\t')));
   return lines.join('\n');
 }
 
@@ -476,7 +561,7 @@ function formatSelectionStats(stats) {
 // ever imports `activate`) — lets a Node-based test load this module's pure helpers directly via
 // dynamic import(), the ESM equivalent of the CommonJS `module.exports.__test__` hook the other
 // three webview app.js files use (see src/test/webview-harness.ts's doc comment for why).
-export const __test__ = { compareCells, csvCell, toCsv, toJson, toMarkdown, escapeMarkdownCell, computeSelectionStats, formatSelectionStats };
+export const __test__ = { compareCells, csvCell, excelCell, toCsv, toExcel, toJson, toMarkdown, escapeMarkdownCell, computeSelectionStats, formatSelectionStats };
 
 function copyToClipboard(text, statusEl, label) {
   const ok = () => { statusEl.textContent = `Copied as ${label}.`; setTimeout(() => { statusEl.textContent = ''; }, 2000); };
@@ -511,9 +596,14 @@ function injectStylesOnce() {
     .fb-nb-empty { text-align: center; color: var(--vscode-descriptionForeground); padding: 8px; }
     .fb-nb-truncation { color: var(--vscode-descriptionForeground); font-size: 0.9em; margin-top: 4px; }
     .fb-nb-context-menu { position: fixed; z-index: 1000; background: var(--vscode-menu-background, #252526); color: var(--vscode-menu-foreground, #cccccc); border: 1px solid var(--vscode-menu-border, #454545); box-shadow: 0 2px 8px rgba(0,0,0,0.35); border-radius: 4px; padding: 4px 0; min-width: 170px; font-family: var(--vscode-font-family); font-size: var(--vscode-font-size, 13px); }
-    .fb-nb-context-menu-item { padding: 4px 12px; cursor: pointer; user-select: none; }
+    .fb-nb-context-menu-item { position: relative; display: flex; justify-content: space-between; align-items: center; padding: 4px 12px; cursor: pointer; user-select: none; }
     .fb-nb-context-menu-item:hover { background-color: var(--vscode-menu-selectionBackground, #04395e); color: var(--vscode-menu-selectionForeground, #ffffff); }
     .fb-nb-context-menu-separator { height: 1px; background: var(--vscode-menu-separatorBackground, #454545); margin: 4px 0; }
+    .fb-nb-submenu-parent:hover > .fb-nb-context-submenu { display: block; }
+    .fb-nb-context-submenu { display: none; position: absolute; left: 100%; top: -4px; background: var(--vscode-menu-background, #252526); color: var(--vscode-menu-foreground, #cccccc); border: 1px solid var(--vscode-menu-border, #454545); box-shadow: 0 2px 8px rgba(0,0,0,0.35); border-radius: 4px; padding: 4px 0; min-width: 150px; }
+    .fb-nb-context-submenu-item { padding: 4px 12px; cursor: pointer; user-select: none; white-space: nowrap; }
+    .fb-nb-context-submenu-item:hover { background-color: var(--vscode-menu-selectionBackground, #04395e); color: var(--vscode-menu-selectionForeground, #ffffff); }
+    .fb-nb-submenu-arrow { opacity: 0.7; font-size: 0.85em; margin-left: 8px; }
   `;
   document.head.appendChild(style);
 }

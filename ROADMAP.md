@@ -207,7 +207,7 @@ Firebird 6.0 is the first Firebird release with SQL schemas, which changes the o
 
 **Re-checked at 1.141 (October 2026):** Reviewed the 1.136–1.141 releases. While the stable floor `^1.110.0` continues to serve standard editor and secret storage requirements without breakage, VS Code's rapid evolution around AI agent architectures and tool execution introduces several high-value platform alignments:
 - **Language Model Tool Confirmation (`approveCombination`)**: Granular authorization for `run_write_query` permitting writes on specific connections or tables rather than an all-or-nothing toggle.
-- **Terminal Shell Integration Execution Tracking**: Consuming `terminal.onDidExecuteCommand` and shell integration state to track `isql` interactive execution runs, logging script durations and outcomes cleanly to the Task Tracker.
+- [x] **Terminal Shell Integration Execution Tracking**: Consuming terminal shell integration state and execution events to track `isql` interactive execution runs and script error summarization cleanly to Background Tasks.
 - [x] **Native Document Diffing (`vscode.diff`)**: Visual side-by-side Schema Diff (`firebird.schemaDiff.visualDiff` / `vscode.diff`) using normalized, deterministic DDL snapshots (`renderSnapshotDDL`) and virtual document providers (`firebird-schema://`), supporting full syntax highlighting, difference navigation, and interactive filtering.
 - **Language Model Tool Sets (`contribLanguageModelToolSets`) & MCP registration**: Formally declaring Firebird's language model tools as a unified toolset for Copilot Agent Mode and Claude / Cursor agent sessions.
 
@@ -258,6 +258,7 @@ Reviewed against [vscode-mssql](https://github.com/microsoft/vscode-mssql)'s act
 - [x] **SQL Formatter Granular Options** — configurable comma placement (`leading` | `trailing`) via `firebird.format.commaPlacement` and subordinate clause indentation via `firebird.format.clauseIndentation` for Firebird SQL.
 - [x] **Query Execution Status Indicator & Cancellation Support** — real-time progress indicator in the status bar with query cancellation plumbing via task tracking (`firebird.showQueryExecutionStatus`, `firebird.cancelQuery`, `QueryExecutionManager`, `TaskTracker`).
 - [x] **Visual Side-by-Side Schema Diff (`firebird.schemaDiff.visualDiff` / `vscode.diff`)** — interactive schema comparison inside VS Code's native diff editor using deterministic normalized DDL snapshots and virtual document providers (`firebird.schemaDiff.visualDiff`, `renderSnapshotDDL`, `SchemaDiffDocumentProvider`).
+- [x] **Notebook & Grid Context Menu "Copy As" Submenus & "Copy with Headers"** — hierarchical "Copy As" context submenus reaching GA (following vscode-mssql 1.46.0 / #22395) providing Copy (plain TSV), Copy with Headers (TSV with column headers), and Copy As (CSV, JSON, Markdown Table, Excel TSV) across both SQL Notebook results renderer and Query Results grid.
 
 ---
 

@@ -35,6 +35,10 @@ All notable changes to the "vscode-firebird-studio" extension will be documented
 
 ### Added
 
+- **Notebook & Results Grid "Copy As" Context Submenus and "Copy with Headers".** Right-clicking cells in SQL Notebook results or the Query Results grid now provides:
+  - **Copy**: copies selected cells directly as plain tab-separated values (TSV) without headers, matching standard spreadsheet paste behaviour.
+  - **Copy with Headers**: copies selected cells formatted as TSV with column headers included.
+  - **Copy As ▶** submenu: instant export of selection to CSV, JSON, Markdown Table, and Excel (TSV).
 - **Visual Side-by-Side Schema Diff (`firebird.schemaDiff.visualDiff` / `vscode.diff`).** Compare two database schemas directly inside VS Code's native diff editor with side-by-side or inline views, SQL syntax highlighting, folding of identical sections, and difference navigation (`Alt+F5` / `Shift+Alt+F5`).
   - Generates deterministic, normalized Firebird DDL (`renderSnapshotDDL`) for tables, columns, views, stored procedures, and triggers.
   - Serves virtual documents via `firebird-schema://` so no temporary files are written to disk.

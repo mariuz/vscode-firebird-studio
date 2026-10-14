@@ -858,7 +858,8 @@ $(() => {
         $menu.append($item);
       };
 
-      addMenuItem("📋 Copy (TSV)", () => copyGridSelection());
+      addMenuItem("📋 Copy (TSV)", () => copyGridSelection(false));
+      addMenuItem("📋 Copy with Headers", () => copyGridSelection(true));
       addMenuItem("📋 Copy as Markdown Table", () => $copyMarkdown.trigger("click"));
       addMenuItem("📋 Copy as INSERT", () => $copyInsert.trigger("click"));
       addMenuItem("📋 Copy as IN (...)", () => $copyInClause.trigger("click"));
@@ -1046,13 +1047,21 @@ $(() => {
 
     // ── Freeze column / copy selection ────────────────────────────────────────
 
-    function copyGridSelection() {
+    function copyGridSelection(includeHeaders = false) {
       const sel = getSelectedGrid();
       if (!sel || !sel.rows || sel.rows.length === 0) {
         $status.text("Select one or more cells first.");
         return false;
       }
-      const tsv = sel.rows.map(row => row.join("\t")).join("\n");
+      const lines = [];
+      if (includeHeaders) {
+        const hdrs = visibleHeaders().slice(sel.colStart, sel.colEnd + 1);
+        if (hdrs && hdrs.length > 0) {
+          lines.push(hdrs.join("\t"));
+        }
+      }
+      sel.rows.forEach(row => lines.push(row.join("\t")));
+      const tsv = lines.join("\n");
       copyToClipboard(tsv);
       $status.text(`Copied ${sel.rows.length} row(s) to the clipboard.`);
       return true;
