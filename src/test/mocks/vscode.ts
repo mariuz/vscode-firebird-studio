@@ -216,7 +216,10 @@ export const window = {
   showInputBox: (_options?: any) => Promise.resolve(undefined as string | undefined),
   showQuickPick: (_items: any, _options?: any) => Promise.resolve(undefined),
   createWebviewPanel: (_viewType?: string, _title?: string, _showOptions?: any, options?: any) => ({
+    viewType: _viewType,
+    title: _title,
     options: options || {},
+    reveal: () => { /* no-op */ },
     webview: { html: '', postMessage: () => {}, onDidReceiveMessage: () => ({ dispose: () => {} }), asWebviewUri: (uri: any) => uri },
     onDidDispose: () => ({ dispose: () => {} }),
     dispose: () => { /* no-op */ },

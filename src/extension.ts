@@ -64,6 +64,7 @@ import {runBuildProject, runPublishProject, runGenerateMigrationScript, runMoveT
 import {runContainerProvisionWizard} from "./container-provisioning";
 import {runObjectSearch} from "./object-search";
 import {initObjectFilterPresets} from "./shared/object-explorer-filter";
+import {showGettingStartedHub} from "./getting-started";
 
 /**
  * Inline input-box validation for names the user is *creating* (a new index, a new column, ...).
@@ -478,6 +479,14 @@ export function activate(context: ExtensionContext) {
   );
 
   /* EXPLORER TOOLBAR: add new host/database connection */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.gettingStarted", () => {
+      showGettingStartedHub(context).catch(err => {
+        logger.error(`Failed to show Getting Started Hub: ${err?.message ?? err}`);
+      });
+    })
+  );
+
   context.subscriptions.push(
     commands.registerCommand("firebird.explorer.addConnection", () => {
       firebirdTreeDataProvider.addConnection().catch(err => {

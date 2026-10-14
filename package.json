@@ -104,6 +104,12 @@
     ],
     "commands": [
       {
+        "command": "firebird.gettingStarted",
+        "title": "Getting Started Hub",
+        "category": "Firebird",
+        "icon": "$(rocket)"
+      },
+      {
         "command": "firebird.database.alterSchema",
         "title": "Alter Schema...",
         "category": "Firebird"
@@ -1297,6 +1303,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "firebird.gettingStarted",
+          "when": "view == firebird-explorer",
+          "group": "navigation@0"
+        },
         {
           "command": "firebird.explorer.addConnection",
           "when": "view == firebird-explorer",
