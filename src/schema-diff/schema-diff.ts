@@ -655,3 +655,119 @@ export function renderDiffMarkdown(
   return lines.join('\n');
 }
 
+/**
+ * Renders a SchemaSnapshot into deterministic, normalized Firebird DDL.
+ * Tables, views, procedures, and triggers are sorted alphabetically so that
+ * when two snapshots are compared side-by-side (via vscode.diff),
+ * differences are cleanly aligned line-by-line.
+ */
+export function renderSnapshotDDL(
+  snapshot: SchemaSnapshot,
+  filter?: SchemaDiffFilter
+): string {
+  const includeTables = filter?.tables !== false;
+  const includeViews = filter?.views !== false;
+  const includeProcs = filter?.procedures !== false;
+  const includeTriggers = filter?.triggers !== false;
+  const namePattern = filter?.namePattern;
+
+  const lines: string[] = ['-- Firebird Schema Definition', ''];
+  let objectCount = 0;
+
+  // Tables
+  if (includeTables) {
+    const matchingTables = (snapshot.tables ?? [])
+      .filter(t => matchesName(t.name, namePattern))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (matchingTables.length > 0) {
+      lines.push('-- ── TABLES ────────────────────────────────────────────────────────');
+      lines.push('');
+      for (const t of matchingTables) {
+        objectCount++;
+        if (!t.columns || t.columns.length === 0) {
+          lines.push(`CREATE TABLE ${t.name} ();`);
+        } else {
+          const colDefs = t.columns.map(c => {
+            const lengthStr = c.length > 0 ? `(${c.length})` : '';
+            const notNullStr = c.notNull ? ' NOT NULL' : '';
+            return `  ${c.name} ${c.type}${lengthStr}${notNullStr}`;
+          });
+          lines.push(`CREATE TABLE ${t.name} (\n${colDefs.join(',\n')}\n);`);
+        }
+        lines.push('');
+      }
+    }
+  }
+
+  // Views
+  if (includeViews) {
+    const matchingViews = (snapshot.views ?? [])
+      .filter(v => matchesName(v, namePattern))
+      .slice()
+      .sort((a, b) => a.localeCompare(b));
+
+    if (matchingViews.length > 0) {
+      lines.push('-- ── VIEWS ─────────────────────────────────────────────────────────');
+      lines.push('');
+      for (const v of matchingViews) {
+        objectCount++;
+        lines.push(`CREATE VIEW ${v};`);
+      }
+      lines.push('');
+    }
+  }
+
+  // Procedures
+  if (includeProcs) {
+    const matchingProcs = (snapshot.procedures ?? [])
+      .filter(p => matchesName(p, namePattern))
+      .slice()
+      .sort((a, b) => a.localeCompare(b));
+
+    if (matchingProcs.length > 0) {
+      lines.push('-- ── STORED PROCEDURES ─────────────────────────────────────────────');
+      lines.push('');
+      for (const p of matchingProcs) {
+        objectCount++;
+        lines.push(`CREATE PROCEDURE ${p};`);
+      }
+      lines.push('');
+    }
+  }
+
+  // Triggers
+  if (includeTriggers) {
+    const matchingTriggers = (snapshot.triggers ?? [])
+      .filter(t => matchesName(t.name, namePattern) || (t.table ? matchesName(t.table, namePattern) : false))
+      .slice()
+      .sort((a, b) => {
+        const tableComp = (a.table || '').localeCompare(b.table || '');
+        if (tableComp !== 0) {
+          return tableComp;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+    if (matchingTriggers.length > 0) {
+      lines.push('-- ── TRIGGERS ──────────────────────────────────────────────────────');
+      lines.push('');
+      for (const t of matchingTriggers) {
+        objectCount++;
+        const state = t.inactive ? ' INACTIVE' : ' ACTIVE';
+        lines.push(`CREATE TRIGGER ${t.name} FOR ${t.table}${state};`);
+      }
+      lines.push('');
+    }
+  }
+
+  if (objectCount === 0) {
+    lines.push('-- (no schema objects found matching active filter)');
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+

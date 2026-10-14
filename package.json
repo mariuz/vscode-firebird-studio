@@ -661,6 +661,12 @@
         "category": "Firebird"
       },
       {
+        "command": "firebird.schemaDiff.visualDiff",
+        "title": "Schema Diff (Side-by-Side Visual Diff)",
+        "icon": "$(diff)",
+        "category": "Firebird"
+      },
+      {
         "command": "firebird.schemaDiff.knexMigration",
         "title": "Generate Knex Migration...",
         "icon": "$(file-code)",
@@ -1470,6 +1476,11 @@
           "command": "firebird.schemaDiff.filter",
           "when": "view == firebird-explorer && viewItem =~ /^database/",
           "group": "second@6a"
+        },
+        {
+          "command": "firebird.schemaDiff.visualDiff",
+          "when": "view == firebird-explorer && viewItem =~ /^database/",
+          "group": "second@6b"
         },
         {
           "command": "firebird.schemaDiff.knexMigration",

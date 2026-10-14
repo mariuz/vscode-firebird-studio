@@ -1,10 +1,15 @@
 import * as assert from 'assert';
 import {
   diffSchemas,
+  filterDiffResult,
   renderDiffReport,
+  renderDiffMarkdown,
+  renderSnapshotDDL,
   SchemaSnapshot,
   ColumnSnapshot,
 } from '../schema-diff/schema-diff';
+import { SchemaDiffDocumentProvider, SCHEMA_DIFF_SCHEME } from '../schema-diff/schema-diff-provider';
+import * as vscode from 'vscode';
 import { getSchemaDiffFilter } from '../config/config';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -712,9 +717,240 @@ suite('Schema Diff – Object & Action Filtering', function () {
     assert.ok(!md.includes('Schemas are identical'));
   });
 
+  test('filterDiffResult returns original diff if filter is undefined', function () {
+    const diff = sampleDiff();
+    const result = filterDiffResult(diff, undefined);
+    assert.strictEqual(result, diff);
+  });
+
+  test('renderDiffReport displays objects only in target for views, procedures, and triggers', function () {
+    const diff: any = {
+      tablesOnlyInSource: [],
+      tablesOnlyInTarget: ['OLD_TABLE'],
+      modifiedTables: [],
+      viewsOnlyInSource: [],
+      viewsOnlyInTarget: ['OLD_VIEW'],
+      proceduresOnlyInSource: [],
+      proceduresOnlyInTarget: ['OLD_PROC'],
+      triggersOnlyInSource: [],
+      triggersOnlyInTarget: [{ name: 'OLD_TRIG', table: 'OLD_TABLE', type: 1, inactive: true }],
+    };
+    const report = renderDiffReport(diff, 'SRC', 'TGT');
+    assert.ok(report.includes('- OLD_TABLE  [only in target]'));
+    assert.ok(report.includes('- OLD_VIEW  [only in target]'));
+    assert.ok(report.includes('- OLD_PROC  [only in target]'));
+    assert.ok(report.includes('- OLD_TRIG ON OLD_TABLE  [only in target]'));
+  });
+
   test('getSchemaDiffFilter reads configuration without throwing', function () {
     const filter = getSchemaDiffFilter();
     assert.ok(typeof filter === 'object');
+  });
+});
+
+suite('Schema Diff – renderSnapshotDDL and SchemaDiffDocumentProvider', function () {
+  test('renderSnapshotDDL outputs placeholder for empty snapshot', function () {
+    const ddl = renderSnapshotDDL({ tables: [], views: [], procedures: [], triggers: [] });
+    assert.ok(ddl.includes('-- Firebird Schema Definition'));
+    assert.ok(ddl.includes('-- (no schema objects found matching active filter)'));
+  });
+
+  test('renderSnapshotDDL renders sorted tables with column definitions', function () {
+    const snapshot: SchemaSnapshot = {
+      tables: [
+        {
+          name: 'ORDERS',
+          columns: [
+            col('ID', 'INTEGER', 0, true),
+            col('TOTAL', 'NUMERIC', 0, false),
+          ],
+        },
+        {
+          name: 'CUSTOMERS',
+          columns: [
+            col('ID', 'INTEGER', 0, true),
+            col('NAME', 'VARCHAR', 100, false),
+          ],
+        },
+        {
+          name: 'EMPTY_TABLE',
+          columns: [],
+        },
+      ],
+      views: [],
+      procedures: [],
+      triggers: [],
+    };
+
+    const ddl = renderSnapshotDDL(snapshot);
+    assert.ok(ddl.includes('-- ── TABLES ────────────────────────────────────────────────────────'));
+    // CUSTOMERS should come before EMPTY_TABLE and ORDERS
+    const custIdx = ddl.indexOf('CREATE TABLE CUSTOMERS');
+    const emptyIdx = ddl.indexOf('CREATE TABLE EMPTY_TABLE');
+    const ordIdx = ddl.indexOf('CREATE TABLE ORDERS');
+    assert.ok(custIdx < emptyIdx, 'CUSTOMERS should be sorted before EMPTY_TABLE');
+    assert.ok(emptyIdx < ordIdx, 'EMPTY_TABLE should be sorted before ORDERS');
+
+    assert.ok(ddl.includes('CREATE TABLE EMPTY_TABLE ();'));
+    assert.ok(ddl.includes('ID INTEGER NOT NULL'));
+    assert.ok(ddl.includes('NAME VARCHAR(100)'));
+  });
+
+  test('renderSnapshotDDL renders views, procedures, and triggers sorted', function () {
+    const snapshot: SchemaSnapshot = {
+      tables: [],
+      views: ['V_ACTIVE_USERS', 'V_ACCOUNTS'],
+      procedures: ['SP_UPDATE_BALANCE', 'SP_CALC_TAX'],
+      triggers: [
+        { name: 'TR_USERS_UPD', table: 'USERS', type: 1, inactive: true },
+        { name: 'TR_ACCOUNTS_INS', table: 'ACCOUNTS', type: 1, inactive: false },
+        { name: 'TR_USERS_INS', table: 'USERS', type: 1, inactive: false },
+      ],
+    };
+
+    const ddl = renderSnapshotDDL(snapshot);
+    // Views
+    assert.ok(ddl.includes('CREATE VIEW V_ACCOUNTS;'));
+    assert.ok(ddl.includes('CREATE VIEW V_ACTIVE_USERS;'));
+    assert.ok(ddl.indexOf('CREATE VIEW V_ACCOUNTS') < ddl.indexOf('CREATE VIEW V_ACTIVE_USERS'));
+
+    // Procedures
+    assert.ok(ddl.includes('CREATE PROCEDURE SP_CALC_TAX;'));
+    assert.ok(ddl.includes('CREATE PROCEDURE SP_UPDATE_BALANCE;'));
+    assert.ok(ddl.indexOf('CREATE PROCEDURE SP_CALC_TAX') < ddl.indexOf('CREATE PROCEDURE SP_UPDATE_BALANCE'));
+
+    // Triggers (sorted by table, then name)
+    assert.ok(ddl.includes('CREATE TRIGGER TR_ACCOUNTS_INS FOR ACCOUNTS ACTIVE;'));
+    assert.ok(ddl.includes('CREATE TRIGGER TR_USERS_INS FOR USERS ACTIVE;'));
+    assert.ok(ddl.includes('CREATE TRIGGER TR_USERS_UPD FOR USERS INACTIVE;'));
+    const accTrig = ddl.indexOf('CREATE TRIGGER TR_ACCOUNTS_INS');
+    const userInsTrig = ddl.indexOf('CREATE TRIGGER TR_USERS_INS');
+    const userUpdTrig = ddl.indexOf('CREATE TRIGGER TR_USERS_UPD');
+    assert.ok(accTrig < userInsTrig);
+    assert.ok(userInsTrig < userUpdTrig);
+  });
+
+  test('renderSnapshotDDL respects category filters and name patterns', function () {
+    const snapshot: SchemaSnapshot = {
+      tables: [
+        { name: 'CUSTOMERS', columns: [col('ID', 'INTEGER', 0, true)] },
+        { name: 'PRODUCTS', columns: [col('ID', 'INTEGER', 0, true)] },
+      ],
+      views: ['V_CUSTOMERS', 'V_PRODUCTS'],
+      procedures: ['SP_SYNC'],
+      triggers: [{ name: 'TR_LOG', table: 'LOG', type: 1, inactive: false }],
+    };
+
+    // Filter out tables and triggers
+    const ddlNoTables = renderSnapshotDDL(snapshot, { tables: false, triggers: false });
+    assert.ok(!ddlNoTables.includes('-- ── TABLES'));
+    assert.ok(!ddlNoTables.includes('-- ── TRIGGERS'));
+    assert.ok(ddlNoTables.includes('CREATE VIEW V_CUSTOMERS;'));
+    assert.ok(ddlNoTables.includes('CREATE PROCEDURE SP_SYNC;'));
+
+    // Filter with namePattern
+    const ddlPattern = renderSnapshotDDL(snapshot, { namePattern: 'CUST' });
+    assert.ok(ddlPattern.includes('CREATE TABLE CUSTOMERS'));
+    assert.ok(!ddlPattern.includes('CREATE TABLE PRODUCTS'));
+    assert.ok(ddlPattern.includes('CREATE VIEW V_CUSTOMERS'));
+    assert.ok(!ddlPattern.includes('CREATE VIEW V_PRODUCTS'));
+
+    // Filter with regex namePattern
+    const ddlRegex = renderSnapshotDDL(snapshot, { namePattern: /^prod/i });
+    assert.ok(!ddlRegex.includes('CREATE TABLE CUSTOMERS'));
+    assert.ok(ddlRegex.includes('CREATE TABLE PRODUCTS'));
+  });
+
+  test('renderSnapshotDDL is deterministic and produces identical DDL for identical schemas', function () {
+    const snapshotA: SchemaSnapshot = {
+      tables: [{ name: 'T1', columns: [col('C1', 'INTEGER')] }],
+      views: ['V1'],
+      procedures: ['P1'],
+      triggers: [{ name: 'TR1', table: 'T1', type: 1, inactive: false }],
+    };
+    const snapshotB: SchemaSnapshot = {
+      tables: [{ name: 'T1', columns: [col('C1', 'INTEGER')] }],
+      views: ['V1'],
+      procedures: ['P1'],
+      triggers: [{ name: 'TR1', table: 'T1', type: 1, inactive: false }],
+    };
+
+    const ddlA = renderSnapshotDDL(snapshotA);
+    const ddlB = renderSnapshotDDL(snapshotB);
+    assert.strictEqual(ddlA, ddlB);
+  });
+
+  test('renderSnapshotDDL handles triggers with table matching, missing table, and same table sorting', function () {
+    const snapshot: SchemaSnapshot = {
+      tables: [],
+      views: [],
+      procedures: [],
+      triggers: [
+        { name: 'TR_Z', table: 'TBL_A', type: 1, inactive: false },
+        { name: 'TR_X', table: 'TBL_A', type: 1, inactive: true },
+        { name: 'TR_GLOBAL', table: '', type: 1, inactive: false },
+        { name: 'TR_AUDIT', table: 'TBL_B', type: 1, inactive: false },
+      ],
+    };
+
+    // By table name filter
+    const ddlTableFilter = renderSnapshotDDL(snapshot, { namePattern: 'TBL_B' });
+    assert.ok(ddlTableFilter.includes('CREATE TRIGGER TR_AUDIT FOR TBL_B ACTIVE;'));
+    assert.ok(!ddlTableFilter.includes('TR_X'));
+    assert.ok(!ddlTableFilter.includes('TR_Z'));
+
+    // Sorting check: TR_GLOBAL (empty table) comes first, then TBL_A TR_X, then TBL_A TR_Z, then TBL_B TR_AUDIT
+    const fullDDL = renderSnapshotDDL(snapshot);
+    const globalIdx = fullDDL.indexOf('TR_GLOBAL');
+    const xIdx = fullDDL.indexOf('TR_X');
+    const zIdx = fullDDL.indexOf('TR_Z');
+    const auditIdx = fullDDL.indexOf('TR_AUDIT');
+    assert.ok(globalIdx < xIdx);
+    assert.ok(xIdx < zIdx);
+    assert.ok(zIdx < auditIdx);
+  });
+
+  test('renderDiffMarkdown covers all filtered out categories in summary table', function () {
+    const diff = diffSchemas(
+      { tables: [{ name: 'T1', columns: [] }], views: ['V1'], procedures: ['P1'], triggers: [{ name: 'TR1', table: 'T1', type: 1, inactive: false }] },
+      { tables: [], views: [], procedures: [], triggers: [] }
+    );
+    const md = renderDiffMarkdown(diff, 'SRC', 'TGT', new Date(), {
+      views: false,
+      procedures: false,
+      triggers: false,
+    });
+    assert.ok(md.includes('| Views | *(filtered out)* | *(filtered out)* | — |'));
+    assert.ok(md.includes('| Procedures | *(filtered out)* | *(filtered out)* | — |'));
+    assert.ok(md.includes('| Triggers | *(filtered out)* | *(filtered out)* | — |'));
+    assert.ok(!md.includes('## Views'));
+    assert.ok(!md.includes('## Stored Procedures'));
+    assert.ok(!md.includes('## Triggers'));
+  });
+
+  suite('SchemaDiffDocumentProvider', function () {
+    test('manages document content lifecycle and onDidChange events', function () {
+      const provider = SchemaDiffDocumentProvider.getInstance();
+      assert.strictEqual(provider, SchemaDiffDocumentProvider.getInstance());
+
+      const testUri = vscode.Uri.parse(`${SCHEMA_DIFF_SCHEME}://diff/test_schema.sql`);
+      assert.strictEqual(provider.provideTextDocumentContent(testUri), '-- Content not available or expired\n');
+
+      let firedUri: vscode.Uri | undefined;
+      const sub = provider.onDidChange(u => {
+        firedUri = u;
+      });
+
+      provider.setDocument(testUri, '-- SQL DDL Content');
+      assert.strictEqual(firedUri?.toString(), testUri.toString());
+      assert.strictEqual(provider.provideTextDocumentContent(testUri), '-- SQL DDL Content');
+
+      provider.clear();
+      assert.strictEqual(provider.provideTextDocumentContent(testUri), '-- Content not available or expired\n');
+
+      sub.dispose();
+      provider.dispose();
+    });
   });
 });
 

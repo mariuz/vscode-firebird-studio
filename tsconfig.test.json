@@ -38,6 +38,7 @@
     "src/shared/notebook-render.ts",
     "src/logger/logger.ts",
     "src/schema-diff/schema-diff.ts",
+    "src/schema-diff/schema-diff-provider.ts",
     "src/bookmarks/bookmark-provider.ts",
     "src/query-history/query-history-provider.ts",
     "src/task-panel/task-tracker.ts",

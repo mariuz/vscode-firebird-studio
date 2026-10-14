@@ -43,7 +43,8 @@ import {
 } from "./shared/quick-queries";
 import {SqlLinter} from "./shared/sql-linter";
 import {BookmarkProvider, BookmarkItem} from "./bookmarks/bookmark-provider";
-import {fetchSchemaSnapshot, diffSchemas, renderDiffReport, renderDiffMarkdown, SchemaDiffFilter} from "./schema-diff/schema-diff";
+import {fetchSchemaSnapshot, diffSchemas, renderDiffReport, renderDiffMarkdown, renderSnapshotDDL, SchemaDiffFilter} from "./schema-diff/schema-diff";
+import {SchemaDiffDocumentProvider, SCHEMA_DIFF_SCHEME} from "./schema-diff/schema-diff-provider";
 import {renderKnexMigration, knexMigrationTimestamp} from "./schema-diff/knex-migration";
 import {QueryHistoryProvider, QueryHistoryItem} from "./query-history/query-history-provider";
 import {TaskTracker} from "./task-panel/task-tracker";
@@ -2292,6 +2293,96 @@ export function activate(context: ExtensionContext) {
     })
   );
 
+  /* Virtual document provider for side-by-side Visual Schema Diff */
+  const schemaDiffProvider = SchemaDiffDocumentProvider.getInstance();
+  context.subscriptions.push(
+    workspace.registerTextDocumentContentProvider(SCHEMA_DIFF_SCHEME, schemaDiffProvider)
+  );
+  context.subscriptions.push(schemaDiffProvider);
+
+  /* COMMAND: schema diff — Side-by-Side Visual Diff (renders normalized DDL in VS Code's native diff editor) */
+  context.subscriptions.push(
+    commands.registerCommand("firebird.schemaDiff.visualDiff", async (node?: any) => {
+      const connections = context.globalState.get<{ [key: string]: import('./interfaces').ConnectionOptions }>(Constants.ConectionsKey);
+      if (!connections || Object.keys(connections).length < 1) {
+        logger.showError("Please add at least one database connection to use Visual Schema Diff.");
+        return;
+      }
+
+      const allConns = Object.values(connections);
+      const items = allConns.map(c => ({
+        label: c.embedded ? `[embedded] ${c.database}` : `${c.host}: ${c.database}`,
+        detail: c.id,
+        conn: c,
+      }));
+
+      let sourcePick = (node && node.connectionOptions)
+        ? items.find(i => i.detail === node.connectionOptions.id)
+        : undefined;
+
+      if (!sourcePick) {
+        sourcePick = await window.showQuickPick(items, { placeHolder: "Select SOURCE database (left side of diff)" });
+        if (!sourcePick) { return; }
+      }
+
+      const targetItems = items.filter(i => i.detail !== sourcePick.detail);
+      if (targetItems.length === 0) {
+        logger.showError("You need at least two database connections for Visual Schema Diff.");
+        return;
+      }
+      const targetPick = await window.showQuickPick(targetItems, { placeHolder: "Select TARGET database (right side of diff)" });
+      if (!targetPick) { return; }
+
+      const maxTables = config.maxTablesCount;
+
+      try {
+        await window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: "Generating Visual Schema Diff…", cancellable: false },
+          async () => {
+            const [sourcePassword, targetPassword] = await Promise.all([
+              import('./shared/credential-store').then(m => m.CredentialStore.getPassword(sourcePick.conn.id)),
+              import('./shared/credential-store').then(m => m.CredentialStore.getPassword(targetPick.conn.id)),
+            ]);
+            const src = { ...sourcePick.conn, password: sourcePassword ?? "" };
+            const tgt = { ...targetPick.conn, password: targetPassword ?? "" };
+
+            const [sourceSnapshot, targetSnapshot] = await Promise.all([
+              fetchSchemaSnapshot(src, maxTables),
+              fetchSchemaSnapshot(tgt, maxTables),
+            ]);
+
+            const activeFilter = getSchemaDiffFilter();
+            const sourceDDL = renderSnapshotDDL(sourceSnapshot, activeFilter);
+            const targetDDL = renderSnapshotDDL(targetSnapshot, activeFilter);
+
+            const sanitize = (name: string) => name.replace(/[\\/:*?"<>|\s]+/g, '_').replace(/^_+|_+$/g, '') || 'db';
+            const srcName = sanitize(sourcePick.label);
+            const tgtName = sanitize(targetPick.label);
+
+            const srcUri = vscode.Uri.parse(`${SCHEMA_DIFF_SCHEME}://diff/${encodeURIComponent(srcName)}_source.sql`);
+            const tgtUri = vscode.Uri.parse(`${SCHEMA_DIFF_SCHEME}://diff/${encodeURIComponent(tgtName)}_target.sql`);
+
+            schemaDiffProvider.setDocument(srcUri, sourceDDL);
+            schemaDiffProvider.setDocument(tgtUri, targetDDL);
+
+            await commands.executeCommand(
+              "vscode.diff",
+              srcUri,
+              tgtUri,
+              `Schema Diff: ${sourcePick.label} ↔ ${targetPick.label}`,
+              { preview: false }
+            );
+          }
+        );
+      } catch (err: any) {
+        logger.error(err?.message ?? err);
+        logger.showError("Visual Schema Diff failed. Check logs for details.", ["Show Logs"]).then(sel => {
+          if (sel === "Show Logs") { logger.showOutput(); }
+        });
+      }
+    })
+  );
+
   /* COMMAND: schema diff with interactive filters (object categories, changes, name patterns) */
   context.subscriptions.push(
     commands.registerCommand("firebird.schemaDiff.filter", async (node?: any) => {
@@ -2376,6 +2467,7 @@ export function activate(context: ExtensionContext) {
 
       // 4. Output Presentation Choice
       const outputChoice = await window.showQuickPick([
+        { label: "$(diff) Side-by-Side Visual Diff", description: "Native side-by-side SQL diff in VS Code's diff editor", viewType: "visualDiff" },
         { label: "$(markdown) Markdown Preview", description: "Rich visual report rendered in VS Code's Markdown preview", viewType: "markdown" },
         { label: "$(file-text) Text Report", description: "Standard plaintext diff report in an editor", viewType: "plaintext" },
       ], { placeHolder: "Select output format" });
@@ -2412,7 +2504,28 @@ export function activate(context: ExtensionContext) {
 
             const diff = diffSchemas(sourceSnapshot, targetSnapshot, interactiveFilter);
 
-            if (outputChoice.viewType === "markdown") {
+            if (outputChoice.viewType === "visualDiff") {
+              const sourceDDL = renderSnapshotDDL(sourceSnapshot, interactiveFilter);
+              const targetDDL = renderSnapshotDDL(targetSnapshot, interactiveFilter);
+
+              const sanitize = (name: string) => name.replace(/[\\/:*?"<>|\s]+/g, '_').replace(/^_+|_+$/g, '') || 'db';
+              const srcName = sanitize(sourcePick.label);
+              const tgtName = sanitize(targetPick.label);
+
+              const srcUri = vscode.Uri.parse(`${SCHEMA_DIFF_SCHEME}://diff/${encodeURIComponent(srcName)}_source.sql`);
+              const tgtUri = vscode.Uri.parse(`${SCHEMA_DIFF_SCHEME}://diff/${encodeURIComponent(tgtName)}_target.sql`);
+
+              schemaDiffProvider.setDocument(srcUri, sourceDDL);
+              schemaDiffProvider.setDocument(tgtUri, targetDDL);
+
+              await commands.executeCommand(
+                "vscode.diff",
+                srcUri,
+                tgtUri,
+                `Schema Diff: ${sourcePick.label} ↔ ${targetPick.label}`,
+                { preview: false }
+              );
+            } else if (outputChoice.viewType === "markdown") {
               const markdown = renderDiffMarkdown(diff, sourcePick.label, targetPick.label, undefined, interactiveFilter);
               const doc = await workspace.openTextDocument({ content: markdown, language: "markdown" });
               await window.showTextDocument(doc, vscode.ViewColumn.Beside, true);

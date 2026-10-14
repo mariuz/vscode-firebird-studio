@@ -182,6 +182,7 @@ export const workspace = {
     inspect: (_key: string) => undefined,
     update: (_key: string, _value: any) => Promise.resolve(),
   }),
+  registerTextDocumentContentProvider: (_scheme: string, _provider: any) => ({ dispose: () => { /* no-op */ } }),
 };
 
 // ── window ────────────────────────────────────────────────────────────────────

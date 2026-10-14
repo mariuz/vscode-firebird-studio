@@ -35,6 +35,12 @@ All notable changes to the "vscode-firebird-studio" extension will be documented
 
 ### Added
 
+- **Visual Side-by-Side Schema Diff (`firebird.schemaDiff.visualDiff` / `vscode.diff`).** Compare two database schemas directly inside VS Code's native diff editor with side-by-side or inline views, SQL syntax highlighting, folding of identical sections, and difference navigation (`Alt+F5` / `Shift+Alt+F5`).
+  - Generates deterministic, normalized Firebird DDL (`renderSnapshotDDL`) for tables, columns, views, stored procedures, and triggers.
+  - Serves virtual documents via `firebird-schema://` so no temporary files are written to disk.
+  - Fully supports interactive object-type and name pattern filtering (`firebird.schemaDiff.filter`).
+  - Available from the Command Palette (**Firebird: Schema Diff (Side-by-Side Visual Diff)**), database node right-click context menu, and the interactive schema diff output format picker.
+
 - **Customizable Performance Dashboard tiles and refresh rate.** The Live Profiler's **Dashboard** view now supports 9 user-selectable metric tiles:
   - **Connections** (number of attached clients)
   - **Cache Hit %** (page cache hit percentage)
