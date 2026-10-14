@@ -35,6 +35,19 @@ All notable changes to the "vscode-firebird-studio" extension will be documented
 
 ### Added
 
+- **Customizable Performance Dashboard tiles and refresh rate.** The Live Profiler's **Dashboard** view now supports 9 user-selectable metric tiles:
+  - **Connections** (number of attached clients)
+  - **Cache Hit %** (page cache hit percentage)
+  - **Page I/O** (physical page reads & writes/sec)
+  - **Record Reads** (sequential vs. indexed reads/sec with indexed % detail)
+  - **Active Statements** (attachments actively executing a query)
+  - **Lock Contention** (record lock waits and conflicts/sec)
+  - **Memory** (attachment pool memory used and allocated)
+  - **Connections in Transaction** (open transaction counts with isolation breakdown)
+  - **Oldest Open Transaction** (duration of the oldest active transaction)
+  Use the new **Tiles…** dropdown in the dashboard toolbar to toggle tiles on or off or reset to defaults (saved to `firebird.profiler.dashboardTiles`). A new **Refresh** selector in the main toolbar allows changing the poll interval from 1s to 60s (or custom), saved to `firebird.profiler.pollIntervalMs` (minimum 500ms). Both settings sync bidirectionally with VS Code settings.
+
+
 - **Autocompletion no longer re-reads the whole schema on every keystroke.** Each completion (and each hover) opened a new database connection and re-ran two catalogue queries — one of which names every table in the database — and never closed the connection afterwards. On a large database that made typing progressively slower and left a growing number of open attachments on the server. The schema is now cached for 30 seconds, and refreshing the connection tree or switching connections picks up changes immediately. Measured against a real server: the second and third completions went from 29 ms and three open connections to under 1 ms and one.
 - **Autocompletion now gives up waiting rather than hanging.** If the schema takes too long, Firebird Studio offers its keyword list straight away instead of nothing, and the table and column names appear as soon as the schema arrives. `firebird.intelliSense.completionTimeoutMs` sets how long it waits (3 seconds by default; `0` waits indefinitely, which is what previous versions did).
 

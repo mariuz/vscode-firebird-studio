@@ -163,6 +163,7 @@ export const workspace = {
   onDidChangeTextDocument: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
   onDidCloseTextDocument: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
   onDidChangeWorkspaceFolders: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
+  onDidChangeConfiguration: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
   createFileSystemWatcher: (_glob: string) => ({
     onDidChange: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
     onDidCreate: (_handler: any) => ({ dispose: () => { /* no-op */ } }),
@@ -231,6 +232,12 @@ export const window = {
 // ── ExtensionContext helpers ──────────────────────────────────────────────────
 
 // ── StatusBarAlignment ────────────────────────────────────────────────────────
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
+
 export enum StatusBarAlignment {
   Left = 1,
   Right = 2,

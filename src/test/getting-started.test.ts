@@ -155,9 +155,12 @@ suite('Interactive Getting Started Hub', () => {
   suite('testConnectionPing()', () => {
     test('measures latency and returns success on clean connection', async () => {
       const mockConn: ConnectionOptions = {
+        id: 'test-1',
         host: 'localhost',
+        port: 3050,
         database: 'employee',
-        user: 'SYSDBA'
+        user: 'SYSDBA',
+        role: null
       };
 
       // Mock attemptConnection in driver / connection-wizard
@@ -176,9 +179,12 @@ suite('Interactive Getting Started Hub', () => {
 
     test('returns failure and error message on failed connection', async () => {
       const mockConn: ConnectionOptions = {
+        id: 'test-2',
         host: 'invalid.host',
+        port: 3050,
         database: 'employee',
-        user: 'SYSDBA'
+        user: 'SYSDBA',
+        role: null
       };
 
       const cw = require('../shared/connection-wizard');

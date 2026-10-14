@@ -852,7 +852,43 @@
         "firebird.profiler.pollIntervalMs": {
           "type": "number",
           "default": 3000,
-          "markdownDescription": "How often (in milliseconds) the Live Profiler re-polls connection activity while its panel is open and visible."
+          "minimum": 500,
+          "markdownDescription": "How often (in milliseconds) the Live Profiler re-polls connection activity while its panel is open and visible. Also changeable from the profiler's own **Refresh** selector, which saves back to this setting."
+        },
+        "firebird.profiler.dashboardTiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "connections",
+              "cacheHit",
+              "pageIo",
+              "recordReads",
+              "activeStatements",
+              "lockContention",
+              "memory",
+              "transactions",
+              "oldestTransaction"
+            ],
+            "enumDescriptions": [
+              "Number of other connections attached to the database.",
+              "Approximate page cache hit ratio: (fetches − physical reads) / fetches since the last poll.",
+              "Physical page reads and writes per second.",
+              "Sequential (natural) versus indexed record reads per second — a rising sequential share often means a missing index.",
+              "Connections currently executing a statement.",
+              "Record lock waits and update conflicts per second.",
+              "Memory currently used by attachment-level pools (MON$MEMORY_USAGE).",
+              "Connections holding an open transaction, broken down by isolation level.",
+              "Age of the oldest open transaction among monitored connections — a long-lived one holds back garbage collection for everyone."
+            ]
+          },
+          "default": [
+            "connections",
+            "cacheHit",
+            "pageIo"
+          ],
+          "markdownDescription": "Metric tiles shown, in order, on the Live Profiler's **Dashboard** view. Also editable from the dashboard's own **Tiles…** menu, which saves back to this setting."
         },
         "firebird.transaction.isolationLevel": {
           "type": "string",

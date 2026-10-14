@@ -25,6 +25,7 @@ export function getOptions() {
     connectionPoolMaxSize: _connectionPoolMaxSize(),
     connectionPoolIdleTimeoutMs: _connectionPoolIdleTimeoutMs(),
     profilerPollIntervalMs: _profilerPollIntervalMs(),
+    profilerDashboardTiles: _profilerDashboardTiles(),
     shortcuts: _shortcuts(),
     transactionIsolationLevel: _transactionIsolationLevel(),
     transactionLockTimeoutSec: _transactionLockTimeoutSec(),
@@ -208,15 +209,59 @@ function _connectionPoolIdleTimeoutMs(): number {
   return conf;
 }
 
+/** Floor for `firebird.profiler.pollIntervalMs` — below this a MON$ snapshot can take longer than the interval. */
+export const MIN_PROFILER_POLL_INTERVAL_MS = 500;
+
 function _profilerPollIntervalMs(): number {
   const conf: any = getConfig().get("profiler.pollIntervalMs");
   const profilerPollIntervalMs: number = properties["firebird.profiler.pollIntervalMs"]["default"];
 
-  if (typeof conf !== "number" || conf < 500) {
+  if (typeof conf !== "number" || conf < MIN_PROFILER_POLL_INTERVAL_MS) {
     logger.error("Invalid value detected in Profiler Poll Interval settings. Fallback to default value.");
     return profilerPollIntervalMs;
   }
   return conf;
+}
+
+/**
+ * Every metric tile the Live Profiler's Dashboard view can show, in display order. Must stay in
+ * step with the `firebird.profiler.dashboardTiles` enum in package.json and with `TILE_DEFS` in
+ * `src/profiler/htmlContent/js/app.js` — a unit test checks all three agree.
+ */
+export const PROFILER_DASHBOARD_TILES = [
+  "connections",
+  "cacheHit",
+  "pageIo",
+  "recordReads",
+  "activeStatements",
+  "lockContention",
+  "memory",
+  "transactions",
+  "oldestTransaction",
+] as const;
+
+export type ProfilerDashboardTile = typeof PROFILER_DASHBOARD_TILES[number];
+
+function _profilerDashboardTiles(): ProfilerDashboardTile[] {
+  const conf: any = getConfig().get("profiler.dashboardTiles");
+  const fallback: ProfilerDashboardTile[] = properties["firebird.profiler.dashboardTiles"]["default"];
+
+  if (!Array.isArray(conf)) {
+    return [...fallback];
+  }
+  const known = new Set<string>(PROFILER_DASHBOARD_TILES);
+  const seen = new Set<string>();
+  const tiles: ProfilerDashboardTile[] = [];
+  for (const id of conf) {
+    if (typeof id === "string" && known.has(id) && !seen.has(id)) {
+      seen.add(id);
+      tiles.push(id as ProfilerDashboardTile);
+    }
+  }
+  if (tiles.length !== conf.length) {
+    logger.error("Unknown or duplicate entries in Profiler Dashboard Tiles settings were ignored.");
+  }
+  return tiles;
 }
 
 function _shortcuts(): Record<string, string> {

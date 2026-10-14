@@ -10,10 +10,21 @@
   <div id="toolbar">
     <button id="btn-refresh">Refresh Now</button>
     <button id="btn-pause" class="secondary">Pause</button>
+    <label id="poll-interval-label" title="How often to re-poll MON$ tables (saved to firebird.profiler.pollIntervalMs)">Refresh
+      <select id="poll-interval">
+        <option value="1000">1s</option>
+        <option value="2000">2s</option>
+        <option value="3000">3s</option>
+        <option value="5000">5s</option>
+        <option value="10000">10s</option>
+        <option value="30000">30s</option>
+        <option value="60000">60s</option>
+      </select>
+    </label>
     <input id="filter" type="text" placeholder="Filter by user, address, state, statement…" />
     <span class="view-mode-controls">
       <button class="secondary view-mode-btn active" data-mode="table" title="Raw per-connection activity table">Table</button>
-      <button class="secondary view-mode-btn" data-mode="dashboard" title="Live charts of connection count, cache hit ratio, and page I/O over time">Dashboard</button>
+      <button class="secondary view-mode-btn" data-mode="dashboard" title="Live metric tiles charted over time — choose which from Tiles…">Dashboard</button>
       <button class="secondary view-mode-btn" data-mode="queries" title="Currently active statements ranked by a chosen metric">Queries</button>
       <button class="secondary view-mode-btn" data-mode="sessions" title="Open transactions, lock wait/conflict rates, and which one is oldest-active">Sessions</button>
     </span>
@@ -53,24 +64,19 @@
           <button class="secondary time-range-btn" data-range="900000">15 min</button>
           <button class="secondary time-range-btn" data-range="0">All</button>
         </span>
+        <span class="toolbar-spacer"></span>
+        <span id="tiles-menu-anchor">
+          <button id="btn-tiles" class="secondary" title="Choose which metric tiles the dashboard shows (saved to firebird.profiler.dashboardTiles)" aria-haspopup="true" aria-expanded="false">Tiles…</button>
+          <div id="tiles-menu" role="menu" style="display:none;">
+            <div id="tiles-menu-list"></div>
+            <div id="tiles-menu-footer">
+              <button id="btn-tiles-reset" class="secondary">Reset to default</button>
+            </div>
+          </div>
+        </span>
       </div>
-      <div id="dashboard-charts">
-        <div class="chart-card">
-          <h4>Connections</h4>
-          <div class="chart-value" id="chart-value-connections"></div>
-          <div class="chart-container" id="chart-connections"></div>
-        </div>
-        <div class="chart-card">
-          <h4>Cache Hit % <span class="chart-hint" title="Approximate: (fetches − physical page reads) / fetches, aggregated across all connections since the last poll.">?</span></h4>
-          <div class="chart-value" id="chart-value-cachehit"></div>
-          <div class="chart-container" id="chart-cachehit"></div>
-        </div>
-        <div class="chart-card">
-          <h4>Page I/O (reads/writes per sec)</h4>
-          <div class="chart-value" id="chart-value-io"></div>
-          <div class="chart-container" id="chart-io"></div>
-        </div>
-      </div>
+      <div id="dashboard-charts"></div>
+      <div id="dashboard-empty" style="display:none;">No tiles selected — pick some from <strong>Tiles…</strong> above.</div>
     </div>
 
     <div id="queries-wrapper" style="display:none;">

@@ -150,7 +150,21 @@ The following features are adapted from Microsoft's [PostgreSQL extension for VS
 
 - [x] Chart visualization for query results — render numeric result columns as line/bar/pie/scatter charts directly in the results panel, alongside the existing grid view
 - [x] Parameterized query execution — write a query with named/typed placeholders (e.g. `:paramName`) and fill in bound values (with a type) through a sequence of prompts before running, distinct from today's plain-text-only execution; rewrites named placeholders to `node-firebird`'s positional `?` binding, previously only used internally in one place (`Driver.getQueryPlan()`'s index-metadata fallback query) and, discovered while implementing this, silently dropped by the native driver client — both now fixed
-- [ ] **Customizable Performance Dashboard metric tiles and refresh rate** — mirroring vscode-pgsql 1.30.0's customizable performance dashboard views. Firebird Studio currently ships a static performance dashboard (`MON$` visual metrics) with fixed charts for active attachments, cache hit rate, and page reads/writes. Upstream pgsql added user-selectable metric tiles and configurable polling cadences. We can support selectable monitoring metrics via `MON$STATISTICS` and `MON$IO_STATS` (memory pool consumption, sequential vs indexed reads, transaction isolation breakdowns) and a user-configurable polling interval (`firebird.profiler.refreshIntervalSeconds`, defaulting to 3s).
+- [x] **Customizable Performance Dashboard metric tiles and refresh rate** — mirroring vscode-pgsql 1.30.0's customizable performance dashboard views. Firebird Studio previously shipped a static performance dashboard with fixed charts for active attachments, cache hit rate, and page reads/writes. **Done**:
+  - Added 9 selectable monitoring tiles backed by `MON$IO_STATS`, `MON$RECORD_STATS`, and `MON$MEMORY_USAGE`:
+    1. **Connections** (count of remote attachments over time)
+    2. **Cache Hit %** (approximate page cache hit ratio)
+    3. **Page I/O** (physical page reads and writes per second)
+    4. **Record Reads** (sequential vs. indexed record reads/s with indexed % breakdown)
+    5. **Active Statements** (attachments in state 1 executing queries)
+    6. **Lock Contention** (record lock waits and snapshot conflict rates/s)
+    7. **Memory** (attachment pool memory used and allocated)
+    8. **Connections in Transaction** (open transaction counts with isolation level breakdown)
+    9. **Oldest Open Transaction** (duration of the oldest active transaction holding back garbage collection)
+  - Interactive **Tiles…** menu in the dashboard view with instant multi-selection, tile toggling, and reset to defaults, persisted to `firebird.profiler.dashboardTiles`.
+  - In-panel **Refresh** cadence dropdown (1s to 60s, plus custom) dynamically adjusting polling timer and writing to `firebird.profiler.pollIntervalMs` (minimum 500ms).
+  - Bidirectional settings sync: changes to `firebird.profiler.*` in VS Code settings automatically reflect in any open profiler panel via `onDidChangeConfiguration`.
+  - Comprehensive unit test coverage across `src/test/profiler-settings.test.ts`, `src/test/profiler-webview.test.ts`, and `src/test/queries.test.ts`.
 
 ### Object explorer
 

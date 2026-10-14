@@ -25,6 +25,8 @@ export interface Options {
   connectionPoolIdleTimeoutMs: number;
   /** How often (ms) the Live Profiler polls MON$ activity while its panel is visible. */
   profilerPollIntervalMs: number;
+  /** Metric tiles shown, in order, on the Live Profiler's Dashboard view (ids from `PROFILER_DASHBOARD_TILES`). */
+  profilerDashboardTiles: string[];
   /** Query-results webview key combos (event name -> combo string), overriding `DEFAULT_SHORTCUTS`. */
   shortcuts: Record<string, string>;
   /**

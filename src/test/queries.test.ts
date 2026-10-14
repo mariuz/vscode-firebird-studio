@@ -465,6 +465,12 @@ suite('profilerActivityQuery', function () {
   test('includes the database\'s oldest-active-transaction number via a scalar subquery', function () {
     assert.ok(sql.includes('(SELECT MON$OLDEST_ACTIVE FROM MON$DATABASE) AS DB_OLDEST_ACTIVE'), sql);
   });
+
+  test('includes attachment-level memory usage columns and joins MON$MEMORY_USAGE with stat group 1', function () {
+    assert.ok(sql.includes('mu.MON$MEMORY_USED AS MEMORY_USED'), sql);
+    assert.ok(sql.includes('mu.MON$MEMORY_ALLOCATED AS MEMORY_ALLOCATED'), sql);
+    assert.ok(sql.includes('LEFT JOIN MON$MEMORY_USAGE mu ON mu.MON$STAT_ID = a.MON$STAT_ID AND mu.MON$STAT_GROUP = 1'), sql);
+  });
 });
 
 // ── killAttachmentQuery / rollbackTransactionQuery ──────────────────────────────

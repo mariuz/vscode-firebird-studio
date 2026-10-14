@@ -4,7 +4,7 @@ import { QueryResultsView, Message } from "../result-view/queryResultsView";
 import { ConnectionOptions } from "../interfaces";
 import { Driver } from "../shared/driver";
 import { profilerActivityQuery, killAttachmentQuery, rollbackTransactionQuery } from "../shared/queries";
-import { getOptions } from "../config";
+import { getOptions, PROFILER_DASHBOARD_TILES, MIN_PROFILER_POLL_INTERVAL_MS as MIN_POLL_INTERVAL_MS } from "../config";
 import { logger } from "../logger/logger";
 
 /**
@@ -31,14 +31,32 @@ export class ProfilerView extends QueryResultsView implements vscode.Disposable 
   private connection?: unknown;
   /** Queued for the webview's first "ready" — see the ready/init handshake other webviews in this extension use. */
   private pendingInit: Message | undefined;
+  private configListener: vscode.Disposable | undefined;
 
   constructor(private readonly extensionPath: string) {
     super("profiler", "Firebird Connection Profiler", "pulse");
   }
 
+  /** What the webview needs from settings: its poll cadence and which dashboard tiles to draw. */
+  static currentConfig(): { pollIntervalMs: number; dashboardTiles: string[] } {
+    const options = getOptions();
+    return { pollIntervalMs: options.profilerPollIntervalMs, dashboardTiles: options.profilerDashboardTiles };
+  }
+
   open(dbDetails: ConnectionOptions): void {
     this.dbDetails = dbDetails;
-    this.pendingInit = { command: "init", data: { pollIntervalMs: getOptions().profilerPollIntervalMs } };
+    this.pendingInit = { command: "init", data: ProfilerView.currentConfig() };
+    // The tile/refresh choices can be changed from Settings while the panel is open -- push them in
+    // rather than leaving the panel on stale choices until it is reopened. Registered here and
+    // dropped in dispose() rather than held for the instance's life: this one instance is reused
+    // across panels, and dispose() runs every time a panel is closed.
+    if (!this.configListener) {
+      this.configListener = vscode.workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration("firebird.profiler")) {
+          this.send({ command: "config", data: ProfilerView.currentConfig() });
+        }
+      });
+    }
     super.show(join(this.extensionPath, "src", "profiler", "htmlContent", "index.html"));
   }
 
@@ -52,6 +70,19 @@ export class ProfilerView extends QueryResultsView implements vscode.Disposable 
     }
     if (message.command === "refresh") {
       this.pollOnce().catch(err => logger.error(err));
+    }
+    if (message.command === "setPollInterval") {
+      const ms = Number((message.data as { pollIntervalMs: unknown })?.pollIntervalMs);
+      if (Number.isFinite(ms) && ms >= MIN_POLL_INTERVAL_MS) {
+        ProfilerView.saveSetting("pollIntervalMs", Math.round(ms));
+      }
+    }
+    if (message.command === "setDashboardTiles") {
+      const tiles = (message.data as { tiles: unknown })?.tiles;
+      if (Array.isArray(tiles)) {
+        const known = new Set<string>(PROFILER_DASHBOARD_TILES);
+        ProfilerView.saveSetting("dashboardTiles", tiles.filter(t => typeof t === "string" && known.has(t)));
+      }
     }
     if (message.command === "killAttachment") {
       const { attachmentId, label } = message.data as { attachmentId: number; label: string };
@@ -69,6 +100,24 @@ export class ProfilerView extends QueryResultsView implements vscode.Disposable 
         () => rollbackTransactionQuery(transactionId)
       );
     }
+  }
+
+  /**
+   * Writes a `firebird.profiler.*` setting at the scope it is already set at. Writing to Global
+   * while a workspace value exists would "succeed" and change nothing the user can see, since the
+   * workspace value wins — so a workspace- or folder-level value is updated in place instead.
+   */
+  private static saveSetting(key: string, value: unknown): void {
+    const config = vscode.workspace.getConfiguration("firebird.profiler");
+    const inspected = config.inspect?.(key);
+    const target = inspected?.workspaceFolderValue !== undefined
+      ? vscode.ConfigurationTarget.WorkspaceFolder
+      : inspected?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+    Promise.resolve(config.update(key, value, target)).catch((err: any) => {
+      logger.error(`Could not save firebird.profiler.${key}: ${err?.message ?? err}`);
+    });
   }
 
   /** Shared confirm-then-execute path for the "Kill"/"Rollback" row actions -- both need the same
@@ -92,6 +141,8 @@ export class ProfilerView extends QueryResultsView implements vscode.Disposable 
   }
 
   dispose(): void {
+    this.configListener?.dispose();
+    this.configListener = undefined;
     if (this.connection) {
       Driver.client.detach(this.connection).catch(() => { /* already gone */ });
       this.connection = undefined;

@@ -1016,6 +1016,11 @@ export function getForeignKeysQuery(withSchemas = false): string {
  * counters, and MON$OLDEST_ACTIVE flags whichever transaction is currently the oldest, i.e. most
  * likely to be holding back garbage collection — the closest analog Firebird exposes to "this
  * session may be blocking others".
+ *
+ * MEMORY_USED/MEMORY_ALLOCATED (for the dashboard's customizable "Memory" tile) come from
+ * MON$MEMORY_USAGE joined on the same attachment-level MON$STAT_ID/MON$STAT_GROUP = 1 pair as the
+ * IO and record stats above. Unlike those, they are *gauges* (current pool size), not cumulative
+ * counters, so the dashboard sums them per poll rather than diffing them between polls.
  */
 export function profilerActivityQuery(): string {
   return `SELECT a.MON$ATTACHMENT_ID AS ATTACHMENT_ID,
@@ -1031,6 +1036,8 @@ export function profilerActivityQuery(): string {
                  rs.MON$RECORD_IDX_READS AS IDX_READS,
                  rs.MON$RECORD_WAITS AS RECORD_WAITS,
                  rs.MON$RECORD_CONFLICTS AS RECORD_CONFLICTS,
+                 mu.MON$MEMORY_USED AS MEMORY_USED,
+                 mu.MON$MEMORY_ALLOCATED AS MEMORY_ALLOCATED,
                  stmt.MON$STATEMENT_ID AS STATEMENT_ID,
                  CAST(stmt.MON$SQL_TEXT AS VARCHAR(${MAX_SOURCE_CAST_LENGTH}) CHARACTER SET UTF8) AS SQL_TEXT,
                  tx.MON$TRANSACTION_ID AS TRANSACTION_ID,
@@ -1043,6 +1050,7 @@ export function profilerActivityQuery(): string {
             FROM MON$ATTACHMENTS a
        LEFT JOIN MON$IO_STATS io ON io.MON$STAT_ID = a.MON$STAT_ID AND io.MON$STAT_GROUP = 1
        LEFT JOIN MON$RECORD_STATS rs ON rs.MON$STAT_ID = a.MON$STAT_ID AND rs.MON$STAT_GROUP = 1
+       LEFT JOIN MON$MEMORY_USAGE mu ON mu.MON$STAT_ID = a.MON$STAT_ID AND mu.MON$STAT_GROUP = 1
        LEFT JOIN (
                  SELECT MON$ATTACHMENT_ID, MAX(MON$STATEMENT_ID) AS MON$STATEMENT_ID
                    FROM MON$STATEMENTS

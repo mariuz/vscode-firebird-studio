@@ -224,6 +224,84 @@ td.fb-actions button.fb-kill-btn:hover {
   height: auto;
   color: var(--vscode-widget-border, #666);
 }
+.chart-detail {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+  margin-bottom: 4px;
+  min-height: 1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#dashboard-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+/* ── Refresh-rate selector and Tiles… menu (customizable dashboard) ─────────── */
+#poll-interval-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+#poll-interval {
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--vscode-dropdown-border, #555);
+  border-radius: 3px;
+  background: var(--vscode-dropdown-background, #3c3c3c);
+  color: var(--vscode-dropdown-foreground, #ccc);
+}
+#tiles-menu-anchor {
+  position: relative;
+}
+#dashboard-toolbar button#btn-tiles,
+#tiles-menu button {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, #444);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+}
+#dashboard-toolbar button#btn-tiles:hover,
+#tiles-menu button:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+#tiles-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  min-width: 240px;
+  padding: 6px 0;
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, #454545));
+  border-radius: 4px;
+  background: var(--vscode-menu-background, #252526);
+  color: var(--vscode-menu-foreground, #ccc);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+#tiles-menu label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#tiles-menu label:hover {
+  background: var(--vscode-menu-selectionBackground, #04395e);
+  color: var(--vscode-menu-selectionForeground, #fff);
+}
+#tiles-menu-footer {
+  margin-top: 6px;
+  padding: 6px 12px 0;
+  border-top: 1px solid var(--vscode-menu-separatorBackground, #454545);
+}
 /* ── Queries drill-down view ──────────────────────────────────────────────── */
 #queries-wrapper {
   flex: 1 1 auto;

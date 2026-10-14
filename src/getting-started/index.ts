@@ -4,7 +4,7 @@ import {
 import * as path from "path";
 import { v1 as uuidv1 } from "uuid";
 import { ConnectionOptions } from "../interfaces";
-import { Constants } from "../config";
+import { Constants, getOptions } from "../config";
 import { Global } from "../shared/global";
 import { CredentialStore } from "../shared/credential-store";
 import { getConnectionLabel, getDatabaseFileName } from "../shared/utils";
@@ -111,7 +111,8 @@ export async function fetchGettingStartedState(context: ExtensionContext): Promi
 
   let dockerAvailable = false;
   try {
-    dockerAvailable = await probeDocker();
+    const dockerPath = getOptions().dockerPath || "docker";
+    dockerAvailable = await probeDocker(dockerPath);
   } catch {
     dockerAvailable = false;
   }
@@ -132,12 +133,13 @@ export async function addSampleEmployeeConnection(context: ExtensionContext): Pr
   const id = uuidv1();
   const conn: ConnectionOptions = {
     id,
-    name: "Employee Sample",
+    group: "Employee Sample",
     host: "localhost",
     port: 3050,
     database: "employee",
     user: "SYSDBA",
     password: "masterkey",
+    role: null,
     embedded: false
   };
 
