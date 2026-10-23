@@ -409,7 +409,7 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
     // Reopen menu inside selection and click Copy with Headers
     td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
     const menu2 = root.querySelector('.fb-nb-context-menu');
-    const items2 = menu2.querySelectorAll('.fb-nb-context-menu-item');
+    const items2 = menu2!.querySelectorAll('.fb-nb-context-menu-item');
     items2[1].dispatch('click');
     assert.strictEqual(clipboardText, 'ID\tNAME\n1\tAlice\n2\tBob');
   });
@@ -442,21 +442,21 @@ suite('sql-notebook renderer – renderOutputItem() (faithful fake DOM)', functi
     // Reopen and test clicking JSON
     td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
     const menu2 = root.querySelector('.fb-nb-context-menu');
-    const sub2 = menu2.querySelector('.fb-nb-context-submenu').querySelectorAll('.fb-nb-context-submenu-item');
+    const sub2 = menu2!.querySelector('.fb-nb-context-submenu')!.querySelectorAll('.fb-nb-context-submenu-item');
     sub2[1].dispatch('click');
     assert.deepStrictEqual(JSON.parse(clipboardText as string), [{ ID: '1', NAME: 'Alice' }]);
 
     // Reopen and test clicking Markdown Table
     td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
     const menu3 = root.querySelector('.fb-nb-context-menu');
-    const sub3 = menu3.querySelector('.fb-nb-context-submenu').querySelectorAll('.fb-nb-context-submenu-item');
+    const sub3 = menu3!.querySelector('.fb-nb-context-submenu')!.querySelectorAll('.fb-nb-context-submenu-item');
     sub3[2].dispatch('click');
     assert.strictEqual(clipboardText, '| ID | NAME |\n| --- | --- |\n| 1 | Alice |');
 
     // Reopen and test clicking Excel (TSV)
     td00.dispatch('contextmenu', { clientX: 50, clientY: 50 });
     const menu4 = root.querySelector('.fb-nb-context-menu');
-    const sub4 = menu4.querySelector('.fb-nb-context-submenu').querySelectorAll('.fb-nb-context-submenu-item');
+    const sub4 = menu4!.querySelector('.fb-nb-context-submenu')!.querySelectorAll('.fb-nb-context-submenu-item');
     sub4[3].dispatch('click');
     assert.strictEqual(clipboardText, 'ID\tNAME\n1\tAlice');
   });
