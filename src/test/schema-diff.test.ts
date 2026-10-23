@@ -295,7 +295,7 @@ suite('Schema Diff – renderDiffReport', function () {
 
 // ── renderDiffMarkdown ────────────────────────────────────────────────────────
 
-import { renderDiffMarkdown, SchemaDiffResult } from '../schema-diff/schema-diff';
+import { SchemaDiffResult } from '../schema-diff/schema-diff';
 
 /** Fixed timestamp for deterministic snapshot tests. */
 const FIXED_DATE = new Date('2025-01-15T10:30:00.000Z');
@@ -522,7 +522,6 @@ import {
   DEFAULT_SCHEMA_DIFF_FILTER,
   isFilterActive,
   formatFilterSummary,
-  filterDiffResult,
 } from '../schema-diff/schema-diff';
 
 suite('Schema Diff – Object & Action Filtering', function () {
